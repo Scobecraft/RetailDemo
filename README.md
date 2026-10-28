@@ -70,7 +70,8 @@ umwandeln, z. B. mit HandBrake oder `ffmpeg -i in.mov -c:v libx264 -crf 20 -an o
      (Android 13+: falls gesperrt → App-Info → ⋮ → „Eingeschränkte Einstellungen zulassen“),
    - **Über anderen Apps einblenden** (für Autostart nach Neustart),
    - **Akku-Optimierung** abschalten,
-   - **Wecker und Erinnerungen** erlauben (Android 12+, für pünktliche Betriebszeiten).
+   - **Wecker und Erinnerungen** erlauben (Android 12+, für pünktliche Betriebszeiten),
+   - **Zugriff auf alle Dateien** erlauben (zum Löschen der Kundenfotos).
 4. Gerät: Displaysperre „Keine“, Bildschirm-Timeout auf Maximum, WLAN verbinden.
 5. **Demo starten**.
 
@@ -84,6 +85,13 @@ umwandeln, z. B. mit HandBrake oder `ffmpeg -i in.mov -c:v libx264 -crf 20 -an o
   (Ganz ausschalten kann eine App ein Handy ohne Root nicht – Standby verbraucht aber kaum Akku.)
 - **Schutz:** Sprach-, Displaysperre-, PIN- und Passwort-Einstellungen werden sofort wieder geschlossen.
   Abschaltbar in den Einstellungen der Demo-App unter „Schutz für Vorführgeräte“.
+- **Aufräumen** (Standard alle 2 Stunden, einstellbar in der Admin-App, 0 = aus): löscht alle Fotos,
+  Videos und Screenshots (Ordner DCIM, Pictures, Movies) und setzt das Hintergrundbild zurück.
+  Läuft nur, während die Demo spielt oder Ruhezeit ist – nie, während ein Kunde das Gerät benutzt.
+  Manuell: Demo-Einstellungen → „Jetzt aufräumen“.
+- **Deinstallieren nur mit PIN:** Der Deinstallieren-Dialog wird abgefangen und die Admin-PIN abgefragt.
+  Alternativ in den Demo-Einstellungen → „App deinstallieren“.
+  (Per USB/adb am PC lässt sich das ohne Root nicht verhindern.)
 - Inhalte werden lokal gespeichert, die Demo läuft also auch bei einem WLAN-Ausfall weiter.
 - 1× pro Stunde wird abgeglichen: Neues wird geladen, Gelöschtes entfernt.
 - **Zurück in die Einstellungen:** in der laufenden Demo **mit 3 Fingern oben rechts 3 Sekunden** gedrückt halten → PIN.

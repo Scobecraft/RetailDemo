@@ -31,6 +31,10 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("block_settings", true)
         set(v) = sp.edit().putBoolean("block_settings", v).apply()
 
+    var lastCleanup: Long
+        get() = sp.getLong("last_cleanup", 0)
+        set(v) = sp.edit().putLong("last_cleanup", v).apply()
+
     var lastSync: Long
         get() = sp.getLong("last_sync", 0)
         set(v) = sp.edit().putLong("last_sync", v).apply()

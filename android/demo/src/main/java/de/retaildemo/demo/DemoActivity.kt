@@ -117,10 +117,12 @@ class DemoActivity : ComponentActivity() {
         super.onResume()
         demoApp.sync.playerStatus = "Demo läuft"
         demoApp.closeDemoCallback = { runOnUiThread { finish() } }
+        demoApp.demoVisible = true
     }
 
     override fun onPause() {
         super.onPause()
+        demoApp.demoVisible = false
         if (isFinishing) demoApp.closeDemoCallback = null
     }
 

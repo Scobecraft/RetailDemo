@@ -37,7 +37,10 @@ DEFAULT_SETTINGS = {
     "specs_every_n": 3,
     "specs_duration_s": 10,
     "image_duration_s": 8,
+    "cleanup_interval_h": 2,
 }
+# Einstellungen, bei denen 0 "aus" bedeutet
+ZERO_ALLOWED = {"cleanup_interval_h"}
 WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 DEFAULT_SCHEDULE = {
     "enabled": False,
@@ -271,6 +274,7 @@ def build_manifest(c, device_row) -> dict:
         "sync_interval_min": s["sync_interval_min"],
         "idle_timeout_s": s["idle_timeout_s"],
         "schedule": s["schedule"],
+        "cleanup_interval_h": s["cleanup_interval_h"],
         "heartbeat_interval_s": HEARTBEAT_INTERVAL_S,
     }
     manifest["hash"] = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:16]
@@ -553,7 +557,8 @@ def write_settings(body: dict):
     with db() as c:
         for k, v in body.items():
             if k in DEFAULT_SETTINGS:
-                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, str(max(1, int(v)))))
+                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)",
+                          (k, str(max(0 if k in ZERO_ALLOWED else 1, int(v)))))
             elif k == "schedule" and isinstance(v, dict):
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('schedule', ?)",
                           (json.dumps(clean_schedule(v)),))

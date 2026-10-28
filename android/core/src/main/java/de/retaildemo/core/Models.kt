@@ -93,6 +93,7 @@ data class ServerSettings(
     @SerialName("specs_every_n") val specsEveryN: Int = 3,
     @SerialName("specs_duration_s") val specsDurationS: Int = 10,
     @SerialName("image_duration_s") val imageDurationS: Int = 8,
+    @SerialName("cleanup_interval_h") val cleanupIntervalH: Int = 2,
     val schedule: Schedule = Schedule(),
 )
 
@@ -123,6 +124,7 @@ data class Manifest(
     @SerialName("sync_interval_min") val syncIntervalMin: Int = 60,
     @SerialName("idle_timeout_s") val idleTimeoutS: Int = 30,
     val schedule: Schedule = Schedule(),
+    @SerialName("cleanup_interval_h") val cleanupIntervalH: Int = 2,
     @SerialName("heartbeat_interval_s") val heartbeatIntervalS: Int = 300,
 )
 

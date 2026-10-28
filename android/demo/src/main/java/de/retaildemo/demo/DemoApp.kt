@@ -19,6 +19,14 @@ class DemoApp : Application() {
         private set
     lateinit var schedule: ScheduleManager
         private set
+    lateinit var cleanup: CleanupManager
+        private set
+
+    /** true, solange die Demo-Wiedergabe im Vordergrund läuft. */
+    @Volatile var demoVisible = false
+
+    /** Bis zu diesem Zeitpunkt (elapsedRealtime) ist Deinstallieren nach PIN-Eingabe erlaubt. */
+    @Volatile var uninstallUnlockedUntil = 0L
 
     /** Wird von der laufenden Demo gesetzt, damit sie von außen beendet werden kann. */
     @Volatile var closeDemoCallback: (() -> Unit)? = null
@@ -39,6 +47,8 @@ class DemoApp : Application() {
         sync.start(scope)
         schedule = ScheduleManager(this)
         schedule.start(scope)
+        cleanup = CleanupManager(this)
+        cleanup.start(scope)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(a: Activity) { resumedActivities++ }

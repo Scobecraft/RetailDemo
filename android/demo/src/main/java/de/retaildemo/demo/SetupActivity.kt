@@ -31,6 +31,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -111,6 +115,10 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
         android.os.Build.VERSION.SDK_INT < 31 || ctx.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
     }
     var blockSettings by remember { mutableStateOf(prefs.blockSettings) }
+    val storage = remember(refresh) { app.cleanup.hasStorageAccess() }
+    val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
+    val cleanupState by app.cleanup.state.collectAsState()
+    var confirmCleanup by remember { mutableStateOf(false) }
     val scheduleActive by app.schedule.active.collectAsState()
 
     Column(
@@ -201,6 +209,17 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
                     )
                 }
                 PermissionRow(
+                    ok = storage,
+                    title = "Kundenfotos löschen",
+                    hint = "\"Zugriff auf alle Dateien\" erlauben.",
+                    button = "Erlauben",
+                ) {
+                    if (android.os.Build.VERSION.SDK_INT >= 30) ctx.startActivity(
+                        Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${ctx.packageName}"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    ) else storagePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                }
+                PermissionRow(
                     ok = exactAlarms,
                     title = "Pünktliches Ein-/Ausschalten",
                     hint = "\"Wecker und Erinnerungen\" erlauben (für die Betriebszeiten).",
@@ -231,6 +250,20 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
                         )
                     }
                     Switch(checked = blockSettings, onCheckedChange = { blockSettings = it; prefs.blockSettings = it })
+                }
+                val interval = manifest?.cleanupIntervalH ?: 2
+                Text(
+                    if (interval > 0) "Alle $interval Std. werden Fotos/Videos/Screenshots gelöscht und das Hintergrundbild zurückgesetzt."
+                    else "Automatisches Aufräumen ist in der Admin-App ausgeschaltet.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                prefs.lastCleanup.takeIf { it > 0 }?.let {
+                    StatusLine("Zuletzt aufgeräumt", DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it)))
+                }
+                if (cleanupState.isNotBlank()) Text(cleanupState, style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { confirmCleanup = true }) { Text("Jetzt aufräumen") }
+                    OutlinedButton(onClick = { UninstallPinActivity.startUninstall(ctx) }) { Text("App deinstallieren") }
                 }
                 if (blockSettings && !a11y) Text(
                     "⚠️ Funktioniert nur mit eingeschalteter Bedienungshilfe (siehe oben).",
@@ -277,6 +310,19 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
                 ) { Text("Jetzt synchronisieren") }
             }
         }
+
+        if (confirmCleanup) AlertDialog(
+            onDismissRequest = { confirmCleanup = false },
+            title = { Text("Jetzt aufräumen?") },
+            text = { Text("Alle Fotos, Videos und Screenshots auf diesem Gerät werden gelöscht und das Hintergrundbild zurückgesetzt.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmCleanup = false
+                    scope.launch { message = app.cleanup.runNow() }
+                }) { Text("Aufräumen", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmCleanup = false }) { Text("Abbrechen") } },
+        )
 
         Button(
             onClick = onStartDemo,

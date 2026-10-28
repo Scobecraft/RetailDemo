@@ -25,6 +25,7 @@ class IdleWatcherService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastInteraction = SystemClock.elapsedRealtime()
     private var lastBlockToast = 0L
+    private var lastUninstallBlock = 0L
 
     private val check = object : Runnable {
         override fun run() {
@@ -55,6 +56,14 @@ class IdleWatcherService : AccessibilityService() {
         lastInteraction = SystemClock.elapsedRealtime()
 
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            event.packageName?.contains("packageinstaller") == true
+        ) {
+            // Deinstallieren-Dialog: Inhalt wird teils verzögert aufgebaut -> zweimal prüfen
+            checkUninstallDialog()
+            handler.postDelayed({ checkUninstallDialog() }, 400)
+        }
+
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             demoApp.prefs.blockSettings && SettingsGuard.isForbidden(event)
         ) {
             performGlobalAction(GLOBAL_ACTION_HOME)
@@ -64,6 +73,26 @@ class IdleWatcherService : AccessibilityService() {
                 Toast.makeText(this, "Diese Einstellung ist auf Vorführgeräten gesperrt", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    /** Will jemand diese App deinstallieren? Dann Dialog schließen und nach der PIN fragen. */
+    private fun checkUninstallDialog() {
+        val now = SystemClock.elapsedRealtime()
+        if (now < demoApp.uninstallUnlockedUntil || now - lastUninstallBlock < 3_000) return
+        val root = rootInActiveWindow ?: return
+        if (root.packageName?.contains("packageinstaller") != true) return
+        val label = Regex("\\b" + Regex.escape(applicationInfo.loadLabel(packageManager).toString()) + "\\b")
+        val texts = mutableListOf<String>()
+        fun collect(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+            if (node == null || depth > 8 || texts.size > 50) return
+            node.text?.let { texts += it.toString() }
+            for (i in 0 until node.childCount) collect(node.getChild(i), depth + 1)
+        }
+        collect(root, 0)
+        if (texts.none { label.containsMatchIn(it) }) return
+        lastUninstallBlock = now
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        startActivity(Intent(this, UninstallPinActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     private fun checkIdle() {

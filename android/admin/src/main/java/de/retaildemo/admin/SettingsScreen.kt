@@ -104,6 +104,7 @@ private fun ServerSettingsCard(current: ServerSettings, onSave: (ServerSettings)
     var every by remember(current) { mutableStateOf(current.specsEveryN.toString()) }
     var specsDur by remember(current) { mutableStateOf(current.specsDurationS.toString()) }
     var imgDur by remember(current) { mutableStateOf(current.imageDurationS.toString()) }
+    var cleanup by remember(current) { mutableStateOf(current.cleanupIntervalH.toString()) }
 
     Card {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -113,6 +114,7 @@ private fun ServerSettingsCard(current: ServerSettings, onSave: (ServerSettings)
             NumberField("Gerätedaten nach jedem … Medium zeigen", every) { every = it }
             NumberField("Gerätedaten-Anzeige dauert … Sekunden", specsDur) { specsDur = it }
             NumberField("Bilder werden standardmäßig … Sekunden gezeigt", imgDur) { imgDur = it }
+            NumberField("Kundenfotos löschen & Hintergrund zurücksetzen alle … Stunden (0 = aus)", cleanup) { cleanup = it }
             Button(onClick = {
                 onSave(
                     ServerSettings(
@@ -121,6 +123,7 @@ private fun ServerSettingsCard(current: ServerSettings, onSave: (ServerSettings)
                         specsEveryN = every.toIntOrNull() ?: current.specsEveryN,
                         specsDurationS = specsDur.toIntOrNull() ?: current.specsDurationS,
                         imageDurationS = imgDur.toIntOrNull() ?: current.imageDurationS,
+                        cleanupIntervalH = cleanup.toIntOrNull() ?: current.cleanupIntervalH,
                     )
                 )
             }) { Text("Speichern") }
