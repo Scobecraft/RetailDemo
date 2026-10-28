@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Retail Demo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffab45"/>
+      <stop offset="1" stop-color="#e56f00"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <!-- hinteres Gerät -->
+  <rect x="11" y="15" width="20" height="36" rx="4.5" fill="#fff" fill-opacity=".28" transform="rotate(-12 21 33)"/>
+  <!-- vorderes Gerät mit Play-Symbol -->
+  <rect x="25" y="10" width="26" height="45" rx="6" fill="#fff"/>
+  <rect x="28.5" y="14.5" width="19" height="33" rx="3" fill="#1d2330"/>
+  <path d="M34.5 24.5v13.5l10.5-6.75z" fill="#ff9a1f"/>
+  <rect x="35" y="50.2" width="6" height="2" rx="1" fill="#1d2330" fill-opacity=".35"/>
+</svg>

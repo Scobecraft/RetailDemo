@@ -793,32 +793,127 @@ class Login(BaseModel):
     password: str
 
 
-@app.post("/api/web/login")
-def web_login(body: Login, request: Request, response: Response):
-    if not WEB_PASSWORD:
-        raise HTTPException(503, "Web-Anmeldung ist nicht eingerichtet (WEB_PASSWORD in .env fehlt)")
+class WebSetup(BaseModel):
+    admin_token: str
+    username: str
+    password: str
+
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str
+
+
+def _hash_password(password: str, salt: Optional[bytes] = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 300_000)
+    return f"pbkdf2${salt.hex()}${digest.hex()}"
+
+
+def _check_password(password: str, stored: str) -> bool:
+    try:
+        _, salt, _ = stored.split("$")
+    except ValueError:
+        return False
+    return secrets.compare_digest(_hash_password(password, bytes.fromhex(salt)), stored)
+
+
+def _web_credentials() -> tuple[str, Optional[str], bool]:
+    """(Benutzer, Passwort-Hash oder Klartext, kommt aus .env?)"""
+    if WEB_PASSWORD:
+        return WEB_USER, WEB_PASSWORD, True
+    with db() as c:
+        rows = {r["key"]: r["value"] for r in c.execute(
+            "SELECT key, value FROM settings WHERE key IN ('web_user', 'web_password_hash')")}
+    return rows.get("web_user", ""), rows.get("web_password_hash"), False
+
+
+def _check_rate_limit(request: Request) -> tuple[str, list[float]]:
     ip = _client_ip(request)
     now = time.time()
     fails = [t for t in _login_failures.get(ip, []) if now - t < LOCK_MINUTES * 60]
     if len(fails) >= MAX_FAILURES:
         raise HTTPException(429, f"Zu viele Fehlversuche. Bitte {LOCK_MINUTES} Minuten warten.")
-    ok_user = secrets.compare_digest(body.username.strip().lower(), WEB_USER.lower())
-    ok_pass = secrets.compare_digest(body.password, WEB_PASSWORD)
-    if not (ok_user and ok_pass):
-        fails.append(now)
-        _login_failures[ip] = fails
-        time.sleep(0.7)
-        raise HTTPException(401, "Benutzername oder Passwort falsch")
-    _login_failures.pop(ip, None)
+    return ip, fails
+
+
+def _fail(ip: str, fails: list[float], message: str):
+    fails.append(time.time())
+    _login_failures[ip] = fails
+    time.sleep(0.7)
+    raise HTTPException(401, message)
+
+
+def _start_session(request: Request, response: Response):
+    now = time.time()
     token = secrets.token_urlsafe(32)
-    expires = now + SESSION_DAYS * 86400
     with db() as c:
         c.execute("DELETE FROM web_sessions WHERE expires < ?", (now,))
-        c.execute("INSERT INTO web_sessions (token_hash, expires) VALUES (?,?)", (_hash_token(token), expires))
+        c.execute("INSERT INTO web_sessions (token_hash, expires) VALUES (?,?)",
+                  (_hash_token(token), now + SESSION_DAYS * 86400))
     secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
     response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_DAYS * 86400, httponly=True,
                         samesite="strict", secure=secure, path="/")
-    return {"ok": True, "user": WEB_USER}
+
+
+@app.get("/api/web/status")
+def web_status():
+    user, secret, from_env = _web_credentials()
+    return {"setup_required": not secret, "managed_by_env": from_env}
+
+
+@app.post("/api/web/login")
+def web_login(body: Login, request: Request, response: Response):
+    user, secret, from_env = _web_credentials()
+    if not secret:
+        raise HTTPException(409, "Noch kein Passwort eingerichtet")
+    ip, fails = _check_rate_limit(request)
+    ok_user = secrets.compare_digest(body.username.strip().lower(), user.lower())
+    ok_pass = secrets.compare_digest(body.password, secret) if from_env else _check_password(body.password, secret)
+    if not (ok_user and ok_pass):
+        _fail(ip, fails, "Benutzername oder Passwort falsch")
+    _login_failures.pop(ip, None)
+    _start_session(request, response)
+    return {"ok": True, "user": user}
+
+
+@app.post("/api/web/setup")
+def web_setup(body: WebSetup, request: Request, response: Response):
+    """Ersteinrichtung bzw. Passwort zurücksetzen – nur mit dem Admin-Token möglich."""
+    if WEB_PASSWORD:
+        raise HTTPException(409, "Das Passwort ist in der .env-Datei festgelegt (WEB_PASSWORD) und kann hier nicht geändert werden.")
+    ip, fails = _check_rate_limit(request)
+    if not ADMIN_TOKEN or not secrets.compare_digest(body.admin_token.strip(), ADMIN_TOKEN):
+        _fail(ip, fails, "Admin-Token falsch")
+    username = body.username.strip()
+    if not username:
+        raise HTTPException(400, "Bitte einen Benutzernamen angeben")
+    if len(body.password) < 8:
+        raise HTTPException(400, "Das Passwort muss mindestens 8 Zeichen lang sein")
+    _login_failures.pop(ip, None)
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('web_user', ?)", (username,))
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('web_password_hash', ?)",
+                  (_hash_password(body.password),))
+        c.execute("DELETE FROM web_sessions")  # alte Anmeldungen ungültig machen
+    _start_session(request, response)
+    return {"ok": True, "user": username}
+
+
+@app.post("/api/web/password")
+def web_change_password(body: PasswordChange, request: Request):
+    if not _web_session_ok(request):
+        raise HTTPException(401, "Nicht angemeldet")
+    user, secret, from_env = _web_credentials()
+    if from_env:
+        raise HTTPException(409, "Das Passwort ist in der .env-Datei festgelegt (WEB_PASSWORD).")
+    if not _check_password(body.old_password, secret or ""):
+        raise HTTPException(400, "Bisheriges Passwort ist falsch")
+    if len(body.new_password) < 8:
+        raise HTTPException(400, "Das neue Passwort muss mindestens 8 Zeichen lang sein")
+    with db() as c:
+        c.execute("UPDATE settings SET value=? WHERE key='web_password_hash'", (_hash_password(body.new_password),))
+    return {"ok": True}
 
 
 @app.post("/api/web/logout")
@@ -835,7 +930,8 @@ def web_logout(request: Request, response: Response):
 def web_me(request: Request):
     if not _web_session_ok(request):
         raise HTTPException(401, "Nicht angemeldet")
-    return {"user": WEB_USER}
+    user, _, from_env = _web_credentials()
+    return {"user": user, "managed_by_env": from_env}
 
 
 @app.get("/", include_in_schema=False)
@@ -843,6 +939,6 @@ def web_index():
     return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
-@app.get("/logo.png", include_in_schema=False)
+@app.get("/logo.svg", include_in_schema=False)
 def web_logo():
-    return FileResponse(WEB_DIR / "logo.png")
+    return FileResponse(WEB_DIR / "logo.svg", media_type="image/svg+xml")

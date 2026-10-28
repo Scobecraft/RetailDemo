@@ -57,15 +57,20 @@ Der Server bringt eine Webseite mit: einfach die Server-Adresse im Browser öffn
 - Playlists anlegen, sortieren und bearbeiten
 - sehen, welche Geräte online und aktuell sind
 
-**Anmeldung einrichten:** in `server/.env` ergänzen und danach `docker compose up -d` ausführen:
+**Anmeldung einrichten:** Beim ersten Aufruf zeigt die Webseite eine **Ersteinrichtung**. Dort gibst du
+einmal dein **Admin-Token** (`ADMIN_TOKEN` aus der `.env`, dasselbe wie in der Admin-App) ein und legst
+Benutzername und Passwort fest. Über „Passwort vergessen?“ geht das jederzeit erneut, ebenfalls nur mit
+dem Admin-Token. Angemeldet kannst du das Passwort oben rechts ändern.
+
+Alternativ lassen sich die Zugangsdaten fest in `server/.env` eintragen (haben dann Vorrang):
 
 ```
 WEB_USER=admin
 WEB_PASSWORD=ein-langes-sicheres-passwort
 ```
 
-Ohne `WEB_PASSWORD` ist die Webseite gesperrt. Nach 5 falschen Passwörtern wird die Anmeldung für
-15 Minuten gesperrt. Die Anmeldung bleibt 14 Tage gespeichert (Abmelden oben rechts).
+Nach 5 Fehlversuchen wird die Anmeldung für 15 Minuten gesperrt. Die Anmeldung bleibt 14 Tage
+gespeichert (Abmelden oben rechts). Passwörter werden nur verschlüsselt (als Hash) gespeichert.
 
 ## 2. Admin-App
 

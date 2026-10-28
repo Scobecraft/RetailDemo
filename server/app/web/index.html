@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Retail Demo – Verwaltung</title>
-<link rel="icon" href="/logo.png">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
   :root {
     --accent: #ee7f00;
@@ -35,8 +35,13 @@
   /* ---------- Login ---------- */
   #login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
   .login-card { width: 100%; max-width: 360px; background: var(--card); border-radius: 16px; box-shadow: var(--shadow); padding: 32px 28px; border: 1px solid var(--line); }
-  .login-card img { width: 88px; display: block; margin: 0 auto 12px; }
-  .login-card h1 { font-size: 20px; text-align: center; margin: 0 0 24px; }
+  .login-card img { width: 64px; display: block; margin: 0 auto 14px; }
+  .login-card h1 { font-size: 22px; text-align: center; margin: 0 0 22px; line-height: 1.2; }
+  .login-card h1 small { display: block; font-size: 14px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+  .linkbtn { display: block; margin: 14px auto 0; border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 14px; }
+  .linkbtn:hover { text-decoration: underline; }
+  .hint { background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; font-size: 14px; margin: 0 0 4px; }
+  .muted { color: var(--muted); font-weight: 400; }
   label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
   input[type=text], input[type=password], input[type=number], select {
     width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card);
@@ -58,7 +63,7 @@
   /* ---------- Kopfzeile ---------- */
   header { background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
   .bar { max-width: 1200px; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 16px; height: 60px; }
-  .bar img { height: 36px; }
+  .bar img { height: 34px; }
   .bar .brand { font-weight: 700; }
   nav { display: flex; gap: 4px; margin-left: 16px; flex: 1; overflow-x: auto; }
   nav button { border: 0; background: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; color: var(--muted); font-weight: 500; }
@@ -146,6 +151,7 @@
   @media (max-width: 640px) {
     .bar { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 6px; gap: 8px 12px; }
     .bar .brand { flex: 1; }
+    #changePw { display: none; }
     nav { order: 3; width: 100%; flex: none; margin-left: 0; }
     nav button { flex: 1; }
     main { padding-top: 16px; }
@@ -163,29 +169,49 @@
 
 <!-- ======================= Anmeldung ======================= -->
 <section id="login" hidden>
-  <form class="login-card" id="loginForm">
-    <img src="/logo.png" alt="">
-    <h1>Demo-Verwaltung</h1>
-    <label for="lu">Benutzername</label>
-    <input type="text" id="lu" autocomplete="username" required>
-    <label for="lp">Passwort</label>
-    <input type="password" id="lp" autocomplete="current-password" required>
-    <button class="btn primary block" type="submit">Anmelden</button>
+  <div class="login-card">
+    <img src="/logo.svg" alt="">
+    <h1>Retail Demo<small>Verwaltung</small></h1>
+
+    <form id="loginForm">
+      <label for="lu">Benutzername</label>
+      <input type="text" id="lu" autocomplete="username" required>
+      <label for="lp">Passwort</label>
+      <input type="password" id="lp" autocomplete="current-password" required>
+      <button class="btn primary block" type="submit">Anmelden</button>
+      <button class="linkbtn" type="button" id="forgot">Passwort vergessen?</button>
+    </form>
+
+    <form id="setupForm" hidden>
+      <p class="hint" id="setupHint"></p>
+      <label for="st">Admin-Token <span class="muted">(aus der .env bzw. Admin-App)</span></label>
+      <input type="password" id="st" autocomplete="off" required>
+      <label for="su">Benutzername</label>
+      <input type="text" id="su" autocomplete="username" value="admin" required>
+      <label for="sp">Neues Passwort <span class="muted">(mind. 8 Zeichen)</span></label>
+      <input type="password" id="sp" autocomplete="new-password" minlength="8" required>
+      <label for="sp2">Passwort wiederholen</label>
+      <input type="password" id="sp2" autocomplete="new-password" minlength="8" required>
+      <button class="btn primary block" type="submit">Speichern &amp; anmelden</button>
+      <button class="linkbtn" type="button" id="backToLogin">Zurück zur Anmeldung</button>
+    </form>
+
     <div class="error" id="loginError"></div>
-  </form>
+  </div>
 </section>
 
 <!-- ======================= Verwaltung ======================= -->
 <section id="app" hidden>
   <header>
     <div class="bar">
-      <img src="/logo.png" alt="">
-      <span class="brand">Demo-Verwaltung</span>
+      <img src="/logo.svg" alt="">
+      <span class="brand">Retail Demo</span>
       <nav>
         <button data-tab="media" class="active">Medien</button>
         <button data-tab="playlists">Playlists</button>
         <button data-tab="devices">Geräte</button>
       </nav>
+      <button class="btn small" id="changePw">Passwort ändern</button>
       <button class="btn small" id="logout">Abmelden</button>
     </div>
   </header>
@@ -304,9 +330,26 @@ const confirmDlg = (title, text, ok = "Löschen") =>
   dialog(title, el("p", {}, text), [["Abbrechen", ""], [ok, "ok", "primary"]]).then(v => v === "ok");
 
 // ---------------------------------------------------------------- Anmeldung
-function showLogin() { $("#app").hidden = true; $("#login").hidden = false; $("#lu").focus(); }
+let managedByEnv = false;
+function setLoginMode(mode, hint) {
+  $("#loginForm").hidden = mode !== "login";
+  $("#setupForm").hidden = mode !== "setup";
+  $("#loginError").textContent = "";
+  $("#setupHint").textContent = hint || "";
+  (mode === "login" ? $("#lu") : $("#st")).focus();
+}
+async function showLogin() {
+  $("#app").hidden = true; $("#login").hidden = false;
+  const st = await api("/api/web/status").catch(() => ({}));
+  managedByEnv = !!st.managed_by_env;
+  $("#forgot").hidden = managedByEnv;
+  $("#backToLogin").hidden = !!st.setup_required;
+  if (st.setup_required) setLoginMode("setup", "Willkommen! Lege einmalig Benutzername und Passwort für die Webseite fest. Zur Sicherheit brauchst du dafür das Admin-Token.");
+  else setLoginMode("login");
+}
 async function showApp() {
   $("#login").hidden = true; $("#app").hidden = false;
+  $("#changePw").hidden = managedByEnv;
   await loadAll();
 }
 $("#loginForm").addEventListener("submit", async e => {
@@ -316,9 +359,34 @@ $("#loginForm").addEventListener("submit", async e => {
     await api("/api/web/login", json("POST", { username: $("#lu").value, password: $("#lp").value }));
     $("#lp").value = "";
     showApp();
+  } catch (err) {
+    if (err.status === 409) return showLogin();
+    $("#loginError").textContent = err.message;
+  }
+});
+$("#setupForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  if ($("#sp").value !== $("#sp2").value) { $("#loginError").textContent = "Die Passwörter stimmen nicht überein"; return; }
+  try {
+    await api("/api/web/setup", json("POST", { admin_token: $("#st").value, username: $("#su").value, password: $("#sp").value }));
+    ["#st", "#sp", "#sp2"].forEach(s => $(s).value = "");
+    showApp(); toast("Passwort gespeichert – du bist angemeldet");
   } catch (err) { $("#loginError").textContent = err.message; }
 });
+$("#forgot").addEventListener("click", () => setLoginMode("setup", "Neues Passwort festlegen: Dafür brauchst du das Admin-Token aus der .env-Datei (dasselbe wie in der Admin-App)."));
+$("#backToLogin").addEventListener("click", () => setLoginMode("login"));
 $("#logout").addEventListener("click", async () => { await api("/api/web/logout", { method: "POST" }).catch(() => {}); showLogin(); });
+$("#changePw").addEventListener("click", async () => {
+  const oldPw = el("input", { type: "password", autocomplete: "current-password" });
+  const newPw = el("input", { type: "password", autocomplete: "new-password" });
+  const newPw2 = el("input", { type: "password", autocomplete: "new-password" });
+  const v = await dialog("Passwort ändern", [el("label", {}, "Bisheriges Passwort"), oldPw, el("label", {}, "Neues Passwort (mind. 8 Zeichen)"), newPw, el("label", {}, "Neues Passwort wiederholen"), newPw2],
+    [["Abbrechen", ""], ["Ändern", "ok", "primary"]]);
+  if (v !== "ok") return;
+  if (newPw.value !== newPw2.value) { toast("Die neuen Passwörter stimmen nicht überein"); return; }
+  try { await api("/api/web/password", json("POST", { old_password: oldPw.value, new_password: newPw.value })); toast("Passwort geändert"); }
+  catch (err) { toast(err.message); }
+});
 
 // ---------------------------------------------------------------- Navigation
 document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => {
@@ -544,7 +612,7 @@ $("#syncAll").addEventListener("click", async () => { await api("/api/admin/devi
 setInterval(() => { if (!$("[data-page=devices]").hidden && !$("#app").hidden) loadDevices().catch(() => {}); }, 20000);
 
 // ---------------------------------------------------------------- Start
-api("/api/web/me").then(showApp).catch(showLogin);
+api("/api/web/me").then(me => { managedByEnv = !!me.managed_by_env; showApp(); }).catch(showLogin);
 </script>
 </body>
 </html>
