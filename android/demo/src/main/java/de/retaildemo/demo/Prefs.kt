@@ -3,16 +3,29 @@ package de.retaildemo.demo
 import android.content.Context
 import de.retaildemo.core.ApiClient
 import de.retaildemo.core.Manifest
+import android.provider.Settings
 import java.util.UUID
 
 /** Lokale Einstellungen des Demo-Geräts. */
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("demo", Context.MODE_PRIVATE)
 
-    val deviceId: String
-        get() = sp.getString("device_id", null) ?: UUID.randomUUID().toString().also {
-            sp.edit().putString("device_id", it).apply()
-        }
+    /**
+     * Dauerhafte Geräte-ID (Android-ID): bleibt auch nach Neuinstallation gleich,
+     * damit ein Gerät in der Admin-App nicht doppelt auftaucht.
+     */
+    val deviceId: String = run {
+        @android.annotation.SuppressLint("HardwareIds")
+        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+        androidId?.takeIf { it.isNotBlank() && it != "9774d56d682e549c" }
+            ?: sp.getString("device_id", null)
+            ?: UUID.randomUUID().toString().also { sp.edit().putString("device_id", it).apply() }
+    }
+
+    /** Zufalls-ID älterer App-Versionen; wird dem Server einmalig zum Umstellen gemeldet. */
+    var legacyDeviceId: String?
+        get() = sp.getString("device_id", null)?.takeIf { it != deviceId }
+        set(v) = sp.edit().putString("device_id", v).apply()
 
     var serverUrl: String
         get() = sp.getString("server_url", "") ?: ""

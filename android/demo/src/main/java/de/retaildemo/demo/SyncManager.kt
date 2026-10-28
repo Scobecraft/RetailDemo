@@ -95,6 +95,7 @@ class SyncManager(private val app: DemoApp) {
         status = playerStatus,
         error = prefs.lastError,
         battery = DeviceInfo.batteryPercent(app),
+        previousId = prefs.legacyDeviceId,
     )
 
     /** Vollständiger Abgleich. Gibt null bei Erfolg zurück, sonst die Fehlermeldung. */
@@ -104,6 +105,8 @@ class SyncManager(private val app: DemoApp) {
         val error = try {
             val api = api()
             val m = api.sync(report(withSpecs = true))
+            // Server hat den alten Eintrag übernommen -> alte Zufalls-ID nicht mehr melden
+            if (prefs.legacyDeviceId != null) prefs.legacyDeviceId = prefs.deviceId
             var failed = 0
             m.items.forEachIndexed { i, item ->
                 if (isAvailable(item)) return@forEachIndexed
@@ -143,6 +146,11 @@ class SyncManager(private val app: DemoApp) {
         // Admin-App sofort über den neuen Stand informieren
         if (error == null) runCatching { api().heartbeat(report(withSpecs = false)) }
         error
+    }
+
+    /** Gerät beim Server abmelden (vor dem Deinstallieren). */
+    suspend fun unregister() {
+        if (prefs.isConfigured) runCatching { api().unregister(prefs.deviceId) }
     }
 
     private fun sha256(f: File): String {

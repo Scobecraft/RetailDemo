@@ -59,6 +59,11 @@ fun DevicesScreen(vm: AdminViewModel, modifier: Modifier) {
     val devices by vm.devices.collectAsState()
     val playlists by vm.playlists.collectAsState()
     var editingId by remember { mutableStateOf<String?>(null) }
+    var showStale by remember { mutableStateOf(false) }
+    var confirmRemoveStale by remember { mutableStateOf(false) }
+    val (active, stale) = devices.partition { d ->
+        d.online || (d.lastSeen ?: 0.0) > System.currentTimeMillis() / 1000.0 - 24 * 3600
+    }
 
     // Liste aktualisieren, solange dieser Tab offen ist
     LaunchedEffect(Unit) {
@@ -86,9 +91,39 @@ fun DevicesScreen(vm: AdminViewModel, modifier: Modifier) {
                     Modifier.padding(12.dp),
                 )
             }
-            items(devices, key = { it.id }) { d -> DeviceCard(d) { editingId = d.id } }
+            items(active, key = { it.id }) { d -> DeviceCard(d) { editingId = d.id } }
+            if (stale.isNotEmpty()) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { showStale = !showStale }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${if (showStale) "▾" else "▸"} Länger als 24 Std. offline (${stale.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (showStale) TextButton(onClick = { confirmRemoveStale = true }) {
+                            Text("Alle entfernen", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+                if (showStale) items(stale, key = { it.id }) { d -> DeviceCard(d) { editingId = d.id } }
+            }
         }
     }
+
+    if (confirmRemoveStale) AlertDialog(
+        onDismissRequest = { confirmRemoveStale = false },
+        title = { Text("${stale.size} Gerät(e) entfernen?") },
+        text = { Text("Wahrscheinlich ist die Demo-App dort nicht mehr installiert. Taucht ein Gerät wieder auf, erscheint es automatisch neu.") },
+        confirmButton = {
+            TextButton(onClick = { stale.forEach { vm.deleteDevice(it.id) }; confirmRemoveStale = false }) {
+                Text("Entfernen", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = { confirmRemoveStale = false }) { Text("Abbrechen") } },
+    )
 
     devices.firstOrNull { it.id == editingId }?.let { d ->
         DeviceDialog(vm, d, playlists) { editingId = null }

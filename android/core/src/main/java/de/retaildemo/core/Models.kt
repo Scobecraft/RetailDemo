@@ -141,6 +141,7 @@ data class DeviceReport(
     val status: String? = null,
     val error: String? = null,
     val battery: Int? = null,
+    @SerialName("previous_id") val previousId: String? = null,
 )
 
 @Serializable

@@ -120,6 +120,10 @@ class ApiClient(baseUrl: String, private val token: String) {
     suspend fun heartbeat(report: DeviceReport): HeartbeatResponse =
         JSON.decodeFromString(call("POST", "/api/device/heartbeat", jsonBody(report)))
 
+    suspend fun unregister(deviceId: String) {
+        call("POST", "/api/device/unregister", """{"device_id":${kotlinx.serialization.json.JsonPrimitive(deviceId)}}""".toRequestBody(JSON_TYPE))
+    }
+
     /** Lädt [path] nach [dest] herunter (über eine .part-Datei, damit nie halbe Dateien abgespielt werden). */
     suspend fun download(path: String, dest: File) = withContext(Dispatchers.IO) {
         val part = File(dest.parentFile, dest.name + ".part")

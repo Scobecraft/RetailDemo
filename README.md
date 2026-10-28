@@ -57,6 +57,11 @@ Die Tokens schützen den Server: Mit dem **DEVICE_TOKEN** kann man nur Inhalte a
    - eigene Specs einzutragen (z. B. inkl. Preis) – sonst werden die automatisch erkannten gezeigt,
    - **Jetzt aktualisieren** auszulösen (wirkt innerhalb von ~5 Minuten statt erst nach einer Stunde).
 
+   Geräte, die länger als 24 Std. offline sind, stehen eingeklappt unter „Länger als 24 Std. offline“
+   und lassen sich dort gesammelt entfernen. Wird die Demo-App mit PIN deinstalliert, verschwindet das
+   Gerät automatisch. Bei einer Neuinstallation erkennt der Server das Gerät wieder (Name, Playlist und
+   Specs bleiben erhalten).
+
 **Videoformat:** Am zuverlässigsten ist **MP4 mit H.264** (1080p). iPhone-Videos (.mov/HEVC)
 laufen auf neueren Android-Geräten meist, auf älteren/günstigen eventuell nicht. Im Zweifel vorher
 umwandeln, z. B. mit HandBrake oder `ffmpeg -i in.mov -c:v libx264 -crf 20 -an out.mp4`.

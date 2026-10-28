@@ -18,6 +18,8 @@ import androidx.compose.material3.Card
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -74,11 +76,17 @@ class UninstallPinActivity : ComponentActivity() {
     companion object {
         /** Öffnet den echten System-Dialog zum Deinstallieren (Schutz für 2 Minuten aufgehoben). */
         fun startUninstall(context: Context) {
-            context.demoApp.uninstallUnlockedUntil = SystemClock.elapsedRealtime() + 120_000
-            context.startActivity(
-                Intent(Intent.ACTION_DELETE, Uri.parse("package:${context.packageName}"))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
+            val app = context.demoApp
+            app.uninstallUnlockedUntil = SystemClock.elapsedRealtime() + 120_000
+            app.scope.launch {
+                // Erst beim Server abmelden, damit das Gerät aus der Admin-App verschwindet.
+                // Wird das Deinstallieren abgebrochen, meldet sich das Gerät beim nächsten Kontakt wieder an.
+                withTimeoutOrNull(5_000) { app.sync.unregister() }
+                app.startActivity(
+                    Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
         }
     }
 }

@@ -120,6 +120,10 @@ def init_db():
             );
             """
         )
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(devices)")}
+        if "removed" not in cols:
+            # 1 = App wurde (mit PIN) deinstalliert -> in der Admin-App ausblenden
+            c.execute("ALTER TABLE devices ADD COLUMN removed INTEGER NOT NULL DEFAULT 0")
         version = c.execute("SELECT value FROM settings WHERE key='schema_version'").fetchone()
         if version is None:
             # v2: Standard-Wartezeit bis zum Neustart der Demo von 60 auf 30 Sekunden
@@ -495,7 +499,8 @@ def device_dict(c, row, settings) -> dict:
 def list_devices():
     with db() as c:
         s = get_settings(c)
-        return [device_dict(c, r, s) for r in c.execute("SELECT * FROM devices ORDER BY created_at")]
+        return [device_dict(c, r, s)
+                for r in c.execute("SELECT * FROM devices WHERE removed=0 ORDER BY created_at")]
 
 
 class DevicePatch(BaseModel):
@@ -579,11 +584,17 @@ class DeviceReport(BaseModel):
     status: Optional[str] = None
     error: Optional[str] = None
     battery: Optional[int] = None
+    # Frühere ID desselben Geräts (ältere App-Versionen nutzten eine Zufalls-ID)
+    previous_id: Optional[str] = None
 
 
 def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
     now = time.time()
     row = c.execute("SELECT * FROM devices WHERE id=?", (r.device_id,)).fetchone()
+    if row is None and r.previous_id and r.previous_id != r.device_id:
+        # Gerät hat auf die dauerhafte ID umgestellt: Eintrag (Name, Playlist, Specs) übernehmen
+        c.execute("UPDATE devices SET id=? WHERE id=?", (r.device_id, r.previous_id))
+        row = c.execute("SELECT * FROM devices WHERE id=?", (r.device_id,)).fetchone()
     if row is None:
         c.execute(
             "INSERT INTO devices (id, manufacturer, model, marketing_name, android_version, app_version,"
@@ -598,7 +609,7 @@ def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
             + ((json.dumps(r.specs),) if r.specs else ()) + (r.device_id,))
     c.execute(
         "UPDATE devices SET last_seen=?, status=?, last_error=?, battery=?, ip=?,"
-        " synced_hash=COALESCE(?, synced_hash) WHERE id=?",
+        " synced_hash=COALESCE(?, synced_hash), removed=0 WHERE id=?",
         (now, r.status, r.error, r.battery, ip, r.synced_hash, r.device_id))
     if full_sync:
         c.execute("UPDATE devices SET last_sync=?, sync_requested=0 WHERE id=?", (now, r.device_id))
@@ -619,3 +630,15 @@ def device_heartbeat(report: DeviceReport, x_forwarded_for: Optional[str] = Head
     with db() as c:
         row = _upsert_device(c, report, x_forwarded_for, full_sync=False)
         return {"sync_now": bool(row["sync_requested"]), "heartbeat_interval_s": HEARTBEAT_INTERVAL_S}
+
+
+class Unregister(BaseModel):
+    device_id: str
+
+
+@app.post("/api/device/unregister", dependencies=[Depends(require_device)])
+def device_unregister(body: Unregister):
+    """Wird vor dem Deinstallieren der Demo-App aufgerufen. Einstellungen bleiben für eine Neuinstallation erhalten."""
+    with db() as c:
+        c.execute("UPDATE devices SET removed=1 WHERE id=?", (body.device_id,))
+    return {"ok": True}
