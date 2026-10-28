@@ -9,3 +9,4 @@ server/.env
 __pycache__/
 android/keystore.properties
 android/keystore/
+release/
