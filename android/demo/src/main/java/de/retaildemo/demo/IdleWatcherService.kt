@@ -52,15 +52,15 @@ class IdleWatcherService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
-        if (event.packageName?.toString() == packageName) return
-        lastInteraction = SystemClock.elapsedRealtime()
+        val pkg = event.packageName?.toString() ?: return
+        if (pkg == packageName) return
 
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.packageName?.contains("packageinstaller") == true
-        ) {
-            // Deinstallieren-Dialog: Inhalt wird teils verzögert aufgebaut -> zweimal prüfen
-            checkUninstallDialog()
-            handler.postDelayed({ checkUninstallDialog() }, 400)
+        // Deinstallieren-Dialog so früh wie möglich erkennen – auch schon beim Aufbau des Inhalts
+        if (pkg.contains("packageinstaller")) checkUninstallDialog(event)
+
+        // Inhaltsänderungen (Animationen, Uhr, …) sind keine Bedienung durch einen Kunden
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            lastInteraction = SystemClock.elapsedRealtime()
         }
 
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
@@ -75,13 +75,40 @@ class IdleWatcherService : AccessibilityService() {
         }
     }
 
-    /** Will jemand diese App deinstallieren? Dann Dialog schließen und nach der PIN fragen. */
-    private fun checkUninstallDialog() {
+    private val appLabelPattern by lazy {
+        Regex("\\b" + Regex.escape(applicationInfo.loadLabel(packageManager).toString()) + "\\b")
+    }
+
+    /** Will jemand diese App deinstallieren? Dann Dialog sofort schließen und nach der PIN fragen. */
+    private fun checkUninstallDialog(event: AccessibilityEvent) {
         val now = SystemClock.elapsedRealtime()
         if (now < demoApp.uninstallUnlockedUntil || now - lastUninstallBlock < 3_000) return
-        val root = rootInActiveWindow ?: return
-        if (root.packageName?.contains("packageinstaller") != true) return
-        val label = Regex("\\b" + Regex.escape(applicationInfo.loadLabel(packageManager).toString()) + "\\b")
+        if (isAboutThisApp(event)) {
+            blockUninstall(now)
+        } else if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            // Inhalt evtl. noch nicht da: kurz hintereinander erneut nachsehen
+            for (delay in longArrayOf(50, 150, 300, 600)) {
+                handler.postDelayed({
+                    val t = SystemClock.elapsedRealtime()
+                    if (t - lastUninstallBlock >= 3_000 && t >= demoApp.uninstallUnlockedUntil &&
+                        textsOf(rootInActiveWindow).any { appLabelPattern.containsMatchIn(it) } &&
+                        rootInActiveWindow?.packageName?.contains("packageinstaller") == true
+                    ) blockUninstall(t)
+                }, delay)
+            }
+        }
+    }
+
+    private fun isAboutThisApp(event: AccessibilityEvent): Boolean {
+        // 1. Texte direkt aus dem Ereignis (kostet nichts)
+        if (event.text.any { appLabelPattern.containsMatchIn(it) }) return true
+        // 2. Fenster, zu dem das Ereignis gehört
+        var node = event.source ?: return false
+        repeat(10) { node = node.parent ?: return@repeat }
+        return textsOf(node).any { appLabelPattern.containsMatchIn(it) }
+    }
+
+    private fun textsOf(root: android.view.accessibility.AccessibilityNodeInfo?): List<String> {
         val texts = mutableListOf<String>()
         fun collect(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
             if (node == null || depth > 8 || texts.size > 50) return
@@ -89,15 +116,26 @@ class IdleWatcherService : AccessibilityService() {
             for (i in 0 until node.childCount) collect(node.getChild(i), depth + 1)
         }
         collect(root, 0)
-        if (texts.none { label.containsMatchIn(it) }) return
+        return texts
+    }
+
+    private fun blockUninstall(now: Long) {
         lastUninstallBlock = now
         performGlobalAction(GLOBAL_ACTION_BACK)
-        startActivity(Intent(this, UninstallPinActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        android.util.Log.i("DemoGuard", "Deinstallieren abgefangen")
+        // Erst wenn der System-Dialog sicher geschlossen ist, die PIN-Abfrage öffnen
+        handler.postDelayed({
+            startActivity(
+                Intent(this, UninstallPinActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            )
+        }, 700)
     }
 
     private fun checkIdle() {
         val app = demoApp
-        if (app.isUiVisible || !app.prefs.isConfigured) {
+        // Während eines freigegebenen Deinstallierens (nach PIN) die Demo nicht dazwischenschieben
+        if (app.isUiVisible || !app.prefs.isConfigured || SystemClock.elapsedRealtime() < app.uninstallUnlockedUntil) {
             lastInteraction = SystemClock.elapsedRealtime()
             return
         }

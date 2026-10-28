@@ -49,7 +49,9 @@
             android:name=".UninstallPinActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:theme="@style/Theme.Demo.Dialog" />
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:windowSoftInputMode="adjustResize" />
 
         <service
             android:name=".IdleWatcherService"
