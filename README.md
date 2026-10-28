@@ -69,17 +69,24 @@ umwandeln, z. B. mit HandBrake oder `ffmpeg -i in.mov -c:v libx264 -crf 20 -an o
    - **Bedienungshilfe** „Demo – Rückkehr nach Inaktivität“ einschalten
      (Android 13+: falls gesperrt → App-Info → ⋮ → „Eingeschränkte Einstellungen zulassen“),
    - **Über anderen Apps einblenden** (für Autostart nach Neustart),
-   - **Akku-Optimierung** abschalten.
+   - **Akku-Optimierung** abschalten,
+   - **Wecker und Erinnerungen** erlauben (Android 12+, für pünktliche Betriebszeiten).
 4. Gerät: Displaysperre „Keine“, Bildschirm-Timeout auf Maximum, WLAN verbinden.
 5. **Demo starten**.
 
 **Verhalten:**
 - Videos und Bilder laufen in Endlosschleife (Videos ohne Ton), nach jedem 3. Medium kommt die Seite mit Gerätename und Specs.
 - Ein Kunde berührt den Bildschirm → Demo verschwindet, das Gerät ist normal benutzbar.
-- 60 Sekunden ohne Bedienung → Demo startet automatisch wieder.
+- 30 Sekunden ohne Bedienung → Demo startet automatisch wieder.
+- Drückt jemand die Standby-Taste, geht das Display sofort wieder an und die Demo läuft weiter.
+- **Betriebszeiten** (Admin-App → Einstellungen): pro Wochentag An-/Aus-Zeit. Außerhalb der Zeiten
+  stoppt die Demo und das Display geht in Standby; zur Einschaltzeit weckt die App das Gerät wieder.
+  (Ganz ausschalten kann eine App ein Handy ohne Root nicht – Standby verbraucht aber kaum Akku.)
+- **Schutz:** Sprach-, Displaysperre-, PIN- und Passwort-Einstellungen werden sofort wieder geschlossen.
+  Abschaltbar in den Einstellungen der Demo-App unter „Schutz für Vorführgeräte“.
 - Inhalte werden lokal gespeichert, die Demo läuft also auch bei einem WLAN-Ausfall weiter.
 - 1× pro Stunde wird abgeglichen: Neues wird geladen, Gelöschtes entfernt.
-- **Zurück in die Einstellungen:** in der laufenden Demo **3 Sekunden oben links** gedrückt halten → PIN.
+- **Zurück in die Einstellungen:** in der laufenden Demo **mit 3 Fingern oben rechts 3 Sekunden** gedrückt halten → PIN.
 
 Alle Zeiten lassen sich in der Admin-App unter *Einstellungen → Demo-Verhalten* ändern.
 

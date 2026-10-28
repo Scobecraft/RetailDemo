@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -115,6 +116,12 @@ class DemoActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         demoApp.sync.playerStatus = "Demo läuft"
+        demoApp.closeDemoCallback = { runOnUiThread { finish() } }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (isFinishing) demoApp.closeDemoCallback = null
     }
 
     /** Kunde hat den Bildschirm berührt: Demo beenden und zum Startbildschirm wechseln. */
@@ -166,7 +173,6 @@ private fun DemoScreen(app: DemoApp, onCustomerTouch: () -> Unit, onAdminGesture
 
     val onTouch by rememberUpdatedState(onCustomerTouch)
     val onAdmin by rememberUpdatedState(onAdminGesture)
-    val cornerPx = with(LocalDensity.current) { 120.dp.toPx() }
 
     Box(
         Modifier
@@ -224,14 +230,32 @@ private fun DemoScreen(app: DemoApp, onCustomerTouch: () -> Unit, onAdminGesture
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     awaitEachGesture {
+                        // Geheime Geste für dich: 3 Finger oben rechts 3 Sekunden halten -> PIN
+                        fun inTopRight(p: Offset) = p.x > size.width / 2f && p.y < size.height / 2f
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        if (down.position.x < cornerPx && down.position.y < cornerPx) {
-                            // Geheime Geste für dich: 3 Sekunden oben links gedrückt halten -> PIN
-                            val released = withTimeoutOrNull(3_000) { waitForUpOrCancellation() }
-                            if (released == null) onAdmin() else onTouch()
-                        } else {
+                        if (!inTopRight(down.position)) {
                             onTouch()
+                            return@awaitEachGesture
                         }
+                        // Kurz warten, ob insgesamt drei Finger oben rechts aufgesetzt werden
+                        val threeFingers = withTimeoutOrNull(600) {
+                            while (true) {
+                                val pressed = awaitPointerEvent().changes.filter { it.pressed }
+                                if (pressed.isEmpty()) return@withTimeoutOrNull false
+                                if (pressed.size >= 3) return@withTimeoutOrNull pressed.all { inTopRight(it.position) }
+                            }
+                            @Suppress("UNREACHABLE_CODE") false
+                        } ?: false
+                        if (!threeFingers) {
+                            onTouch()
+                            return@awaitEachGesture
+                        }
+                        // Alle drei Finger müssen 3 Sekunden liegen bleiben
+                        val lifted = withTimeoutOrNull(3_000) {
+                            while (awaitPointerEvent().changes.count { it.pressed } >= 3) { /* weiter halten */ }
+                            true
+                        }
+                        if (lifted == null) onAdmin() else onTouch()
                     }
                 }
         )

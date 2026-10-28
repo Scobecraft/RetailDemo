@@ -1,21 +1,30 @@
 package de.retaildemo.demo
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Toast
 
 /**
- * Bedienungshilfe-Dienst: bemerkt Berührungen/Bedienung in anderen Apps.
- * Wurde das Gerät [Manifest.idleTimeoutS] Sekunden nicht benutzt, startet die Demo wieder.
- * (Wie bei den Apple/Samsung-Demogeräten im Laden.)
+ * Bedienungshilfe-Dienst, der im Hintergrund läuft:
+ * - Startet die Demo nach [Manifest.idleTimeoutS] Sekunden ohne Bedienung wieder (wie bei Apple/Samsung).
+ * - Schaltet das Display sofort wieder ein, wenn jemand das Gerät in Standby versetzt.
+ * - Sperrt (falls aktiviert) die Sprach- und Passwort-Einstellungen.
+ * - Außerhalb der Betriebszeiten: Display nach Inaktivität wieder ausschalten.
  */
 class IdleWatcherService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var lastInteraction = SystemClock.elapsedRealtime()
+    private var lastBlockToast = 0L
 
     private val check = object : Runnable {
         override fun run() {
@@ -24,14 +33,36 @@ class IdleWatcherService : AccessibilityService() {
         }
     }
 
+    private val screenOffReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val app = demoApp
+            if (!app.prefs.isConfigured || !app.schedule.active.value) return
+            // Standby während der Betriebszeit -> Display wieder an, Demo läuft weiter
+            handler.postDelayed({ ScheduleManager.wakeAndStartDemo(this@IdleWatcherService) }, 300)
+        }
+    }
+
     override fun onServiceConnected() {
+        instance = this
         lastInteraction = SystemClock.elapsedRealtime()
         handler.post(check)
+        registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.packageName?.toString() != packageName) {
-            lastInteraction = SystemClock.elapsedRealtime()
+        event ?: return
+        if (event.packageName?.toString() == packageName) return
+        lastInteraction = SystemClock.elapsedRealtime()
+
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            demoApp.prefs.blockSettings && SettingsGuard.isForbidden(event)
+        ) {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastBlockToast > 3_000) {
+                lastBlockToast = now
+                Toast.makeText(this, "Diese Einstellung ist auf Vorführgeräten gesperrt", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -41,20 +72,52 @@ class IdleWatcherService : AccessibilityService() {
             lastInteraction = SystemClock.elapsedRealtime()
             return
         }
-        val timeoutMs = (app.sync.manifest.value?.idleTimeoutS ?: 60) * 1000L
-        if (SystemClock.elapsedRealtime() - lastInteraction >= timeoutMs) {
-            lastInteraction = SystemClock.elapsedRealtime()
-            startActivity(
-                Intent(this, DemoActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            )
+        val timeoutMs = (app.sync.manifest.value?.idleTimeoutS ?: 30) * 1000L
+        if (SystemClock.elapsedRealtime() - lastInteraction < timeoutMs) return
+        lastInteraction = SystemClock.elapsedRealtime()
+
+        if (app.schedule.active.value) {
+            ScheduleManager.wakeAndStartDemo(this)
+        } else if (Build.VERSION.SDK_INT >= 28 && getSystemService(PowerManager::class.java).isInteractive) {
+            // Ruhezeit: jemand hat das Gerät eingeschaltet und nicht mehr benutzt -> wieder schlafen
+            performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
         }
     }
 
     override fun onInterrupt() {}
 
     override fun onDestroy() {
+        instance = null
         handler.removeCallbacks(check)
+        runCatching { unregisterReceiver(screenOffReceiver) }
         super.onDestroy()
+    }
+
+    companion object {
+        @Volatile var instance: IdleWatcherService? = null
+            private set
+    }
+}
+
+/** Erkennt Einstellungsseiten für Sprache und Displaysperre/Passwort (AOSP, Samsung, Xiaomi, …). */
+object SettingsGuard {
+    private val CLASS_PATTERN = Regex(
+        "(?i)(locale|language|inputmethodandlanguage|chooselock|confirmlock|setnewpassword|" +
+            "screenlock|lockscreensettings|locksettings|password|lockpattern|lockpin|keyguard.*setting)"
+    )
+    private val TITLE_PATTERN = Regex(
+        "(?i)\\b(sprachen?|sprache und eingabe|languages?|language & input|langues?|idiomas?|lingue|dil|" +
+            "displaysperre|bildschirmsperre|sperrbildschirm|bildschirmsperrtyp|entsperrmethode|" +
+            "screen lock|lock screen|screen lock type|" +
+            "passwort|kennwort|password|pin|muster|pattern)\\b"
+    )
+
+    fun isForbidden(event: AccessibilityEvent): Boolean {
+        val pkg = event.packageName?.toString()?.lowercase() ?: return false
+        if (!pkg.contains("settings") && !pkg.contains("securitycenter")) return false
+        val cls = event.className?.toString() ?: ""
+        if (CLASS_PATTERN.containsMatchIn(cls)) return true
+        val title = event.text.joinToString(" ")
+        return title.isNotBlank() && TITLE_PATTERN.containsMatchIn(title)
     }
 }

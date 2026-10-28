@@ -33,10 +33,15 @@ DEVICE_TOKEN = os.environ.get("DEVICE_TOKEN", "")
 HEARTBEAT_INTERVAL_S = 300
 DEFAULT_SETTINGS = {
     "sync_interval_min": 60,
-    "idle_timeout_s": 60,
+    "idle_timeout_s": 30,
     "specs_every_n": 3,
     "specs_duration_s": 10,
     "image_duration_s": 8,
+}
+WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+DEFAULT_SCHEDULE = {
+    "enabled": False,
+    "days": [{"active": i < 6, "on": "09:00", "off": "20:00"} for i in range(7)],
 }
 
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
@@ -112,6 +117,11 @@ def init_db():
             );
             """
         )
+        version = c.execute("SELECT value FROM settings WHERE key='schema_version'").fetchone()
+        if version is None:
+            # v2: Standard-Wartezeit bis zum Neustart der Demo von 60 auf 30 Sekunden
+            c.execute("UPDATE settings SET value='30' WHERE key='idle_timeout_s' AND value='60'")
+            c.execute("INSERT INTO settings (key, value) VALUES ('schema_version', '2')")
 
 
 init_db()
@@ -144,10 +154,35 @@ def require_any(authorization: Optional[str] = Header(None)):
 
 def get_settings(c) -> dict:
     s = dict(DEFAULT_SETTINGS)
+    s["schedule"] = json.loads(json.dumps(DEFAULT_SCHEDULE))
     for row in c.execute("SELECT key, value FROM settings"):
-        if row["key"] in s:
+        if row["key"] in DEFAULT_SETTINGS:
             s[row["key"]] = int(row["value"])
+        elif row["key"] == "schedule":
+            s["schedule"] = json.loads(row["value"])
     return s
+
+
+def _valid_time(t) -> str:
+    try:
+        h, m = str(t).split(":")
+        h, m = int(h), int(m)
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            return f"{h:02d}:{m:02d}"
+    except ValueError:
+        pass
+    raise HTTPException(400, f"Ungültige Uhrzeit: {t}")
+
+
+def clean_schedule(raw: dict) -> dict:
+    days = raw.get("days") or []
+    if len(days) != 7:
+        raise HTTPException(400, "Zeitplan braucht genau 7 Wochentage")
+    return {
+        "enabled": bool(raw.get("enabled")),
+        "days": [{"active": bool(d.get("active")), "on": _valid_time(d.get("on")), "off": _valid_time(d.get("off"))}
+                 for d in days],
+    }
 
 
 def media_dict(row) -> dict:
@@ -235,6 +270,7 @@ def build_manifest(c, device_row) -> dict:
         "specs_duration_s": s["specs_duration_s"],
         "sync_interval_min": s["sync_interval_min"],
         "idle_timeout_s": s["idle_timeout_s"],
+        "schedule": s["schedule"],
         "heartbeat_interval_s": HEARTBEAT_INTERVAL_S,
     }
     manifest["hash"] = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:16]
@@ -518,6 +554,9 @@ def write_settings(body: dict):
         for k, v in body.items():
             if k in DEFAULT_SETTINGS:
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, str(max(1, int(v)))))
+            elif k == "schedule" and isinstance(v, dict):
+                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('schedule', ?)",
+                          (json.dumps(clean_schedule(v)),))
         return get_settings(c)
 
 

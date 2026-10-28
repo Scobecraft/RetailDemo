@@ -73,12 +73,27 @@ data class DevicePatch(
 )
 
 @Serializable
+data class DaySchedule(
+    val active: Boolean = true,
+    val on: String = "09:00",
+    val off: String = "20:00",
+)
+
+/** Betriebszeiten: Index 0 = Montag … 6 = Sonntag. */
+@Serializable
+data class Schedule(
+    val enabled: Boolean = false,
+    val days: List<DaySchedule> = List(7) { DaySchedule(active = it < 6) },
+)
+
+@Serializable
 data class ServerSettings(
     @SerialName("sync_interval_min") val syncIntervalMin: Int = 60,
-    @SerialName("idle_timeout_s") val idleTimeoutS: Int = 60,
+    @SerialName("idle_timeout_s") val idleTimeoutS: Int = 30,
     @SerialName("specs_every_n") val specsEveryN: Int = 3,
     @SerialName("specs_duration_s") val specsDurationS: Int = 10,
     @SerialName("image_duration_s") val imageDurationS: Int = 8,
+    val schedule: Schedule = Schedule(),
 )
 
 @Serializable
@@ -106,7 +121,8 @@ data class Manifest(
     @SerialName("specs_every_n") val specsEveryN: Int = 3,
     @SerialName("specs_duration_s") val specsDurationS: Int = 10,
     @SerialName("sync_interval_min") val syncIntervalMin: Int = 60,
-    @SerialName("idle_timeout_s") val idleTimeoutS: Int = 60,
+    @SerialName("idle_timeout_s") val idleTimeoutS: Int = 30,
+    val schedule: Schedule = Schedule(),
     @SerialName("heartbeat_interval_s") val heartbeatIntervalS: Int = 300,
 )
 

@@ -21,3 +21,7 @@ dependencies {
     api(libs.serialization.json)
     api(libs.coroutines.android)
 }
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+}

@@ -1,5 +1,6 @@
 package de.retaildemo.demo
 
+import android.app.AlarmManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -30,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -52,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.launch
+import de.retaildemo.core.shortLabel
 import java.text.DateFormat
 import java.util.Date
 
@@ -104,6 +107,11 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
     val a11y = remember(refresh) { ctx.accessibilityEnabled() }
     val overlay = remember(refresh) { Settings.canDrawOverlays(ctx) }
     val battery = remember(refresh) { ctx.batteryUnrestricted() }
+    val exactAlarms = remember(refresh) {
+        android.os.Build.VERSION.SDK_INT < 31 || ctx.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
+    }
+    var blockSettings by remember { mutableStateOf(prefs.blockSettings) }
+    val scheduleActive by app.schedule.active.collectAsState()
 
     Column(
         Modifier
@@ -192,6 +200,17 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                 }
+                PermissionRow(
+                    ok = exactAlarms,
+                    title = "Pünktliches Ein-/Ausschalten",
+                    hint = "\"Wecker und Erinnerungen\" erlauben (für die Betriebszeiten).",
+                    button = "Erlauben",
+                ) {
+                    if (android.os.Build.VERSION.SDK_INT >= 31) ctx.startActivity(
+                        Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${ctx.packageName}"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
                 Text(
                     "Tipp: Displaysperre auf \"Keine\" stellen und das Bildschirm-Timeout auf das Maximum setzen.",
                     style = MaterialTheme.typography.bodySmall,
@@ -200,8 +219,30 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
         }
 
         Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("3. Schutz für Vorführgeräte", style = MaterialTheme.typography.titleMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Sprache & Passwort sperren", fontWeight = FontWeight.Medium)
+                        Text(
+                            "Kunden können Sprache, Displaysperre, PIN und Passwort nicht ändern. " +
+                                "Zum Selbst-Ändern hier vorübergehend ausschalten.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(checked = blockSettings, onCheckedChange = { blockSettings = it; prefs.blockSettings = it })
+                }
+                if (blockSettings && !a11y) Text(
+                    "⚠️ Funktioniert nur mit eingeschalteter Bedienungshilfe (siehe oben).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+
+        Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("3. Status", style = MaterialTheme.typography.titleMedium)
+                Text("4. Status", style = MaterialTheme.typography.titleMedium)
                 val last = prefs.lastSync.takeIf { it > 0 }
                     ?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it)) }
                 StatusLine("Gerät", "${DeviceInfo.manufacturer()} ${DeviceInfo.marketingName(ctx)}")
@@ -214,6 +255,14 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
                 )
                 StatusLine("Letzter Abgleich", last ?: "noch nie")
                 StatusLine("Abgleich alle", "${manifest?.syncIntervalMin ?: 60} Minuten")
+                StatusLine(
+                    "Betriebszeiten",
+                    when {
+                        manifest?.schedule?.enabled != true -> "immer an"
+                        else -> (if (scheduleActive) "an" else "Ruhezeit") +
+                            (app.schedule.nextChange?.let { " · ${if (scheduleActive) "aus" else "an"} ${it.shortLabel()}" } ?: "")
+                    },
+                )
                 prefs.lastError?.let { StatusLine("Fehler", it) }
                 OutlinedButton(
                     enabled = !busy && prefs.isConfigured,
@@ -235,7 +284,7 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(56.dp),
         ) { Text("Demo starten") }
         Text(
-            "Zurück in diese Einstellungen: In der laufenden Demo 3 Sekunden oben links gedrückt halten.",
+            "Zurück in diese Einstellungen: In der laufenden Demo mit 3 Fingern oben rechts 3 Sekunden gedrückt halten.",
             style = MaterialTheme.typography.bodySmall,
             color = Color.Gray,
         )

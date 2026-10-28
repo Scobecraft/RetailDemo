@@ -17,6 +17,12 @@ class DemoApp : Application() {
         private set
     lateinit var sync: SyncManager
         private set
+    lateinit var schedule: ScheduleManager
+        private set
+
+    /** Wird von der laufenden Demo gesetzt, damit sie von außen beendet werden kann. */
+    @Volatile var closeDemoCallback: (() -> Unit)? = null
+    fun closeDemo() { closeDemoCallback?.invoke() }
 
     /** Läuft so lange wie der Prozess; der Bedienungshilfe-Dienst hält den Prozess am Leben. */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -31,6 +37,8 @@ class DemoApp : Application() {
         prefs = Prefs(this)
         sync = SyncManager(this)
         sync.start(scope)
+        schedule = ScheduleManager(this)
+        schedule.start(scope)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(a: Activity) { resumedActivities++ }

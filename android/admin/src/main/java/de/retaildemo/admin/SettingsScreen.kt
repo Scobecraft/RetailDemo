@@ -24,9 +24,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import android.app.TimePickerDialog
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import de.retaildemo.core.DaySchedule
+import de.retaildemo.core.Schedule
 import de.retaildemo.core.ServerSettings
 import kotlinx.coroutines.launch
 
@@ -76,7 +89,10 @@ fun SettingsScreen(vm: AdminViewModel, modifier: Modifier) {
                 }
             }
 
-            if (vm.isConfigured) ServerSettingsCard(settings) { vm.saveSettings(it) }
+            if (vm.isConfigured) {
+                ScheduleCard(settings) { vm.saveSettings(settings.copy(schedule = it)) }
+                ServerSettingsCard(settings) { vm.saveSettings(it.copy(schedule = settings.schedule)) }
+            }
         }
     }
 }
@@ -123,4 +139,61 @@ private fun NumberField(label: String, value: String, onChange: (String) -> Unit
         modifier = Modifier.fillMaxWidth(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
     )
+}
+
+private val WEEKDAYS = listOf("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
+
+@Composable
+private fun ScheduleCard(current: ServerSettings, onSave: (Schedule) -> Unit) {
+    var enabled by remember(current) { mutableStateOf(current.schedule.enabled) }
+    val days = remember(current) { mutableStateListOf<DaySchedule>().apply { addAll(current.schedule.days) } }
+
+    Card {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Betriebszeiten (alle Geräte)", style = MaterialTheme.typography.titleMedium)
+            SwitchRow(
+                "Zeitsteuerung aktiv",
+                "Außerhalb der Zeiten ist die Demo aus und das Display im Standby (schont den Akku).",
+                enabled,
+            ) { enabled = it }
+            if (enabled) {
+                days.forEachIndexed { i, d ->
+                    HorizontalDivider()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(d.active, onCheckedChange = { days[i] = d.copy(active = it) })
+                        Text(WEEKDAYS[i], Modifier.weight(1f))
+                        if (d.active) {
+                            TimeButton(d.on) { days[i] = days[i].copy(on = it) }
+                            Text("–")
+                            TimeButton(d.off) { days[i] = days[i].copy(off = it) }
+                        } else {
+                            Text("aus", color = Color.Gray, modifier = Modifier.padding(end = 12.dp))
+                        }
+                    }
+                }
+                TextButton(onClick = {
+                    val mo = days[0]
+                    for (i in 1..4) days[i] = days[i].copy(on = mo.on, off = mo.off, active = mo.active)
+                }) { Text("Montag für Di–Fr übernehmen") }
+            }
+            Button(onClick = { onSave(Schedule(enabled, days.toList())) }) { Text("Speichern") }
+            Text(
+                "Geräte übernehmen die Zeiten beim nächsten Abgleich (oder sofort über „Geräte“ → „Alle aktualisieren“).",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimeButton(value: String, onChange: (String) -> Unit) {
+    val ctx = LocalContext.current
+    OutlinedButton(
+        onClick = {
+            val (h, m) = value.split(":").map { it.toIntOrNull() ?: 0 }
+            TimePickerDialog(ctx, { _, hh, mm -> onChange("%02d:%02d".format(hh, mm)) }, h, m, true).show()
+        },
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp),
+        modifier = Modifier.width(76.dp),
+    ) { Text(value) }
 }

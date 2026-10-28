@@ -26,6 +26,11 @@ class Prefs(context: Context) {
         get() = sp.getString("pin", "1234") ?: "1234"
         set(v) = sp.edit().putString("pin", v).apply()
 
+    /** Sprache/Passwort-Einstellungen für Kunden sperren. */
+    var blockSettings: Boolean
+        get() = sp.getBoolean("block_settings", true)
+        set(v) = sp.edit().putBoolean("block_settings", v).apply()
+
     var lastSync: Long
         get() = sp.getLong("last_sync", 0)
         set(v) = sp.edit().putLong("last_sync", v).apply()
