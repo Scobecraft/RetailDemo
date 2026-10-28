@@ -1,0 +1,11 @@
+android/.gradle/
+android/build/
+android/*/build/
+android/local.properties
+android/.kotlin/
+*.apk
+server/data/
+server/.env
+__pycache__/
+android/keystore.properties
+android/keystore/

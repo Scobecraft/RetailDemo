@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Erlaubt auch http:// (z. B. Server im VPN/LAN). Für Internet-Zugriff besser https verwenden. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

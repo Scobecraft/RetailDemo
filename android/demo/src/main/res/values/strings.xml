@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Demo</string>
+    <string name="accessibility_label">Demo – Rückkehr nach Inaktivität</string>
+    <string name="accessibility_description">Erkennt, wann ein Kunde das Gerät nicht mehr benutzt, und startet danach die Demo automatisch neu. Es werden keine Inhalte gelesen oder gespeichert.</string>
+</resources>

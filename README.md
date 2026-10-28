@@ -1,0 +1,95 @@
+# Retail Demo – Demo-Software für Ausstellungsgeräte
+
+Drei Teile:
+
+| Teil | Wo | Aufgabe |
+|---|---|---|
+| `server/` | Docker auf Proxmox | speichert Videos/Bilder, Playlists, Geräteliste |
+| Admin-App (`android/admin`) | dein Handy | Medien hochladen/löschen, Playlists, Geräte verwalten |
+| Demo-App (`android/demo`) | Ausstellungsgeräte | lädt Inhalte (1×/Stunde), spielt sie in Schleife, zeigt Name + Specs |
+
+---
+
+## 1. Server auf Proxmox einrichten
+
+Am einfachsten in einem **LXC-Container mit Debian/Ubuntu** (oder einer VM) mit installiertem Docker.
+
+```bash
+# Ordner "server" auf den Container kopieren, z. B. per scp
+cd server
+cp .env.example .env
+openssl rand -hex 24   # -> als ADMIN_TOKEN in .env eintragen
+openssl rand -hex 24   # -> als DEVICE_TOKEN in .env eintragen
+docker compose up -d --build
+curl http://localhost:8080/api/health    # -> {"ok":true,...}
+```
+
+Videos, Bilder und Datenbank liegen in `server/data/` → dieses Verzeichnis ins Proxmox-Backup aufnehmen.
+
+### Vom Laden aus erreichbar machen
+
+Die Demo-Geräte im Laden müssen deinen Server zu Hause über das Internet erreichen. Möglichkeiten:
+
+1. **Cloudflare Tunnel (empfohlen)** – keine Portfreigabe am Router, automatisch HTTPS.
+   Eigene Domain bei Cloudflare nötig. `cloudflared` im Container installieren, Tunnel auf
+   `http://localhost:8080` zeigen lassen → Adresse z. B. `https://demo.deinedomain.de`.
+2. **Reverse Proxy** (Nginx Proxy Manager / Caddy / Traefik) mit Let's-Encrypt-Zertifikat +
+   Portfreigabe 443 am Router + DynDNS.
+3. **Tailscale/WireGuard** – sehr sicher, aber dann muss auf jedem Demo-Gerät die VPN-App laufen.
+
+> Bei Nginx: `client_max_body_size 2G;` setzen, sonst scheitern große Video-Uploads.
+> Bei Cloudflare: Uploads im kostenlosen Tarif max. 100 MB pro Datei.
+
+Die Tokens schützen den Server: Mit dem **DEVICE_TOKEN** kann man nur Inhalte abrufen; das
+**ADMIN_TOKEN** gibt volle Kontrolle und gehört nur auf dein Handy.
+
+---
+
+## 2. Admin-App
+
+1. `RetailDemo-Admin.apk` installieren („Installation aus unbekannten Quellen“ erlauben).
+2. Tab **Einstellungen**: Server-Adresse + ADMIN_TOKEN → **Verbinden**.
+3. Tab **Medien** → **Hinzufügen**: Videos/Bilder aus der Galerie wählen (Mehrfachauswahl).
+4. Optional Tab **Playlists**: z. B. „Samsung“, „Apple“, „Xiaomi“ anlegen. Die mit ★ ist Standard.
+5. Tab **Geräte**: Jedes Demo-Gerät erscheint automatisch. Antippen, um
+   - einen schönen Namen zu vergeben (z. B. „Galaxy S25 Ultra 256 GB“),
+   - eine Playlist zuzuweisen,
+   - eigene Specs einzutragen (z. B. inkl. Preis) – sonst werden die automatisch erkannten gezeigt,
+   - **Jetzt aktualisieren** auszulösen (wirkt innerhalb von ~5 Minuten statt erst nach einer Stunde).
+
+## 3. Demo-App auf einem Ausstellungsgerät
+
+1. `RetailDemo-Demo.apk` installieren.
+2. Beim ersten Start: Server-Adresse, DEVICE_TOKEN und eine PIN eintragen → **Speichern & synchronisieren**.
+3. Berechtigungen auf derselben Seite erteilen:
+   - **Bedienungshilfe** „Demo – Rückkehr nach Inaktivität“ einschalten
+     (Android 13+: falls gesperrt → App-Info → ⋮ → „Eingeschränkte Einstellungen zulassen“),
+   - **Über anderen Apps einblenden** (für Autostart nach Neustart),
+   - **Akku-Optimierung** abschalten.
+4. Gerät: Displaysperre „Keine“, Bildschirm-Timeout auf Maximum, WLAN verbinden.
+5. **Demo starten**.
+
+**Verhalten:**
+- Videos und Bilder laufen in Endlosschleife (Videos ohne Ton), nach jedem 3. Medium kommt die Seite mit Gerätename und Specs.
+- Ein Kunde berührt den Bildschirm → Demo verschwindet, das Gerät ist normal benutzbar.
+- 60 Sekunden ohne Bedienung → Demo startet automatisch wieder.
+- Inhalte werden lokal gespeichert, die Demo läuft also auch bei einem WLAN-Ausfall weiter.
+- 1× pro Stunde wird abgeglichen: Neues wird geladen, Gelöschtes entfernt.
+- **Zurück in die Einstellungen:** in der laufenden Demo **3 Sekunden oben links** gedrückt halten → PIN.
+
+Alle Zeiten lassen sich in der Admin-App unter *Einstellungen → Demo-Verhalten* ändern.
+
+---
+
+## APKs selbst bauen
+
+```bash
+cd android
+./gradlew :admin:assembleRelease :demo:assembleRelease
+# -> admin/build/outputs/apk/release/admin-release.apk
+# -> demo/build/outputs/apk/release/demo-release.apk
+```
+
+**Wichtig:** `android/keystore/release.jks` + `android/keystore.properties` gut aufbewahren!
+Updates der Apps lassen sich nur mit demselben Schlüssel über die alte Version installieren.
+Für Updates in `*/build.gradle.kts` `versionCode` erhöhen.
