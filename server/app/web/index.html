@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retail Demo – Verwaltung</title>
+<link rel="icon" href="/logo.png">
+<style>
+  :root {
+    --accent: #ee7f00;
+    --accent-dark: #c96a00;
+    --accent-soft: #fff3e5;
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #1d2330;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --ok: #16a34a;
+    --off: #9ca3af;
+    --danger: #dc2626;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318; --card: #1b1e25; --text: #e8eaf0; --muted: #9aa1ae;
+      --line: #2c313b; --accent-soft: #33240f; --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  button, input, select { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+
+  /* ---------- Login ---------- */
+  #login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+  .login-card { width: 100%; max-width: 360px; background: var(--card); border-radius: 16px; box-shadow: var(--shadow); padding: 32px 28px; border: 1px solid var(--line); }
+  .login-card img { width: 88px; display: block; margin: 0 auto 12px; }
+  .login-card h1 { font-size: 20px; text-align: center; margin: 0 0 24px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input[type=text], input[type=password], input[type=number], select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .error { color: var(--danger); font-size: 14px; min-height: 20px; margin-top: 10px; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--card); padding: 8px 14px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.primary:hover { background: var(--accent-dark); }
+  .btn.danger { color: var(--danger); }
+  .btn.small { padding: 4px 10px; font-size: 13px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.block { width: 100%; justify-content: center; margin-top: 20px; padding: 11px; }
+  .icon-btn { border: 0; background: none; cursor: pointer; padding: 4px 6px; border-radius: 6px; color: var(--muted); font-size: 16px; }
+  .icon-btn:hover { background: var(--line); color: var(--text); }
+
+  /* ---------- Kopfzeile ---------- */
+  header { background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
+  .bar { max-width: 1200px; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 16px; height: 60px; }
+  .bar img { height: 36px; }
+  .bar .brand { font-weight: 700; }
+  nav { display: flex; gap: 4px; margin-left: 16px; flex: 1; overflow-x: auto; }
+  nav button { border: 0; background: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; color: var(--muted); font-weight: 500; }
+  nav button.active { background: var(--accent-soft); color: var(--accent); }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+  h2 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+
+  /* ---------- Upload ---------- */
+  .drop { border: 2px dashed var(--line); border-radius: var(--radius); background: var(--card); padding: 28px 16px; text-align: center; transition: .15s; cursor: pointer; }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop strong { display: block; font-size: 16px; margin-bottom: 4px; }
+  .drop span { color: var(--muted); font-size: 14px; }
+  .target { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; background: var(--card); color: var(--text); user-select: none; }
+  .chip input { margin: 0; accent-color: var(--accent); }
+  .queue { margin-top: 12px; display: grid; gap: 8px; }
+  .job { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+  .job .name { display: flex; gap: 8px; font-size: 14px; }
+  .job .name span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .progress div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .job.done .progress div { background: var(--ok); }
+  .job.failed .progress div { background: var(--danger); }
+
+  /* ---------- Medien-Raster ---------- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; margin-top: 24px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+  .thumb { aspect-ratio: 1; background: #1f2937 center/cover no-repeat; position: relative; cursor: pointer; }
+  .thumb .badge { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.65); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+  .thumb .play { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 34px; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
+  .tile .info { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .tile .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile .meta { color: var(--muted); font-size: 13px; }
+  .tile .actions { display: flex; gap: 4px; margin-top: 8px; }
+  .empty { text-align: center; color: var(--muted); padding: 48px 16px; }
+
+  /* ---------- Playlists ---------- */
+  .split { display: grid; grid-template-columns: 280px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .pl-list button { display: flex; width: 100%; text-align: left; border: 0; background: none; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--line); gap: 8px; align-items: center; }
+  .pl-list button:last-child { border-bottom: 0; }
+  .pl-list button.active { background: var(--accent-soft); }
+  .pl-list .count { color: var(--muted); font-size: 13px; margin-left: auto; }
+  .star { color: #f59e0b; }
+  .editor { padding: 20px; }
+  .toggles { display: flex; gap: 20px; flex-wrap: wrap; margin: 14px 0; }
+  .toggles label { display: flex; gap: 8px; align-items: center; margin: 0; color: var(--text); font-size: 14px; cursor: pointer; }
+  .toggles input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .items { display: grid; gap: 8px; margin: 12px 0; }
+  .item { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; }
+  .item .mini { width: 52px; height: 52px; border-radius: 8px; background: #1f2937 center/cover; flex: none; }
+  .item .grow { flex: 1; min-width: 0; }
+  .item .grow div:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .num { color: var(--muted); width: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---------- Geräte ---------- */
+  .devices { display: grid; gap: 12px; }
+  .device { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 7px; flex: none; background: var(--off); }
+  .dot.on { background: var(--ok); }
+  .device .grow { flex: 1; min-width: 0; }
+  .device .name { font-weight: 600; }
+  .device .meta { color: var(--muted); font-size: 13px; }
+
+  /* ---------- Dialoge ---------- */
+  dialog { border: 0; border-radius: 16px; padding: 0; background: var(--card); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,.3); width: min(520px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .dlg-body { padding: 22px 24px; }
+  .dlg-body h3 { margin: 0 0 8px; }
+  .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 24px 20px; }
+  dialog.preview { width: min(900px, calc(100vw - 32px)); background: #000; }
+  dialog.preview video, dialog.preview img { display: block; max-width: 100%; max-height: 80vh; margin: 0 auto; }
+  .pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; max-height: 50vh; overflow: auto; margin-top: 12px; }
+  .pick label { margin: 0; cursor: pointer; position: relative; color: var(--text); font-size: 12px; }
+  .pick .mini { aspect-ratio: 1; border-radius: 8px; background: #1f2937 center/cover; border: 3px solid transparent; }
+  .pick input { position: absolute; top: 6px; left: 6px; accent-color: var(--accent); width: 18px; height: 18px; }
+  .pick input:checked + .mini { border-color: var(--accent); }
+  .pick span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+
+  /* ---------- Handy ---------- */
+  @media (max-width: 640px) {
+    .bar { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 6px; gap: 8px 12px; }
+    .bar .brand { flex: 1; }
+    nav { order: 3; width: 100%; flex: none; margin-left: 0; }
+    nav button { flex: 1; }
+    main { padding-top: 16px; }
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .tile .info { padding: 8px 10px 10px; }
+    .tile .actions { flex-wrap: wrap; }
+    .drop { padding: 20px 12px; }
+  }
+
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1d2330; color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.25); opacity: 0; transition: .2s; pointer-events: none; z-index: 100; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ======================= Anmeldung ======================= -->
+<section id="login" hidden>
+  <form class="login-card" id="loginForm">
+    <img src="/logo.png" alt="">
+    <h1>Demo-Verwaltung</h1>
+    <label for="lu">Benutzername</label>
+    <input type="text" id="lu" autocomplete="username" required>
+    <label for="lp">Passwort</label>
+    <input type="password" id="lp" autocomplete="current-password" required>
+    <button class="btn primary block" type="submit">Anmelden</button>
+    <div class="error" id="loginError"></div>
+  </form>
+</section>
+
+<!-- ======================= Verwaltung ======================= -->
+<section id="app" hidden>
+  <header>
+    <div class="bar">
+      <img src="/logo.png" alt="">
+      <span class="brand">Demo-Verwaltung</span>
+      <nav>
+        <button data-tab="media" class="active">Medien</button>
+        <button data-tab="playlists">Playlists</button>
+        <button data-tab="devices">Geräte</button>
+      </nav>
+      <button class="btn small" id="logout">Abmelden</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Medien -->
+    <div data-page="media">
+      <h2>Medien</h2>
+      <p class="sub">Videos und Bilder, die auf den Demo-Geräten laufen. Neue Inhalte kommen beim nächsten Abgleich auf die Geräte.</p>
+      <div class="drop" id="drop">
+        <strong>Dateien hierher ziehen</strong>
+        <span>oder klicken, um Videos und Bilder auszuwählen · auch große Videos möglich</span>
+        <input type="file" id="fileInput" multiple accept="video/*,image/*" hidden>
+      </div>
+      <div class="target" id="uploadTargets"></div>
+      <div class="queue" id="queue"></div>
+      <div class="grid" id="mediaGrid"></div>
+    </div>
+
+    <!-- Playlists -->
+    <div data-page="playlists" hidden>
+      <div class="row">
+        <div><h2>Playlists</h2><p class="sub">Welche Inhalte auf welchen Geräten laufen. Geräte ohne eigene Zuweisung zeigen die Standard-Playlist (★).</p></div>
+        <div class="spacer"></div>
+        <button class="btn primary" id="newPlaylist">+ Neue Playlist</button>
+      </div>
+      <div class="split">
+        <div class="panel pl-list" id="plList"></div>
+        <div class="panel editor" id="plEditor"></div>
+      </div>
+    </div>
+
+    <!-- Geräte -->
+    <div data-page="devices" hidden>
+      <div class="row">
+        <div><h2>Geräte</h2><p class="sub">Alle Demo-Geräte. Namen, Playlists und Specs änderst du in der Admin-App.</p></div>
+        <div class="spacer"></div>
+        <button class="btn" id="syncAll">Alle jetzt aktualisieren</button>
+      </div>
+      <div class="devices" id="deviceList"></div>
+    </div>
+  </main>
+</section>
+
+<!-- Dialoge -->
+<dialog id="dlg"><form method="dialog"><div class="dlg-body" id="dlgBody"></div><div class="dlg-actions" id="dlgActions"></div></form></dialog>
+<dialog id="preview" class="preview"></dialog>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const CHUNK = 20 * 1024 * 1024; // 20 MB pro Stück (Cloudflare erlaubt max. 100 MB je Anfrage)
+const state = { media: [], playlists: [], devices: [], settings: {}, currentPl: null, uploadTargets: new Set() };
+
+// ---------------------------------------------------------------- Hilfsfunktionen
+function el(tag, props = {}, ...children) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") e.className = v;
+    else if (k === "style") e.style.cssText = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c != null && c !== false) e.append(c instanceof Node ? c : document.createTextNode(c));
+  return e;
+}
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    credentials: "same-origin",
+    headers: { "X-Requested-With": "RetailDemo", ...(opts.body && !(opts.body instanceof Blob) ? { "Content-Type": "application/json" } : {}), ...(opts.headers || {}) },
+  });
+  if (res.status === 401 && !path.startsWith("/api/web/")) { showLogin(); throw new Error("Bitte erneut anmelden"); }
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).detail || msg; } catch {}
+    const err = new Error(msg); err.status = res.status; throw err;
+  }
+  return res.json();
+}
+const json = (method, body) => ({ method, body: JSON.stringify(body) });
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 3000);
+}
+function size(b) {
+  if (b >= 1e9) return (b / 1e9).toFixed(1).replace(".", ",") + " GB";
+  if (b >= 1e6) return (b / 1e6).toFixed(1).replace(".", ",") + " MB";
+  return Math.max(1, Math.round(b / 1e3)) + " KB";
+}
+function ago(ts) {
+  if (!ts) return "nie";
+  const s = Date.now() / 1000 - ts;
+  if (s < 60) return "gerade eben";
+  if (s < 3600) return `vor ${Math.floor(s / 60)} Min.`;
+  if (s < 86400) return `vor ${Math.floor(s / 3600)} Std.`;
+  return `vor ${Math.floor(s / 86400)} Tagen`;
+}
+const thumbUrl = id => `/api/media/${id}/thumb`;
+const mediaById = id => state.media.find(m => m.id === id);
+
+// Kleiner Dialog-Helfer: gibt den Wert des gedrückten Knopfes zurück
+function dialog(title, content, buttons) {
+  return new Promise(resolve => {
+    const d = $("#dlg");
+    $("#dlgBody").replaceChildren(el("h3", {}, title), ...(Array.isArray(content) ? content : [content]));
+    $("#dlgActions").replaceChildren(...buttons.map(([label, value, cls]) =>
+      el("button", { class: "btn " + (cls || ""), value }, label)));
+    d.onclose = () => resolve(d.returnValue);
+    d.returnValue = "";
+    d.showModal();
+  });
+}
+const confirmDlg = (title, text, ok = "Löschen") =>
+  dialog(title, el("p", {}, text), [["Abbrechen", ""], [ok, "ok", "primary"]]).then(v => v === "ok");
+
+// ---------------------------------------------------------------- Anmeldung
+function showLogin() { $("#app").hidden = true; $("#login").hidden = false; $("#lu").focus(); }
+async function showApp() {
+  $("#login").hidden = true; $("#app").hidden = false;
+  await loadAll();
+}
+$("#loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("#loginError").textContent = "";
+  try {
+    await api("/api/web/login", json("POST", { username: $("#lu").value, password: $("#lp").value }));
+    $("#lp").value = "";
+    showApp();
+  } catch (err) { $("#loginError").textContent = err.message; }
+});
+$("#logout").addEventListener("click", async () => { await api("/api/web/logout", { method: "POST" }).catch(() => {}); showLogin(); });
+
+// ---------------------------------------------------------------- Navigation
+document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("active", x === b));
+  document.querySelectorAll("[data-page]").forEach(p => p.hidden = p.dataset.page !== b.dataset.tab);
+  if (b.dataset.tab === "devices") loadDevices();
+}));
+
+async function loadAll() {
+  [state.media, state.playlists, state.settings] = await Promise.all([
+    api("/api/admin/media"), api("/api/admin/playlists"), api("/api/admin/settings")]);
+  renderMedia(); renderTargets(); renderPlaylists();
+}
+
+// ---------------------------------------------------------------- Medien
+function renderMedia() {
+  const grid = $("#mediaGrid");
+  if (!state.media.length) { grid.replaceChildren(el("div", { class: "empty", style: "grid-column:1/-1" }, "Noch keine Medien – zieh deine ersten Videos oder Bilder oben in das Feld.")); return; }
+  grid.replaceChildren(...state.media.map(m => {
+    const used = state.playlists.filter(p => p.media_ids.includes(m.id)).map(p => p.name);
+    return el("div", { class: "tile" },
+      el("div", { class: "thumb", style: `background-image:url('${thumbUrl(m.id)}')`, onclick: () => preview(m) },
+        el("span", { class: "badge" }, m.type === "video" ? "Video" : "Bild"),
+        m.type === "video" ? el("div", { class: "play" }, "▶") : null),
+      el("div", { class: "info" },
+        el("div", { class: "title", title: m.title }, m.title),
+        el("div", { class: "meta" }, (m.type === "image" ? `${m.duration_s || state.settings.image_duration_s} s · ` : "") + size(m.size)),
+        el("div", { class: "meta" }, used.length ? "In: " + used.join(", ") : (state.playlists.length ? "in keiner Playlist" : "")),
+        el("div", { class: "actions" },
+          el("button", { class: "btn small", onclick: () => editMedia(m) }, "Bearbeiten"),
+          el("button", { class: "btn small danger", onclick: () => deleteMedia(m) }, "Löschen"))));
+  }));
+}
+function preview(m) {
+  const d = $("#preview");
+  const src = `/api/media/${m.id}/file`;
+  d.replaceChildren(m.type === "video" ? el("video", { src, controls: true, autoplay: true }) : el("img", { src, alt: "" }));
+  d.onclick = e => { if (e.target === d) d.close(); };
+  d.onclose = () => d.replaceChildren();
+  d.showModal();
+}
+async function editMedia(m) {
+  const title = el("input", { type: "text", value: m.title });
+  const dur = el("input", { type: "number", min: 1, value: m.duration_s || state.settings.image_duration_s });
+  const content = [el("label", {}, "Titel"), title];
+  if (m.type === "image") content.push(el("label", {}, "Anzeigedauer in Sekunden"), dur);
+  if (await dialog("Bearbeiten", content, [["Abbrechen", ""], ["Speichern", "ok", "primary"]]) !== "ok") return;
+  const body = { title: title.value };
+  if (m.type === "image") body.duration_s = parseInt(dur.value) || null;
+  const upd = await api(`/api/admin/media/${m.id}`, json("PATCH", body));
+  Object.assign(m, upd); renderMedia(); toast("Gespeichert");
+}
+async function deleteMedia(m) {
+  if (!await confirmDlg("Löschen?", `„${m.title}“ wird vom Server und beim nächsten Abgleich von allen Geräten gelöscht.`)) return;
+  await api(`/api/admin/media/${m.id}`, { method: "DELETE" });
+  await loadAll(); toast("Gelöscht");
+}
+
+// ---------------------------------------------------------------- Hochladen
+function renderTargets() {
+  const box = $("#uploadTargets");
+  if (!state.playlists.length) { box.replaceChildren(); return; }
+  for (const id of [...state.uploadTargets]) if (!state.playlists.some(p => p.id === id)) state.uploadTargets.delete(id);
+  box.replaceChildren(el("span", {}, "Neue Uploads auch hinzufügen zu:"), ...state.playlists.map(p =>
+    el("label", { class: "chip" },
+      el("input", { type: "checkbox", checked: state.uploadTargets.has(p.id), onchange: e => e.target.checked ? state.uploadTargets.add(p.id) : state.uploadTargets.delete(p.id) }),
+      (p.is_default ? "★ " : "") + p.name)));
+}
+const drop = $("#drop"), fileInput = $("#fileInput");
+drop.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => { enqueue([...fileInput.files]); fileInput.value = ""; });
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => enqueue([...e.dataTransfer.files]));
+window.addEventListener("beforeunload", e => { if (uploading) { e.preventDefault(); e.returnValue = ""; } });
+
+const pending = [];
+let uploading = false;
+function enqueue(files) {
+  for (const f of files) {
+    if (!/^(video|image)\//.test(f.type) && !/\.(mp4|mov|m4v|webm|mkv|jpe?g|png|gif|webp|heic)$/i.test(f.name)) { toast(`${f.name}: nur Videos und Bilder`); continue; }
+    const bar = el("div");
+    const status = el("span", {}, "wartet …");
+    const row = el("div", { class: "job" }, el("div", { class: "name" }, el("span", {}, f.name), status), el("div", { class: "progress" }, bar));
+    $("#queue").append(row);
+    pending.push({ file: f, row, bar, status, targets: [...state.uploadTargets] });
+  }
+  pump();
+}
+async function pump() {
+  if (uploading) return;
+  uploading = true;
+  while (pending.length) {
+    const job = pending.shift();
+    try {
+      await uploadFile(job);
+      job.row.classList.add("done"); job.status.textContent = "fertig ✓";
+      setTimeout(() => job.row.remove(), 4000);
+    } catch (err) {
+      job.row.classList.add("failed"); job.status.textContent = "Fehler: " + err.message;
+    }
+  }
+  uploading = false;
+  await loadAll();
+}
+async function uploadFile({ file, bar, status, targets }) {
+  const { id } = await api("/api/admin/uploads", json("POST", { filename: file.name, size: file.size, mime: file.type }));
+  let offset = 0, retries = 0;
+  while (offset < file.size) {
+    const blob = file.slice(offset, offset + CHUNK);
+    try {
+      const r = await api(`/api/admin/uploads/${id}?offset=${offset}`, { method: "PUT", body: blob, headers: { "Content-Type": "application/octet-stream" } });
+      offset = r.received; retries = 0;
+    } catch (err) {
+      const m = /Offset (\d+)/.exec(err.message);
+      if (err.status === 409 && m) { offset = +m[1]; continue; }   // Server hat schon mehr: dort weitermachen
+      if (++retries > 4) { api(`/api/admin/uploads/${id}`, { method: "DELETE" }).catch(() => {}); throw err; }
+      status.textContent = "Verbindung unterbrochen, neuer Versuch …";
+      await new Promise(r => setTimeout(r, 2000 * retries));
+      continue;
+    }
+    const pct = file.size ? Math.round(offset / file.size * 100) : 100;
+    bar.style.width = pct + "%"; status.textContent = `${pct} % · ${size(offset)} von ${size(file.size)}`;
+  }
+  status.textContent = "wird verarbeitet …";
+  await api(`/api/admin/uploads/${id}/complete`, json("POST", { playlist_ids: targets }));
+}
+
+// ---------------------------------------------------------------- Playlists
+function renderPlaylists() {
+  const list = $("#plList");
+  if (!state.playlists.length) {
+    list.replaceChildren(el("div", { class: "empty" }, "Noch keine Playlists."));
+    $("#plEditor").replaceChildren(el("div", { class: "empty" }, "Ohne Playlist zeigen alle Geräte alle Medien. Lege eine Playlist an, um verschiedenen Geräten unterschiedliche Inhalte zu geben."));
+    return;
+  }
+  if (!state.playlists.some(p => p.id === state.currentPl)) state.currentPl = state.playlists[0].id;
+  list.replaceChildren(...state.playlists.map(p => el("button", { class: p.id === state.currentPl ? "active" : "", onclick: () => { state.currentPl = p.id; renderPlaylists(); } },
+    p.is_default ? el("span", { class: "star" }, "★") : null, p.name, el("span", { class: "count" }, `${p.media_ids.length}`))));
+  renderEditor(state.playlists.find(p => p.id === state.currentPl));
+}
+function renderEditor(pl) {
+  const draft = { name: pl.name, is_default: pl.is_default, show_specs: pl.show_specs, media_ids: [...pl.media_ids] };
+  const name = el("input", { type: "text", value: draft.name, oninput: e => draft.name = e.target.value });
+  const items = el("div", { class: "items" });
+  const drawItems = () => {
+    if (!draft.media_ids.length) { items.replaceChildren(el("div", { class: "empty", style: "padding:20px" }, "Noch leer – füge Medien hinzu.")); return; }
+    items.replaceChildren(...draft.media_ids.map((id, i) => {
+      const m = mediaById(id);
+      const move = d => { const [x] = draft.media_ids.splice(i, 1); draft.media_ids.splice(i + d, 0, x); drawItems(); };
+      return el("div", { class: "item" },
+        el("span", { class: "num" }, i + 1),
+        el("div", { class: "mini", style: `background-image:url('${thumbUrl(id)}')` }),
+        el("div", { class: "grow" }, el("div", {}, m ? m.title : "(gelöscht)"), el("div", { class: "meta", style: "color:var(--muted);font-size:13px" }, m ? (m.type === "video" ? "Video" : "Bild") : "")),
+        el("button", { class: "icon-btn", type: "button", title: "Nach oben", disabled: i === 0, onclick: () => move(-1) }, "↑"),
+        el("button", { class: "icon-btn", type: "button", title: "Nach unten", disabled: i === draft.media_ids.length - 1, onclick: () => move(1) }, "↓"),
+        el("button", { class: "icon-btn", type: "button", title: "Entfernen", onclick: () => { draft.media_ids.splice(i, 1); drawItems(); } }, "✕"));
+    }));
+  };
+  drawItems();
+  const toggle = (label, key) => el("label", {}, el("input", { type: "checkbox", checked: draft[key], onchange: e => draft[key] = e.target.checked }), label);
+  $("#plEditor").replaceChildren(
+    el("label", {}, "Name"), name,
+    el("div", { class: "toggles" }, toggle("Standard-Playlist (★)", "is_default"), toggle("Gerätedaten zwischendurch anzeigen", "show_specs")),
+    el("div", { class: "row" }, el("strong", {}, "Reihenfolge"), el("div", { class: "spacer" }),
+      el("button", { class: "btn small", onclick: () => pickMedia(draft, drawItems) }, "+ Medien hinzufügen")),
+    items,
+    el("div", { class: "row" },
+      el("button", { class: "btn danger", onclick: () => deletePlaylist(pl) }, "Playlist löschen"),
+      el("div", { class: "spacer" }),
+      el("button", { class: "btn primary", onclick: () => savePlaylist(pl, draft) }, "Speichern")));
+}
+async function pickMedia(draft, redraw) {
+  if (!state.media.length) { toast("Lade zuerst Medien hoch"); return; }
+  const boxes = state.media.map(m => {
+    const cb = el("input", { type: "checkbox", value: m.id });
+    return { cb, node: el("label", {}, cb, el("div", { class: "mini", style: `background-image:url('${thumbUrl(m.id)}')` }),
+      el("span", { title: m.title }, (draft.media_ids.includes(m.id) ? "✓ " : "") + m.title)) };
+  });
+  const v = await dialog("Medien hinzufügen", [el("p", { class: "sub", style: "margin:0" }, "✓ = schon in der Playlist"), el("div", { class: "pick" }, boxes.map(b => b.node))],
+    [["Abbrechen", ""], ["Hinzufügen", "ok", "primary"]]);
+  if (v !== "ok") return;
+  draft.media_ids.push(...boxes.filter(b => b.cb.checked).map(b => b.cb.value));
+  redraw();
+}
+async function savePlaylist(pl, draft) {
+  await api(`/api/admin/playlists/${pl.id}`, json("PUT", draft));
+  state.playlists = await api("/api/admin/playlists");
+  renderPlaylists(); renderTargets(); renderMedia();
+  toast("Gespeichert – Geräte übernehmen es beim nächsten Abgleich");
+}
+async function deletePlaylist(pl) {
+  if (!await confirmDlg("Playlist löschen?", `„${pl.name}“ wird gelöscht. Geräte mit dieser Playlist zeigen danach die Standard-Playlist.`)) return;
+  await api(`/api/admin/playlists/${pl.id}`, { method: "DELETE" });
+  state.playlists = await api("/api/admin/playlists");
+  renderPlaylists(); renderTargets(); renderMedia();
+}
+$("#newPlaylist").addEventListener("click", async () => {
+  const name = el("input", { type: "text", placeholder: "z. B. Samsung" });
+  setTimeout(() => name.focus(), 50);
+  if (await dialog("Neue Playlist", [el("label", {}, "Name"), name], [["Abbrechen", ""], ["Anlegen", "ok", "primary"]]) !== "ok" || !name.value.trim()) return;
+  const pl = await api("/api/admin/playlists", json("POST", { name: name.value.trim() }));
+  state.playlists = await api("/api/admin/playlists");
+  state.currentPl = pl.id; renderPlaylists(); renderTargets();
+});
+
+// ---------------------------------------------------------------- Geräte
+async function loadDevices() {
+  state.devices = await api("/api/admin/devices");
+  const list = $("#deviceList");
+  if (!state.devices.length) { list.replaceChildren(el("div", { class: "empty panel" }, "Noch keine Geräte. Installiere die Demo-App und trage Server-Adresse und Geräte-Token ein.")); return; }
+  list.replaceChildren(...state.devices.map(d => el("div", { class: "panel device" },
+    el("span", { class: "dot" + (d.online ? " on" : "") }),
+    el("div", { class: "grow" },
+      el("div", { class: "name" }, d.effective_name || d.model || d.id),
+      el("div", { class: "meta" }, [d.manufacturer, d.model, d.android_version].filter(Boolean).join(" · ")),
+      el("div", { class: "meta" }, `Playlist: ${d.playlist_name} · ` + (d.online ? "Online" : "Offline, zuletzt " + ago(d.last_seen)) + (d.status ? ` · ${d.status}` : "") + (d.battery != null ? ` · 🔋 ${d.battery} %` : "")),
+      el("div", { class: "meta", style: d.last_error ? "color:var(--danger)" : "" },
+        d.last_error ? "⚠️ " + d.last_error : d.sync_requested ? "⏳ Aktualisierung angefordert" : d.up_to_date ? "✅ Inhalte aktuell" : "🔄 Änderungen beim nächsten Abgleich")),
+    el("button", { class: "btn small", onclick: async () => { await api(`/api/admin/devices/${d.id}/sync-now`, { method: "POST" }); toast("Gerät aktualisiert sich in ca. 5 Minuten"); loadDevices(); } }, "Jetzt aktualisieren"))));
+}
+$("#syncAll").addEventListener("click", async () => { await api("/api/admin/devices/sync-all", { method: "POST" }); toast("Alle Geräte aktualisieren sich in ca. 5 Minuten"); loadDevices(); });
+setInterval(() => { if (!$("[data-page=devices]").hidden && !$("#app").hidden) loadDevices().catch(() => {}); }, 20000);
+
+// ---------------------------------------------------------------- Start
+api("/api/web/me").then(showApp).catch(showLogin);
+</script>
+</body>
+</html>

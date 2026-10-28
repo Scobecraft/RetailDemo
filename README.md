@@ -45,6 +45,28 @@ Die Tokens schützen den Server: Mit dem **DEVICE_TOKEN** kann man nur Inhalte a
 
 ---
 
+## Webseite zur Verwaltung (am PC)
+
+Der Server bringt eine Webseite mit: einfach die Server-Adresse im Browser öffnen
+(z. B. `https://demo.deinedomain.de`). Dort kannst du:
+
+- Videos und Bilder per **Drag & Drop** hochladen, mehrere gleichzeitig und auch große Videos
+  (die Seite lädt in 20-MB-Stücken hoch, dadurch gilt die 100-MB-Grenze von Cloudflare nicht)
+- neue Uploads direkt einer oder mehreren Playlists hinzufügen
+- Medien ansehen, umbenennen, Anzeigedauer ändern, löschen
+- Playlists anlegen, sortieren und bearbeiten
+- sehen, welche Geräte online und aktuell sind
+
+**Anmeldung einrichten:** in `server/.env` ergänzen und danach `docker compose up -d` ausführen:
+
+```
+WEB_USER=admin
+WEB_PASSWORD=ein-langes-sicheres-passwort
+```
+
+Ohne `WEB_PASSWORD` ist die Webseite gesperrt. Nach 5 falschen Passwörtern wird die Anmeldung für
+15 Minuten gesperrt. Die Anmeldung bleibt 14 Tage gespeichert (Abmelden oben rechts).
+
 ## 2. Admin-App
 
 1. `RetailDemo-Admin.apk` installieren („Installation aus unbekannten Quellen“ erlauben).

@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -29,6 +29,13 @@ THUMB_DIR = DATA_DIR / "thumbs"
 DB_PATH = DATA_DIR / "demo.db"
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 DEVICE_TOKEN = os.environ.get("DEVICE_TOKEN", "")
+# Anmeldung für die Webseite (leeres Passwort = Webseite gesperrt)
+WEB_USER = os.environ.get("WEB_USER", "admin")
+WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
+SESSION_COOKIE = "rd_session"
+SESSION_DAYS = 14
+UPLOAD_DIR = DATA_DIR / "uploads"
+WEB_DIR = Path(__file__).parent / "web"
 
 HEARTBEAT_INTERVAL_S = 300
 DEFAULT_SETTINGS = {
@@ -49,6 +56,7 @@ DEFAULT_SCHEDULE = {
 
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 THUMB_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 _db_lock = threading.Lock()
 
 
@@ -114,6 +122,10 @@ def init_db():
                 last_sync REAL,
                 created_at REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS web_sessions (
+                token_hash TEXT PRIMARY KEY,
+                expires REAL NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -132,29 +144,52 @@ def init_db():
 
 
 init_db()
-app = FastAPI(title="Retail Demo Server")
+app = FastAPI(title="Retail Demo Server", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 # --------------------------------------------------------------------------- auth
 
-def _check(authorization: Optional[str], *tokens: str):
+def _bearer_ok(authorization: Optional[str], *tokens: str) -> bool:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Token fehlt")
+        return False
     given = authorization[7:]
-    if not any(t and secrets.compare_digest(given, t) for t in tokens):
-        raise HTTPException(401, "Ungültiges Token")
+    return any(t and secrets.compare_digest(given, t) for t in tokens)
 
 
-def require_admin(authorization: Optional[str] = Header(None)):
-    _check(authorization, ADMIN_TOKEN)
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _web_session_ok(request: Request) -> bool:
+    """Angemeldet über die Webseite? Ändernde Anfragen brauchen zusätzlich den Header
+    X-Requested-With (Schutz gegen fremde Webseiten, die Formulare an diesen Server schicken)."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        return False
+    with db() as c:
+        row = c.execute("SELECT expires FROM web_sessions WHERE token_hash=?", (_hash_token(token),)).fetchone()
+    if not row or row["expires"] < time.time():
+        return False
+    if request.method not in ("GET", "HEAD") and request.headers.get("x-requested-with") != "RetailDemo":
+        raise HTTPException(403, "Ungültige Anfrage")
+    return True
+
+
+def require_admin(request: Request, authorization: Optional[str] = Header(None)):
+    if _bearer_ok(authorization, ADMIN_TOKEN) or _web_session_ok(request):
+        return
+    raise HTTPException(401, "Nicht angemeldet")
 
 
 def require_device(authorization: Optional[str] = Header(None)):
-    _check(authorization, DEVICE_TOKEN)
+    if not _bearer_ok(authorization, DEVICE_TOKEN):
+        raise HTTPException(401, "Ungültiges Token")
 
 
-def require_any(authorization: Optional[str] = Header(None)):
-    _check(authorization, ADMIN_TOKEN, DEVICE_TOKEN)
+def require_any(request: Request, authorization: Optional[str] = Header(None)):
+    if _bearer_ok(authorization, ADMIN_TOKEN, DEVICE_TOKEN) or _web_session_ok(request):
+        return
+    raise HTTPException(401, "Ungültiges Token")
 
 
 # ----------------------------------------------------------------------- helpers
@@ -341,36 +376,132 @@ def list_media():
         return [media_dict(r) for r in c.execute("SELECT * FROM media ORDER BY created_at DESC")]
 
 
-@app.post("/api/admin/media", dependencies=[Depends(require_admin)])
-def upload_media(file: UploadFile = File(...), title: str = Form("")):
-    mime = file.content_type or ""
+def _media_type(mime: str, filename: str) -> tuple[str, str]:
     if not mime.startswith(("video/", "image/")):
-        mime = mimetypes.guess_type(file.filename or "")[0] or mime
+        mime = mimetypes.guess_type(filename or "")[0] or mime
     if mime.startswith("video/"):
-        mtype = "video"
-    elif mime.startswith("image/"):
-        mtype = "image"
-    else:
-        raise HTTPException(400, f"Nur Videos und Bilder erlaubt (bekommen: {mime or 'unbekannt'})")
+        return "video", mime
+    if mime.startswith("image/"):
+        return "image", mime
+    raise HTTPException(400, f"Nur Videos und Bilder erlaubt (bekommen: {mime or 'unbekannt'})")
+
+
+def _register_media(tmp: Path, orig_name: str, mime: str, title: str) -> dict:
+    """Fertig hochgeladene Datei in die Mediathek übernehmen."""
+    mtype, mime = _media_type(mime, orig_name)
     media_id = uuid.uuid4().hex
-    ext = Path(file.filename or "").suffix.lower() or mimetypes.guess_extension(mime) or ""
+    ext = Path(orig_name or "").suffix.lower() or mimetypes.guess_extension(mime) or ""
     filename = media_id + ext
     dest = MEDIA_DIR / filename
     sha = hashlib.sha256()
     size = 0
-    with open(dest, "wb") as out:
-        while chunk := file.file.read(1024 * 1024):
+    with open(tmp, "rb") as f:
+        while chunk := f.read(1024 * 1024):
             sha.update(chunk)
             size += len(chunk)
-            out.write(chunk)
+    shutil.move(str(tmp), dest)
     make_thumbnail(media_id, dest, mtype)
-    title = title.strip() or Path(file.filename or filename).stem
+    title = title.strip() or Path(orig_name or filename).stem
     with db() as c:
         c.execute(
             "INSERT INTO media (id, title, filename, type, mime, size, sha256, duration_s, created_at)"
             " VALUES (?,?,?,?,?,?,?,?,?)",
             (media_id, title, filename, mtype, mime, size, sha.hexdigest(), None, time.time()))
         return media_dict(c.execute("SELECT * FROM media WHERE id=?", (media_id,)).fetchone())
+
+
+def _add_to_playlists(media_id: str, playlist_ids: list[int]):
+    with db() as c:
+        for pid in playlist_ids:
+            if not c.execute("SELECT 1 FROM playlists WHERE id=?", (pid,)).fetchone():
+                continue
+            pos = c.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM playlist_items WHERE playlist_id=?",
+                            (pid,)).fetchone()[0]
+            c.execute("INSERT INTO playlist_items (playlist_id, position, media_id) VALUES (?,?,?)",
+                      (pid, pos, media_id))
+
+
+@app.post("/api/admin/media", dependencies=[Depends(require_admin)])
+def upload_media(file: UploadFile = File(...), title: str = Form("")):
+    _media_type(file.content_type or "", file.filename or "")  # früh ablehnen
+    tmp = UPLOAD_DIR / (uuid.uuid4().hex + ".part")
+    with open(tmp, "wb") as out:
+        while chunk := file.file.read(1024 * 1024):
+            out.write(chunk)
+    return _register_media(tmp, file.filename or "", file.content_type or "", title)
+
+
+# Upload in Stücken (für die Webseite): umgeht die 100-MB-Grenze von Cloudflare pro Anfrage
+class UploadInit(BaseModel):
+    filename: str
+    size: int
+    mime: str = ""
+
+
+class UploadComplete(BaseModel):
+    title: str = ""
+    playlist_ids: list[int] = []
+
+
+def _upload_paths(upload_id: str) -> tuple[Path, Path]:
+    if not upload_id.isalnum():
+        raise HTTPException(400, "Ungültige Upload-ID")
+    return UPLOAD_DIR / f"{upload_id}.part", UPLOAD_DIR / f"{upload_id}.json"
+
+
+@app.post("/api/admin/uploads", dependencies=[Depends(require_admin)])
+def upload_init(body: UploadInit):
+    _media_type(body.mime, body.filename)
+    upload_id = uuid.uuid4().hex
+    part, meta = _upload_paths(upload_id)
+    part.touch()
+    meta.write_text(json.dumps(body.model_dump()))
+    return {"id": upload_id}
+
+
+@app.put("/api/admin/uploads/{upload_id}", dependencies=[Depends(require_admin)])
+async def upload_chunk(upload_id: str, offset: int, request: Request):
+    part, meta = _upload_paths(upload_id)
+    if not meta.exists():
+        raise HTTPException(404, "Upload unbekannt")
+    current = part.stat().st_size
+    if offset != current:
+        # z. B. nach Verbindungsabbruch: Client erfährt, wo es weitergeht
+        raise HTTPException(409, f"Erwartet Offset {current}")
+    with open(part, "ab") as f:
+        async for chunk in request.stream():
+            f.write(chunk)
+    return {"received": part.stat().st_size}
+
+
+@app.post("/api/admin/uploads/{upload_id}/complete", dependencies=[Depends(require_admin)])
+def upload_complete(upload_id: str, body: UploadComplete):
+    part, meta = _upload_paths(upload_id)
+    if not meta.exists():
+        raise HTTPException(404, "Upload unbekannt")
+    info = json.loads(meta.read_text())
+    if part.stat().st_size != info["size"]:
+        raise HTTPException(400, "Datei unvollständig")
+    item = _register_media(part, info["filename"], info["mime"], body.title)
+    meta.unlink(missing_ok=True)
+    _add_to_playlists(item["id"], body.playlist_ids)
+    return item
+
+
+@app.delete("/api/admin/uploads/{upload_id}", dependencies=[Depends(require_admin)])
+def upload_abort(upload_id: str):
+    for p in _upload_paths(upload_id):
+        p.unlink(missing_ok=True)
+    return {"ok": True}
+
+
+def _cleanup_stale_uploads():
+    for p in UPLOAD_DIR.iterdir():
+        if time.time() - p.stat().st_mtime > 24 * 3600:
+            p.unlink(missing_ok=True)
+
+
+_cleanup_stale_uploads()
 
 
 class MediaPatch(BaseModel):
@@ -642,3 +773,76 @@ def device_unregister(body: Unregister):
     with db() as c:
         c.execute("UPDATE devices SET removed=1 WHERE id=?", (body.device_id,))
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- web
+
+_login_failures: dict[str, list[float]] = {}
+MAX_FAILURES = 5
+LOCK_MINUTES = 15
+
+
+def _client_ip(request: Request) -> str:
+    return (request.headers.get("cf-connecting-ip")
+            or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+            or (request.client.host if request.client else "?"))
+
+
+class Login(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/web/login")
+def web_login(body: Login, request: Request, response: Response):
+    if not WEB_PASSWORD:
+        raise HTTPException(503, "Web-Anmeldung ist nicht eingerichtet (WEB_PASSWORD in .env fehlt)")
+    ip = _client_ip(request)
+    now = time.time()
+    fails = [t for t in _login_failures.get(ip, []) if now - t < LOCK_MINUTES * 60]
+    if len(fails) >= MAX_FAILURES:
+        raise HTTPException(429, f"Zu viele Fehlversuche. Bitte {LOCK_MINUTES} Minuten warten.")
+    ok_user = secrets.compare_digest(body.username.strip().lower(), WEB_USER.lower())
+    ok_pass = secrets.compare_digest(body.password, WEB_PASSWORD)
+    if not (ok_user and ok_pass):
+        fails.append(now)
+        _login_failures[ip] = fails
+        time.sleep(0.7)
+        raise HTTPException(401, "Benutzername oder Passwort falsch")
+    _login_failures.pop(ip, None)
+    token = secrets.token_urlsafe(32)
+    expires = now + SESSION_DAYS * 86400
+    with db() as c:
+        c.execute("DELETE FROM web_sessions WHERE expires < ?", (now,))
+        c.execute("INSERT INTO web_sessions (token_hash, expires) VALUES (?,?)", (_hash_token(token), expires))
+    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_DAYS * 86400, httponly=True,
+                        samesite="strict", secure=secure, path="/")
+    return {"ok": True, "user": WEB_USER}
+
+
+@app.post("/api/web/logout")
+def web_logout(request: Request, response: Response):
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        with db() as c:
+            c.execute("DELETE FROM web_sessions WHERE token_hash=?", (_hash_token(token),))
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"ok": True}
+
+
+@app.get("/api/web/me")
+def web_me(request: Request):
+    if not _web_session_ok(request):
+        raise HTTPException(401, "Nicht angemeldet")
+    return {"user": WEB_USER}
+
+
+@app.get("/", include_in_schema=False)
+def web_index():
+    return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/logo.png", include_in_schema=False)
+def web_logo():
+    return FileResponse(WEB_DIR / "logo.png")
