@@ -115,6 +115,9 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
         android.os.Build.VERSION.SDK_INT < 31 || ctx.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
     }
     var blockSettings by remember { mutableStateOf(prefs.blockSettings) }
+    var blockAlarms by remember { mutableStateOf(prefs.blockAlarms) }
+    var maxBrightness by remember { mutableStateOf(prefs.maxBrightness) }
+    val writeSettings = remember(refresh) { Brightness.canWrite(ctx) }
     val storage = remember(refresh) { app.cleanup.hasStorageAccess() }
     val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
     val cleanupState by app.cleanup.state.collectAsState()
@@ -220,6 +223,17 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
                     ) else storagePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 }
                 PermissionRow(
+                    ok = writeSettings,
+                    title = "Helligkeit steuern",
+                    hint = "\"Systemeinstellungen ändern\" erlauben (für Helligkeit 100 %).",
+                    button = "Erlauben",
+                ) {
+                    ctx.startActivity(
+                        Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${ctx.packageName}"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+                PermissionRow(
                     ok = exactAlarms,
                     title = "Pünktliches Ein-/Ausschalten",
                     hint = "\"Wecker und Erinnerungen\" erlauben (für die Betriebszeiten).",
@@ -250,6 +264,30 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
                         )
                     }
                     Switch(checked = blockSettings, onCheckedChange = { blockSettings = it; prefs.blockSettings = it })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Wecker sperren", fontWeight = FontWeight.Medium)
+                        Text(
+                            "Die Uhr-App (Wecker, Timer, Stoppuhr) lässt sich nicht öffnen. " +
+                                "Klingelt trotzdem ein Wecker, wird er automatisch beendet.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(checked = blockAlarms, onCheckedChange = { blockAlarms = it; prefs.blockAlarms = it })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Helligkeit immer 100 %", fontWeight = FontWeight.Medium)
+                        Text(
+                            "Bei jedem Start der Demo wird die Helligkeit auf 100 % gestellt (automatische Helligkeit aus).",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(checked = maxBrightness, onCheckedChange = {
+                        maxBrightness = it; prefs.maxBrightness = it
+                        if (it) Brightness.setMax(ctx)
+                    })
                 }
                 val interval = manifest?.cleanupIntervalH ?: 2
                 Text(

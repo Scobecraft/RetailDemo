@@ -64,14 +64,34 @@ class IdleWatcherService : AccessibilityService() {
         }
 
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            demoApp.prefs.blockAlarms && ClockGuard.isClockApp(pkg)
+        ) {
+            // Klingelt gerade ein Wecker? Erst versuchen, ihn abzuschalten (Knopf ist evtl. noch nicht geladen)
+            if (ClockGuard.dismissRingingAlarm(rootInActiveWindow)) return
+            handler.postDelayed({
+                val root = rootInActiveWindow
+                if (root?.packageName?.let { ClockGuard.isClockApp(it.toString()) } != true) return@postDelayed
+                if (!ClockGuard.dismissRingingAlarm(root)) {
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                    showBlockedToast("Wecker und Uhr sind auf Vorführgeräten gesperrt")
+                }
+            }, 500)
+            return
+        }
+
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             demoApp.prefs.blockSettings && SettingsGuard.isForbidden(event)
         ) {
             performGlobalAction(GLOBAL_ACTION_HOME)
-            val now = SystemClock.elapsedRealtime()
-            if (now - lastBlockToast > 3_000) {
-                lastBlockToast = now
-                Toast.makeText(this, "Diese Einstellung ist auf Vorführgeräten gesperrt", Toast.LENGTH_SHORT).show()
-            }
+            showBlockedToast("Diese Einstellung ist auf Vorführgeräten gesperrt")
+        }
+    }
+
+    private fun showBlockedToast(text: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastBlockToast > 3_000) {
+            lastBlockToast = now
+            Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -214,5 +234,41 @@ object SettingsGuard {
         if (CLASS_PATTERN.containsMatchIn(cls)) return true
         val title = event.text.joinToString(" ")
         return title.isNotBlank() && TITLE_PATTERN.containsMatchIn(title)
+    }
+}
+
+/** Sperrt die Uhr-App (Wecker, Timer) und schaltet klingelnde Wecker möglichst ab. */
+object ClockGuard {
+    private val CLOCK_PACKAGES = setOf(
+        "com.google.android.deskclock",       // Google / Pixel
+        "com.android.deskclock",              // AOSP, Xiaomi, Motorola, …
+        "com.sec.android.app.clockpackage",   // Samsung
+        "com.oneplus.deskclock",
+        "com.coloros.alarmclock",             // Oppo / Realme
+        "com.huawei.deskclock",
+        "com.hihonor.deskclock",
+        "com.vivo.alarmclock",
+        "com.sonymobile.alarm",
+    )
+
+    fun isClockApp(pkg: String) =
+        pkg in CLOCK_PACKAGES || pkg.endsWith(".deskclock") || pkg.contains("alarmclock") || pkg.contains("clockpackage")
+
+    private val DISMISS = Regex("(?i)^(beenden|ausschalten|stopp|stop|dismiss|schließen|verwerfen|aus|turn off)$")
+
+    /** Sucht im Weckerfenster einen "Beenden"-Knopf und drückt ihn. */
+    fun dismissRingingAlarm(root: android.view.accessibility.AccessibilityNodeInfo?): Boolean {
+        root ?: return false
+        var visited = 0
+        fun find(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int): android.view.accessibility.AccessibilityNodeInfo? {
+            if (node == null || depth > 10 || visited++ > 80) return null
+            val label = (node.text ?: node.contentDescription)?.toString()?.trim()
+            if (label != null && DISMISS.matches(label)) return node
+            for (i in 0 until node.childCount) find(node.getChild(i), depth + 1)?.let { return it }
+            return null
+        }
+        var target = find(root, 0) ?: return false
+        repeat(4) { if (!target.isClickable) target = target.parent ?: return@repeat }
+        return target.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
     }
 }

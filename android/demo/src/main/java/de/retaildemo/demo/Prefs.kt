@@ -44,6 +44,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("block_settings", true)
         set(v) = sp.edit().putBoolean("block_settings", v).apply()
 
+    /** Helligkeit immer auf 100 % stellen. */
+    var maxBrightness: Boolean
+        get() = sp.getBoolean("max_brightness", true)
+        set(v) = sp.edit().putBoolean("max_brightness", v).apply()
+
+    /** Uhr-App (Wecker, Timer) für Kunden sperren. */
+    var blockAlarms: Boolean
+        get() = sp.getBoolean("block_alarms", true)
+        set(v) = sp.edit().putBoolean("block_alarms", v).apply()
+
     var lastCleanup: Long
         get() = sp.getLong("last_cleanup", 0)
         set(v) = sp.edit().putLong("last_cleanup", v).apply()

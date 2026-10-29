@@ -57,6 +57,7 @@ class CleanupManager(private val app: DemoApp) {
         withContext(Dispatchers.IO) {
             val deleted = if (hasStorageAccess()) deleteGuestMedia() else -1
             val wallpaperOk = resetWallpaper()
+            Brightness.setMax(app)
             app.prefs.lastCleanup = System.currentTimeMillis()
             val summary = buildString {
                 append(if (deleted >= 0) "$deleted Datei(en) gelöscht" else "Fotos: keine Berechtigung")

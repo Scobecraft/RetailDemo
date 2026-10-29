@@ -118,6 +118,13 @@ class DemoActivity : ComponentActivity() {
         demoApp.sync.playerStatus = "Demo läuft"
         demoApp.closeDemoCallback = { runOnUiThread { finish() } }
         demoApp.demoVisible = true
+        // Volle Helligkeit: für dieses Fenster sofort, für das System (falls erlaubt) dauerhaft
+        if (demoApp.prefs.maxBrightness) {
+            window.attributes = window.attributes.apply {
+                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
+            }
+            Brightness.setMax(this)
+        }
     }
 
     override fun onPause() {
