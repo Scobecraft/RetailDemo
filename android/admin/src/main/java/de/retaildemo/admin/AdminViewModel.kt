@@ -172,4 +172,21 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
         settings.value = api.saveSettings(s)
         messages.value = "Einstellungen gespeichert"
     }
+
+    fun uploadLogo(uri: Uri) = launchSafe {
+        val cr = getApplication<Application>().contentResolver
+        var name = "logo.png"
+        cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) name = c.getString(0) ?: name
+        }
+        val bytes = cr.openInputStream(uri)!!.use { it.readBytes() }
+        api.uploadLogo(name, cr.getType(uri) ?: "image/png", bytes)
+        settings.value = api.settings()
+        messages.value = "Logo gespeichert – Laptops zeigen es nach dem nächsten Abgleich"
+    }
+
+    fun deleteLogo() = launchSafe {
+        api.deleteLogo()
+        settings.value = api.settings()
+    }
 }

@@ -139,7 +139,9 @@ private fun DeviceCard(d: Device, onClick: () -> Unit) {
                     if (d.online) Color(0xFF22C55E) else Color(0xFF9CA3AF), CircleShape
                 )
             )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(if (d.isLaptop) "💻" else "📱", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(d.effectiveName.ifBlank { d.model ?: d.id }, fontWeight = FontWeight.SemiBold)
                 Text(
@@ -223,13 +225,22 @@ private fun DeviceDialog(vm: AdminViewModel, d: Device, playlists: List<Playlist
                         }
                     }
                 }
-                SwitchRow("Gerätedaten anzeigen", "Name & Specs zwischendurch einblenden", showSpecs) { showSpecs = it }
+                SwitchRow(
+                    "Gerätedaten anzeigen",
+                    if (d.isLaptop) "Animierte Spec-Seite zwischendurch einblenden" else "Name & Specs zwischendurch einblenden",
+                    showSpecs,
+                ) { showSpecs = it }
                 OutlinedTextField(
                     specs, { specs = it },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 4,
                     label = { Text("Eigene Specs (leer = automatisch)") },
-                    placeholder = { Text("Display: 6,8\" AMOLED\nKamera: 200 MP\nPreis: 1.299 €") },
+                    placeholder = {
+                        Text(
+                            if (d.isLaptop) "Prozessor: Intel Core Ultra 7\nArbeitsspeicher: 16 GB\nPreis: 1.299 €"
+                            else "Display: 6,8\" AMOLED\nKamera: 200 MP\nPreis: 1.299 €"
+                        )
+                    },
                     supportingText = { Text("Eine Zeile pro Eintrag, Format „Bezeichnung: Wert“") },
                 )
                 if (d.autoSpecs.isNotEmpty()) {
@@ -248,7 +259,8 @@ private fun DeviceDialog(vm: AdminViewModel, d: Device, playlists: List<Playlist
                     }
                 }
                 Text(
-                    "ID ${d.id.take(8)} · App ${d.appVersion ?: "?"}" + (d.ip?.let { " · IP $it" } ?: ""),
+                    (if (d.isLaptop) "Laptop · " else "") +
+                        "ID ${d.id.take(8)} · App ${d.appVersion ?: "?"}" + (d.ip?.let { " · IP $it" } ?: ""),
                     style = MaterialTheme.typography.bodySmall, color = Color.Gray,
                 )
             }

@@ -111,7 +111,19 @@ class ApiClient(baseUrl: String, private val token: String) {
 
     suspend fun settings(): ServerSettings = JSON.decodeFromString(call("GET", "/api/admin/settings"))
     suspend fun saveSettings(s: ServerSettings): ServerSettings =
-        JSON.decodeFromString(call("PUT", "/api/admin/settings", jsonBody(s)))
+        JSON.decodeFromString(call("PUT", "/api/admin/settings", jsonBody(s.copy(logo = null))))
+
+    /** Laden-Logo für die Laptop-Demo hochladen. */
+    suspend fun uploadLogo(fileName: String, mime: String, bytes: ByteArray) {
+        val multipart = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("file", fileName, bytes.toRequestBody(mime.toMediaType()))
+            .build()
+        call("POST", "/api/admin/logo", multipart)
+    }
+
+    suspend fun deleteLogo() { call("DELETE", "/api/admin/logo") }
+
+    fun logoUrl(sha256: String) = url("/api/logo?v=${sha256.take(8)}")
 
     // ------------------------------------------------------------------ device
     suspend fun sync(report: DeviceReport): Manifest =

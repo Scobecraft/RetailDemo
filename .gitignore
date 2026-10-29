@@ -10,3 +10,5 @@ __pycache__/
 android/keystore.properties
 android/keystore/
 release/
+laptop/node_modules/
+laptop/dist/

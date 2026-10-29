@@ -29,6 +29,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import android.app.TimePickerDialog
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Checkbox
@@ -90,8 +99,9 @@ fun SettingsScreen(vm: AdminViewModel, modifier: Modifier) {
             }
 
             if (vm.isConfigured) {
+                StoreCard(vm, settings) { vm.saveSettings(it) }
                 ScheduleCard(settings) { vm.saveSettings(settings.copy(schedule = it)) }
-                ServerSettingsCard(settings) { vm.saveSettings(it.copy(schedule = settings.schedule)) }
+                ServerSettingsCard(settings) { vm.saveSettings(it) }
             }
         }
     }
@@ -110,14 +120,14 @@ private fun ServerSettingsCard(current: ServerSettings, onSave: (ServerSettings)
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Demo-Verhalten (alle Geräte)", style = MaterialTheme.typography.titleMedium)
             NumberField("Abgleich mit Server alle … Minuten", sync) { sync = it }
-            NumberField("Demo startet wieder nach … Sekunden ohne Bedienung", idle) { idle = it }
+            NumberField("Handy-Demo startet wieder nach … Sekunden ohne Bedienung", idle) { idle = it }
             NumberField("Gerätedaten nach jedem … Medium zeigen", every) { every = it }
             NumberField("Gerätedaten-Anzeige dauert … Sekunden", specsDur) { specsDur = it }
             NumberField("Bilder werden standardmäßig … Sekunden gezeigt", imgDur) { imgDur = it }
-            NumberField("Kundenfotos löschen & Hintergrund zurücksetzen alle … Stunden (0 = aus)", cleanup) { cleanup = it }
+            NumberField("Handys: Kundenfotos löschen & Hintergrund zurücksetzen alle … Stunden (0 = aus)", cleanup) { cleanup = it }
             Button(onClick = {
                 onSave(
-                    ServerSettings(
+                    current.copy(
                         syncIntervalMin = sync.toIntOrNull() ?: current.syncIntervalMin,
                         idleTimeoutS = idle.toIntOrNull() ?: current.idleTimeoutS,
                         specsEveryN = every.toIntOrNull() ?: current.specsEveryN,
@@ -142,6 +152,64 @@ private fun NumberField(label: String, value: String, onChange: (String) -> Unit
         modifier = Modifier.fillMaxWidth(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
     )
+}
+
+@Composable
+private fun StoreCard(vm: AdminViewModel, current: ServerSettings, onSave: (ServerSettings) -> Unit) {
+    var storeName by remember(current) { mutableStateOf(current.storeName) }
+    var laptopIdle by remember(current) { mutableStateOf(current.laptopIdleTimeoutS.toString()) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { vm.uploadLogo(it) }
+    }
+
+    Card {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Laden & Laptops", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Logo und Name erscheinen in der Laptop-Demo auf der animierten Spec-Seite.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(width = 120.dp, height = 68.dp)
+                        .background(Color(0x22888888), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val logo = current.logo
+                    if (logo != null) AsyncImage(
+                        model = vm.api.logoUrl(logo.sha256),
+                        imageLoader = vm.imageLoader,
+                        contentDescription = "Laden-Logo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.padding(6.dp).fillMaxSize(),
+                    ) else Text("kein Logo", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    OutlinedButton(onClick = { picker.launch("image/*") }) {
+                        Text(if (current.logo != null) "Logo ändern" else "Logo hochladen")
+                    }
+                    if (current.logo != null) TextButton(onClick = { vm.deleteLogo() }) {
+                        Text("Entfernen", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+            OutlinedTextField(
+                storeName, { storeName = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                label = { Text("Name des Ladens") },
+                placeholder = { Text("z. B. Handy-Shop Müller") },
+            )
+            NumberField("Laptop-Demo startet wieder nach … Sekunden ohne Bedienung", laptopIdle) { laptopIdle = it }
+            Button(onClick = {
+                onSave(
+                    current.copy(
+                        storeName = storeName.trim(),
+                        laptopIdleTimeoutS = laptopIdle.toIntOrNull() ?: current.laptopIdleTimeoutS,
+                    )
+                )
+            }) { Text("Speichern") }
+        }
+    }
 }
 
 private val WEEKDAYS = listOf("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")

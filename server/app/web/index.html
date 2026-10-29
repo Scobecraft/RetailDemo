@@ -131,6 +131,32 @@
   .device .grow { flex: 1; min-width: 0; }
   .device .name { font-weight: 600; }
   .device .meta { color: var(--muted); font-size: 13px; }
+  .device .kind { font-size: 22px; line-height: 1; margin-top: 1px; flex: none; width: 26px; text-align: center; }
+  .device .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .filters { display: flex; gap: 6px; margin: 0 0 14px; flex-wrap: wrap; }
+  .filters button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: 14px; }
+  .filters button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .stale-head { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; color: var(--muted); font-weight: 600; cursor: pointer; user-select: none; }
+  textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font: inherit; color: inherit; resize: vertical; }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .autospecs { font-size: 13px; color: var(--muted); background: var(--bg); border-radius: 8px; padding: 8px 12px; margin-top: 10px; }
+  .autospecs div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ---------- Einstellungen ---------- */
+  .settings { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-items: start; }
+  .settings .panel { padding: 20px; }
+  .settings h3 { margin: 0 0 4px; font-size: 17px; }
+  .settings .panel > p.sub { margin-bottom: 8px; font-size: 14px; }
+  .logo-box { display: flex; gap: 16px; align-items: center; margin: 12px 0 4px; }
+  .logo-preview { width: 160px; height: 90px; border-radius: 10px; border: 1px solid var(--line); background: repeating-conic-gradient(var(--bg) 0 25%, var(--card) 0 50%) 0 0/16px 16px; display: grid; place-items: center; overflow: hidden; flex: none; }
+  .logo-preview img { max-width: 90%; max-height: 80%; }
+  .logo-preview span { color: var(--muted); font-size: 13px; }
+  .days { display: grid; gap: 6px; margin: 10px 0; }
+  .day { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; font-size: 14px; }
+  .day label { margin: 0; color: var(--text); display: flex; gap: 8px; align-items: center; cursor: pointer; font-size: 14px; }
+  .day input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+  .day .times { display: flex; gap: 6px; align-items: center; }
+  .day input[type=time] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font: inherit; color: inherit; }
 
   /* ---------- Dialoge ---------- */
   dialog { border: 0; border-radius: 16px; padding: 0; background: var(--card); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,.3); width: min(520px, calc(100vw - 32px)); }
@@ -152,6 +178,9 @@
     .bar { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 6px; gap: 8px 12px; }
     .bar .brand { flex: 1; }
     #changePw { display: none; }
+    .device { flex-wrap: wrap; }
+    .device .actions { width: 100%; justify-content: flex-start; padding-left: 40px; }
+    .settings { grid-template-columns: 1fr; }
     nav { order: 3; width: 100%; flex: none; margin-left: 0; }
     nav button { flex: 1; }
     main { padding-top: 16px; }
@@ -210,6 +239,7 @@
         <button data-tab="media" class="active">Medien</button>
         <button data-tab="playlists">Playlists</button>
         <button data-tab="devices">Geräte</button>
+        <button data-tab="settings">Einstellungen</button>
       </nav>
       <button class="btn small" id="changePw">Passwort ändern</button>
       <button class="btn small" id="logout">Abmelden</button>
@@ -247,11 +277,23 @@
     <!-- Geräte -->
     <div data-page="devices" hidden>
       <div class="row">
-        <div><h2>Geräte</h2><p class="sub">Alle Demo-Geräte. Namen, Playlists und Specs änderst du in der Admin-App.</p></div>
+        <div><h2>Geräte</h2><p class="sub">Alle Demo-Handys und -Laptops. Über „Bearbeiten“ legst du Namen, Playlist und Specs fest.</p></div>
         <div class="spacer"></div>
         <button class="btn" id="syncAll">Alle jetzt aktualisieren</button>
       </div>
+      <div class="filters" id="deviceFilter"></div>
       <div class="devices" id="deviceList"></div>
+    </div>
+
+    <!-- Einstellungen -->
+    <div data-page="settings" hidden>
+      <h2>Einstellungen</h2>
+      <p class="sub">Gelten für alle Geräte. Änderungen kommen beim nächsten Abgleich an – unter „Geräte“ → „Alle jetzt aktualisieren“ geht es schneller.</p>
+      <div class="settings">
+        <div class="panel" id="storeSettings"></div>
+        <div class="panel" id="behaviourSettings"></div>
+        <div class="panel" id="scheduleSettings"></div>
+      </div>
     </div>
   </main>
 </section>
@@ -393,6 +435,7 @@ document.querySelectorAll("nav button").forEach(b => b.addEventListener("click",
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("active", x === b));
   document.querySelectorAll("[data-page]").forEach(p => p.hidden = p.dataset.page !== b.dataset.tab);
   if (b.dataset.tab === "devices") loadDevices();
+  if (b.dataset.tab === "settings") renderSettings();
 }));
 
 async function loadAll() {
@@ -594,22 +637,164 @@ $("#newPlaylist").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------- Geräte
-async function loadDevices() {
-  state.devices = await api("/api/admin/devices");
-  const list = $("#deviceList");
-  if (!state.devices.length) { list.replaceChildren(el("div", { class: "empty panel" }, "Noch keine Geräte. Installiere die Demo-App und trage Server-Adresse und Geräte-Token ein.")); return; }
-  list.replaceChildren(...state.devices.map(d => el("div", { class: "panel device" },
+const isLaptop = d => d.platform && d.platform !== "android";
+const PLATFORM = { windows: "Windows-Laptop", macos: "MacBook", linux: "Linux-Laptop" };
+let deviceFilter = "all", showStale = false;
+const isStale = d => !d.online && (d.last_seen || 0) < Date.now() / 1000 - 24 * 3600;
+
+function deviceRow(d) {
+  return el("div", { class: "panel device" },
     el("span", { class: "dot" + (d.online ? " on" : "") }),
+    el("span", { class: "kind", title: isLaptop(d) ? PLATFORM[d.platform] || "Laptop" : "Handy" }, isLaptop(d) ? "💻" : "📱"),
     el("div", { class: "grow" },
       el("div", { class: "name" }, d.effective_name || d.model || d.id),
       el("div", { class: "meta" }, [d.manufacturer, d.model, d.android_version].filter(Boolean).join(" · ")),
       el("div", { class: "meta" }, `Playlist: ${d.playlist_name} · ` + (d.online ? "Online" : "Offline, zuletzt " + ago(d.last_seen)) + (d.status ? ` · ${d.status}` : "") + (d.battery != null ? ` · 🔋 ${d.battery} %` : "")),
       el("div", { class: "meta", style: d.last_error ? "color:var(--danger)" : "" },
         d.last_error ? "⚠️ " + d.last_error : d.sync_requested ? "⏳ Aktualisierung angefordert" : d.up_to_date ? "✅ Inhalte aktuell" : "🔄 Änderungen beim nächsten Abgleich")),
-    el("button", { class: "btn small", onclick: async () => { await api(`/api/admin/devices/${d.id}/sync-now`, { method: "POST" }); toast("Gerät aktualisiert sich in ca. 5 Minuten"); loadDevices(); } }, "Jetzt aktualisieren"))));
+    el("div", { class: "actions" },
+      el("button", { class: "btn small", onclick: () => editDevice(d) }, "Bearbeiten"),
+      el("button", { class: "btn small", onclick: async () => { await api(`/api/admin/devices/${d.id}/sync-now`, { method: "POST" }); toast("Gerät aktualisiert sich in ca. 5 Minuten"); loadDevices(); } }, "Jetzt aktualisieren")));
+}
+async function loadDevices() {
+  state.devices = await api("/api/admin/devices");
+  renderDevices();
+}
+function renderDevices() {
+  const all = state.devices;
+  const counts = { all: all.length, phone: all.filter(d => !isLaptop(d)).length, laptop: all.filter(isLaptop).length };
+  $("#deviceFilter").replaceChildren(...[["all", "Alle"], ["phone", "📱 Handys"], ["laptop", "💻 Laptops"]].map(([k, label]) =>
+    el("button", { class: deviceFilter === k ? "active" : "", onclick: () => { deviceFilter = k; renderDevices(); } }, `${label} (${counts[k]})`)));
+  const list = $("#deviceList");
+  if (!all.length) { list.replaceChildren(el("div", { class: "empty panel" }, "Noch keine Geräte. Installiere die Demo-App (Handy) bzw. die Laptop-Demo und trage Server-Adresse und Geräte-Token ein.")); return; }
+  const shown = all.filter(d => deviceFilter === "all" || (deviceFilter === "laptop") === isLaptop(d));
+  const active = shown.filter(d => !isStale(d)), stale = shown.filter(isStale);
+  const nodes = active.map(deviceRow);
+  if (!shown.length) nodes.push(el("div", { class: "empty panel" }, deviceFilter === "laptop" ? "Noch keine Laptops. Installiere die Laptop-Demo auf einem Ausstellungs-Laptop." : "Keine Geräte in dieser Ansicht."));
+  if (stale.length) {
+    nodes.push(el("div", { class: "stale-head", onclick: () => { showStale = !showStale; renderDevices(); } },
+      `${showStale ? "▾" : "▸"} Länger als 24 Std. offline (${stale.length})`, el("span", { class: "spacer" }),
+      showStale ? el("button", { class: "btn small danger", onclick: async e => {
+        e.stopPropagation();
+        if (!await confirmDlg(`${stale.length} Gerät(e) entfernen?`, "Wahrscheinlich ist die Demo dort nicht mehr installiert. Taucht ein Gerät wieder auf, erscheint es automatisch neu.", "Entfernen")) return;
+        for (const d of stale) await api(`/api/admin/devices/${d.id}`, { method: "DELETE" });
+        loadDevices();
+      } }, "Alle entfernen") : null));
+    if (showStale) nodes.push(...stale.map(deviceRow));
+  }
+  list.replaceChildren(...nodes);
+}
+async function editDevice(d) {
+  const name = el("input", { type: "text", value: d.display_name, placeholder: d.marketing_name || d.model || "" });
+  const pl = el("select", {}, el("option", { value: "" }, "Standard-Playlist"),
+    ...state.playlists.map(p => el("option", { value: p.id, selected: p.id === d.playlist_id }, p.name)));
+  const show = el("input", { type: "checkbox", checked: d.show_specs });
+  const specs = el("textarea", { rows: 6, placeholder: isLaptop(d) ? "Prozessor: Intel Core Ultra 7\nArbeitsspeicher: 16 GB\nSpeicher: 1 TB SSD\nPreis: 1.299 €" : "Display: 6,8\" AMOLED\nKamera: 200 MP\nPreis: 1.299 €" });
+  specs.value = d.custom_specs;
+  const content = [
+    el("label", {}, "Angezeigter Name"), name,
+    el("label", {}, "Playlist"), pl,
+    el("div", { class: "toggles" }, el("label", {}, show, isLaptop(d) ? "Spec-Seite mit Animation zwischendurch zeigen" : "Gerätedaten zwischendurch anzeigen")),
+    el("label", {}, "Eigene Specs (leer = automatisch erkannt) · eine Zeile pro Eintrag, „Bezeichnung: Wert“"), specs,
+  ];
+  if (d.auto_specs.length) content.push(el("div", { class: "autospecs" },
+    el("div", { class: "row" }, el("strong", {}, "Automatisch erkannt"), el("span", { class: "spacer" }),
+      el("button", { class: "btn small", type: "button", onclick: () => specs.value = d.auto_specs.map(s => `${s.label}: ${s.value}`).join("\n") }, "Als Vorlage übernehmen")),
+    ...d.auto_specs.map(s => el("div", { title: `${s.label}: ${s.value}` }, `${s.label}: ${s.value}`))));
+  content.push(el("p", { class: "meta", style: "color:var(--muted);font-size:13px;margin:12px 0 0" },
+    `${isLaptop(d) ? PLATFORM[d.platform] || "Laptop" : "Handy"} · ID ${d.id.slice(0, 8)} · App ${d.app_version || "?"}` + (d.ip ? ` · IP ${d.ip}` : "")));
+  const v = await dialog(d.effective_name || "Gerät", content, [["Entfernen", "delete", "danger"], ["Abbrechen", ""], ["Speichern", "ok", "primary"]]);
+  if (v === "delete") {
+    if (!await confirmDlg("Gerät entfernen?", "Das Gerät verschwindet aus der Liste. Läuft die Demo dort noch, meldet es sich beim nächsten Kontakt neu an.", "Entfernen")) return;
+    await api(`/api/admin/devices/${d.id}`, { method: "DELETE" });
+    toast("Entfernt"); return loadDevices();
+  }
+  if (v !== "ok") return;
+  await api(`/api/admin/devices/${d.id}`, json("PATCH", {
+    display_name: name.value, custom_specs: specs.value, show_specs: show.checked,
+    playlist_id: pl.value ? +pl.value : null, clear_playlist: !pl.value,
+  }));
+  toast("Gespeichert – das Gerät übernimmt es beim nächsten Abgleich");
+  loadDevices();
 }
 $("#syncAll").addEventListener("click", async () => { await api("/api/admin/devices/sync-all", { method: "POST" }); toast("Alle Geräte aktualisieren sich in ca. 5 Minuten"); loadDevices(); });
-setInterval(() => { if (!$("[data-page=devices]").hidden && !$("#app").hidden) loadDevices().catch(() => {}); }, 20000);
+setInterval(() => { if (!$("[data-page=devices]").hidden && !$("#app").hidden && !$("#dlg").open) loadDevices().catch(() => {}); }, 20000);
+
+// ---------------------------------------------------------------- Einstellungen
+const WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+async function saveSettings(body, msg = "Gespeichert") {
+  state.settings = await api("/api/admin/settings", json("PUT", body));
+  toast(msg); renderSettings();
+}
+function numberField(label, key, min = 1) {
+  const input = el("input", { type: "number", min, value: state.settings[key] });
+  return { key, input, nodes: [el("label", {}, label), input] };
+}
+function renderSettings() {
+  const s = state.settings;
+  // Laden & Laptops
+  const logoImg = s.logo ? el("img", { src: `/api/logo?v=${s.logo.sha256.slice(0, 8)}`, alt: "Laden-Logo" }) : el("span", {}, "kein Logo");
+  const logoInput = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/svg+xml,image/gif", hidden: true, onchange: async () => {
+    const f = logoInput.files[0]; if (!f) return;
+    const fd = new FormData(); fd.append("file", f);
+    try { await api("/api/admin/logo", { method: "POST", body: fd }); state.settings = await api("/api/admin/settings"); renderSettings(); toast("Logo gespeichert – Laptops zeigen es nach dem nächsten Abgleich"); }
+    catch (err) { toast(err.message); }
+  } });
+  const store = el("input", { type: "text", value: s.store_name || "", maxlength: 80, placeholder: "z. B. Handy-Shop Müller" });
+  const lapIdle = numberField("Laptop-Demo startet wieder nach … Sekunden ohne Bedienung", "laptop_idle_timeout_s");
+  $("#storeSettings").replaceChildren(
+    el("h3", {}, "Laden & Laptops"),
+    el("p", { class: "sub" }, "Logo und Name erscheinen in der Laptop-Demo auf der animierten Spec-Seite und als kleines Logo in der Ecke."),
+    el("label", {}, "Laden-Logo (PNG mit transparentem Hintergrund oder SVG ideal)"),
+    el("div", { class: "logo-box" }, el("div", { class: "logo-preview" }, logoImg),
+      el("div", { class: "row" },
+        el("button", { class: "btn small", onclick: () => logoInput.click() }, s.logo ? "Ändern" : "Hochladen"),
+        s.logo ? el("button", { class: "btn small danger", onclick: async () => {
+          if (!await confirmDlg("Logo entfernen?", "Die Laptops zeigen danach den Ladennamen statt des Logos.", "Entfernen")) return;
+          await api("/api/admin/logo", { method: "DELETE" }); state.settings = await api("/api/admin/settings"); renderSettings();
+        } }, "Entfernen") : null, logoInput)),
+    el("label", {}, "Name des Ladens (wird ohne Logo groß angezeigt)"), store,
+    ...lapIdle.nodes,
+    el("button", { class: "btn primary block", onclick: () => saveSettings({ store_name: store.value, laptop_idle_timeout_s: +lapIdle.input.value || s.laptop_idle_timeout_s }) }, "Speichern"));
+
+  // Demo-Verhalten
+  const fields = [
+    numberField("Abgleich mit Server alle … Minuten", "sync_interval_min"),
+    numberField("Handy-Demo startet wieder nach … Sekunden ohne Bedienung", "idle_timeout_s"),
+    numberField("Gerätedaten / Spec-Seite nach jedem … Medium zeigen", "specs_every_n"),
+    numberField("Gerätedaten / Spec-Seite dauert … Sekunden", "specs_duration_s"),
+    numberField("Bilder werden standardmäßig … Sekunden gezeigt", "image_duration_s"),
+    numberField("Handys: Kundenfotos löschen & Hintergrund zurücksetzen alle … Stunden (0 = aus)", "cleanup_interval_h", 0),
+  ];
+  $("#behaviourSettings").replaceChildren(
+    el("h3", {}, "Demo-Verhalten"),
+    el("p", { class: "sub" }, "Für Handys und Laptops, soweit nicht anders angegeben."),
+    ...fields.flatMap(f => f.nodes),
+    el("button", { class: "btn primary block", onclick: () => saveSettings(Object.fromEntries(fields.map(f => [f.key, f.input.value === "" ? s[f.key] : +f.input.value]))) }, "Speichern"));
+
+  // Betriebszeiten
+  const sched = JSON.parse(JSON.stringify(s.schedule));
+  const enabled = el("input", { type: "checkbox", checked: sched.enabled, onchange: () => { sched.enabled = enabled.checked; days.hidden = !sched.enabled; copy.hidden = !sched.enabled; } });
+  const days = el("div", { class: "days", hidden: !sched.enabled }, ...sched.days.map((d, i) => {
+    const on = el("input", { type: "time", value: d.on, onchange: e => d.on = e.target.value });
+    const off = el("input", { type: "time", value: d.off, onchange: e => d.off = e.target.value });
+    const times = el("div", { class: "times", hidden: !d.active }, on, "–", off);
+    const off_label = el("span", { class: "muted", hidden: d.active }, "aus");
+    return el("div", { class: "day" },
+      el("label", {}, el("input", { type: "checkbox", checked: d.active, onchange: e => { d.active = e.target.checked; times.hidden = !d.active; off_label.hidden = d.active; } }), WEEKDAYS[i]),
+      el("div", {}, times, off_label));
+  }));
+  const copy = el("button", { class: "linkbtn", style: "margin:4px 0 0", hidden: !sched.enabled, onclick: () => {
+    for (let i = 1; i <= 4; i++) Object.assign(sched.days[i], { active: sched.days[0].active, on: sched.days[0].on, off: sched.days[0].off });
+    state.settings.schedule = sched; renderSettings();
+  } }, "Montag für Di–Fr übernehmen");
+  $("#scheduleSettings").replaceChildren(
+    el("h3", {}, "Betriebszeiten"),
+    el("p", { class: "sub" }, "Außerhalb der Zeiten ist die Demo aus: Handys gehen in Standby, Laptops zeigen keine Demo und dürfen in den Energiesparmodus."),
+    el("div", { class: "toggles" }, el("label", {}, enabled, "Zeitsteuerung aktiv")),
+    days, copy,
+    el("button", { class: "btn primary block", onclick: () => saveSettings({ schedule: sched }) }, "Speichern"));
+}
 
 // ---------------------------------------------------------------- Start
 api("/api/web/me").then(me => { managedByEnv = !!me.managed_by_env; showApp(); }).catch(showLogin);

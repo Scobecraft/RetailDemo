@@ -1,8 +1,9 @@
 """Retail Demo Server.
 
 Speichert Medien (Videos/Bilder), Playlists und registrierte Demo-Geräte.
-- Admin-App:  Authorization: Bearer <ADMIN_TOKEN>
-- Demo-App:   Authorization: Bearer <DEVICE_TOKEN>
+- Admin-App:   Authorization: Bearer <ADMIN_TOKEN>
+- Demo-App:    Authorization: Bearer <DEVICE_TOKEN>
+- Laptop-Demo: Authorization: Bearer <DEVICE_TOKEN> (meldet sich mit platform="windows"/"macos"/"linux")
 """
 import hashlib
 import json
@@ -35,6 +36,8 @@ WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
 SESSION_COOKIE = "rd_session"
 SESSION_DAYS = 14
 UPLOAD_DIR = DATA_DIR / "uploads"
+LOGO_DIR = DATA_DIR / "logo"
+LOGO_MAX_BYTES = 10 * 1024 * 1024
 WEB_DIR = Path(__file__).parent / "web"
 
 HEARTBEAT_INTERVAL_S = 300
@@ -45,6 +48,12 @@ DEFAULT_SETTINGS = {
     "specs_duration_s": 10,
     "image_duration_s": 8,
     "cleanup_interval_h": 2,
+    # Laptops: Kunden lesen/tippen länger, daher eigene Wartezeit bis zur Rückkehr der Demo
+    "laptop_idle_timeout_s": 60,
+}
+# Text-Einstellungen
+TEXT_SETTINGS = {
+    "store_name": "",
 }
 # Einstellungen, bei denen 0 "aus" bedeutet
 ZERO_ALLOWED = {"cleanup_interval_h"}
@@ -57,6 +66,7 @@ DEFAULT_SCHEDULE = {
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 THUMB_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+LOGO_DIR.mkdir(parents=True, exist_ok=True)
 _db_lock = threading.Lock()
 
 
@@ -136,6 +146,9 @@ def init_db():
         if "removed" not in cols:
             # 1 = App wurde (mit PIN) deinstalliert -> in der Admin-App ausblenden
             c.execute("ALTER TABLE devices ADD COLUMN removed INTEGER NOT NULL DEFAULT 0")
+        if "platform" not in cols:
+            # android = Demo-App auf dem Handy, windows/macos/linux = Laptop-Demo
+            c.execute("ALTER TABLE devices ADD COLUMN platform TEXT NOT NULL DEFAULT 'android'")
         version = c.execute("SELECT value FROM settings WHERE key='schema_version'").fetchone()
         if version is None:
             # v2: Standard-Wartezeit bis zum Neustart der Demo von 60 auf 30 Sekunden
@@ -196,13 +209,24 @@ def require_any(request: Request, authorization: Optional[str] = Header(None)):
 
 def get_settings(c) -> dict:
     s = dict(DEFAULT_SETTINGS)
+    s.update(TEXT_SETTINGS)
     s["schedule"] = json.loads(json.dumps(DEFAULT_SCHEDULE))
+    s["logo"] = None
     for row in c.execute("SELECT key, value FROM settings"):
         if row["key"] in DEFAULT_SETTINGS:
             s[row["key"]] = int(row["value"])
+        elif row["key"] in TEXT_SETTINGS:
+            s[row["key"]] = row["value"]
         elif row["key"] == "schedule":
             s["schedule"] = json.loads(row["value"])
+        elif row["key"] == "logo":
+            info = json.loads(row["value"])
+            s["logo"] = {"sha256": info["sha256"], "mime": info["mime"], "size": info["size"]}
     return s
+
+
+def is_laptop(device_row) -> bool:
+    return device_row is not None and (device_row["platform"] or "android") != "android"
 
 
 def _valid_time(t) -> str:
@@ -316,6 +340,17 @@ def build_manifest(c, device_row) -> dict:
         "cleanup_interval_h": s["cleanup_interval_h"],
         "heartbeat_interval_s": HEARTBEAT_INTERVAL_S,
     }
+    if is_laptop(device_row):
+        # Nur für Laptops: Handy-Manifeste (und damit deren Hash) bleiben unverändert
+        logo = s["logo"]
+        manifest.update({
+            "platform": device_row["platform"],
+            "idle_timeout_s": s["laptop_idle_timeout_s"],
+            "store_name": s["store_name"],
+            "logo_url": "/api/logo" if logo else "",
+            "logo_sha256": logo["sha256"] if logo else "",
+            "logo_mime": logo["mime"] if logo else "",
+        })
     manifest["hash"] = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:16]
     return manifest
 
@@ -366,6 +401,19 @@ def media_thumb(media_id: str):
     if row["type"] == "image":
         return FileResponse(MEDIA_DIR / row["filename"], media_type=row["mime"])
     raise HTTPException(404)
+
+
+@app.get("/api/logo", dependencies=[Depends(require_any)])
+def store_logo():
+    """Laden-Logo (für die Laptop-Demo, Webseite und Admin-App)."""
+    with db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='logo'").fetchone()
+    if not row:
+        raise HTTPException(404, "Kein Logo hochgeladen")
+    info = json.loads(row["value"])
+    # SVG darf keine Skripte ausführen, falls jemand die Adresse direkt im Browser öffnet
+    return FileResponse(LOGO_DIR / info["filename"], media_type=info["mime"],
+                        headers={"Cache-Control": "no-cache", "Content-Security-Policy": "script-src 'none'"})
 
 
 # ------------------------------------------------------------------------- admin
@@ -608,6 +656,7 @@ def device_dict(c, row, settings) -> dict:
         "model": row["model"],
         "marketing_name": row["marketing_name"],
         "android_version": row["android_version"],
+        "platform": row["platform"],
         "app_version": row["app_version"],
         "auto_specs": json.loads(row["auto_specs"]),
         "custom_specs": row["custom_specs"],
@@ -695,10 +744,50 @@ def write_settings(body: dict):
             if k in DEFAULT_SETTINGS:
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)",
                           (k, str(max(0 if k in ZERO_ALLOWED else 1, int(v)))))
+            elif k in TEXT_SETTINGS and isinstance(v, str):
+                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, v.strip()[:80]))
             elif k == "schedule" and isinstance(v, dict):
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('schedule', ?)",
                           (json.dumps(clean_schedule(v)),))
         return get_settings(c)
+
+
+LOGO_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+              ".svg": "image/svg+xml", ".gif": "image/gif"}
+
+
+@app.post("/api/admin/logo", dependencies=[Depends(require_admin)])
+def upload_logo(file: UploadFile = File(...)):
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in LOGO_TYPES:
+        mime_ext = {v: k for k, v in LOGO_TYPES.items()}.get(file.content_type or "")
+        if not mime_ext:
+            raise HTTPException(400, "Bitte ein Bild als PNG, JPG, WebP, GIF oder SVG hochladen")
+        ext = mime_ext
+    data = file.file.read(LOGO_MAX_BYTES + 1)
+    if len(data) > LOGO_MAX_BYTES:
+        raise HTTPException(400, "Das Logo darf höchstens 10 MB groß sein")
+    if not data:
+        raise HTTPException(400, "Leere Datei")
+    sha = hashlib.sha256(data).hexdigest()
+    filename = f"logo-{sha[:12]}{ext}"
+    (LOGO_DIR / filename).write_bytes(data)
+    info = {"filename": filename, "mime": LOGO_TYPES[ext], "sha256": sha, "size": len(data)}
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('logo', ?)", (json.dumps(info),))
+    for old in LOGO_DIR.iterdir():
+        if old.name != filename:
+            old.unlink(missing_ok=True)
+    return {"sha256": sha, "mime": info["mime"], "size": len(data)}
+
+
+@app.delete("/api/admin/logo", dependencies=[Depends(require_admin)])
+def delete_logo():
+    with db() as c:
+        c.execute("DELETE FROM settings WHERE key='logo'")
+    for old in LOGO_DIR.iterdir():
+        old.unlink(missing_ok=True)
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------------ device
@@ -715,12 +804,17 @@ class DeviceReport(BaseModel):
     status: Optional[str] = None
     error: Optional[str] = None
     battery: Optional[int] = None
+    # Laptop-Demo: "windows" / "macos" / "linux" und Betriebssystem-Version (Handys: "android")
+    platform: str = "android"
+    os_version: str = ""
     # Frühere ID desselben Geräts (ältere App-Versionen nutzten eine Zufalls-ID)
     previous_id: Optional[str] = None
 
 
 def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
     now = time.time()
+    platform = (r.platform or "android").strip().lower()[:20]
+    os_version = r.android_version or r.os_version
     row = c.execute("SELECT * FROM devices WHERE id=?", (r.device_id,)).fetchone()
     if row is None and r.previous_id and r.previous_id != r.device_id:
         # Gerät hat auf die dauerhafte ID umgestellt: Eintrag (Name, Playlist, Specs) übernehmen
@@ -729,14 +823,14 @@ def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
     if row is None:
         c.execute(
             "INSERT INTO devices (id, manufacturer, model, marketing_name, android_version, app_version,"
-            " auto_specs, created_at) VALUES (?,?,?,?,?,?,?,?)",
-            (r.device_id, r.manufacturer, r.model, r.marketing_name, r.android_version, r.app_version,
-             json.dumps(r.specs), now))
+            " auto_specs, platform, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (r.device_id, r.manufacturer, r.model, r.marketing_name, os_version, r.app_version,
+             json.dumps(r.specs), platform, now))
     else:
         c.execute(
-            "UPDATE devices SET manufacturer=?, model=?, marketing_name=?, android_version=?, app_version=?"
-            + (", auto_specs=?" if r.specs else "") + " WHERE id=?",
-            (r.manufacturer, r.model, r.marketing_name, r.android_version, r.app_version)
+            "UPDATE devices SET manufacturer=?, model=?, marketing_name=?, android_version=?, app_version=?,"
+            " platform=?" + (", auto_specs=?" if r.specs else "") + " WHERE id=?",
+            (r.manufacturer, r.model, r.marketing_name, os_version, r.app_version, platform)
             + ((json.dumps(r.specs),) if r.specs else ()) + (r.device_id,))
     c.execute(
         "UPDATE devices SET last_seen=?, status=?, last_error=?, battery=?, ip=?,"

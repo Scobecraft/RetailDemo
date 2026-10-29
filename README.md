@@ -1,12 +1,13 @@
 # Retail Demo – Demo-Software für Ausstellungsgeräte
 
-Drei Teile:
+Vier Teile:
 
 | Teil | Wo | Aufgabe |
 |---|---|---|
-| `server/` | Docker auf Proxmox | speichert Videos/Bilder, Playlists, Geräteliste |
+| `server/` | Docker auf Proxmox | speichert Videos/Bilder, Playlists, Geräteliste, Laden-Logo |
 | Admin-App (`android/admin`) | dein Handy | Medien hochladen/löschen, Playlists, Geräte verwalten |
-| Demo-App (`android/demo`) | Ausstellungsgeräte | lädt Inhalte (1×/Stunde), spielt sie in Schleife, zeigt Name + Specs |
+| Demo-App (`android/demo`) | Ausstellungs-Handys | lädt Inhalte (1×/Stunde), spielt sie in Schleife, zeigt Name + Specs |
+| Laptop-Demo (`laptop/`) | Ausstellungs-Laptops (Windows) | wie Intel iPOS: animierte Spec-Präsentation mit Logo, Videos, Spec-Lasche am Rand |
 
 ---
 
@@ -131,6 +132,41 @@ umwandeln, z. B. mit HandBrake oder `ffmpeg -i in.mov -c:v libx264 -crf 20 -an o
 Alle Zeiten lassen sich in der Admin-App unter *Einstellungen → Demo-Verhalten* ändern.
 
 ---
+
+## 4. Laptop-Demo (Windows)
+
+1. `RetailDemo-Laptop-Setup-x.y.z.exe` auf dem Laptop ausführen (Windows-SmartScreen: „Weitere Informationen“ →
+   „Trotzdem ausführen“, die Datei ist nicht signiert).
+2. Im Einrichtungsfenster Server-Adresse, **DEVICE_TOKEN** (dasselbe wie auf den Handys) und eine PIN eintragen →
+   **Speichern & verbinden**. Der Laptop erscheint danach auf der Webseite und in der Admin-App unter Geräte (💻).
+3. Windows: Energieoptionen → „Bildschirm ausschalten“ und „Energiesparmodus“ bei Netzbetrieb auf **Nie**
+   (die App hält den Bildschirm während der Betriebszeiten zusätzlich wach).
+
+**Verhalten:**
+- Niemand bedient den Laptop (Standard **60 Sekunden**, einstellbar unter Einstellungen → „Laden & Laptops“) →
+  Vollbild-Präsentation: Logo-Intro, animierte Spec-Seite mit Preis, dann die Videos/Bilder der Playlist.
+  Nach jedem n-ten Medium kommen Intro und Spec-Seite erneut.
+- Maus bewegen, Touchpad, Taste → die Präsentation verschwindet sofort, der Laptop ist normal benutzbar.
+- Während der Kunde den Laptop benutzt, hängt rechts am Bildschirmrand eine orange **„Specs“-Lasche**. Ein Klick
+  klappt das Datenblatt auf (mit Knopf „Präsentation ansehen“).
+- Specs werden automatisch erkannt (Prozessor, RAM, SSD, Grafik, Display, Akku, Windows-Version). Eigene Specs,
+  Preis, Name und Playlist legst du wie bei den Handys auf der Webseite / in der Admin-App fest.
+  Ein Eintrag mit der Bezeichnung „Preis“ wird groß als Preisschild gezeigt.
+- **Laden-Logo** und **Ladenname**: Webseite → Einstellungen → „Laden & Laptops“ (oder Admin-App → Einstellungen).
+- Betriebszeiten gelten auch für Laptops: außerhalb erscheint keine Demo, Windows darf in den Energiesparmodus.
+- Mitarbeiter-Zugang: Tray-Symbol unten rechts → „Einstellungen …“ oder **Strg + Alt + Umschalt + D**, jeweils mit PIN.
+  Beenden nur mit PIN. Startet automatisch mit Windows.
+
+**Selbst bauen** (Node.js 22):
+
+```bash
+cd laptop
+npm install
+npm run dist:win     # -> dist/RetailDemo-Laptop-Setup-1.0.0.exe
+```
+
+Zum Ausprobieren ohne Installer: `npm start`. Für Updates in `laptop/package.json` die `version` erhöhen und die
+neue Setup-Datei einfach über die alte installieren (Einstellungen bleiben erhalten).
 
 ## APKs selbst bauen
 

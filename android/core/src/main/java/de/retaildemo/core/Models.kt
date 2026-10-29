@@ -46,6 +46,8 @@ data class Device(
     val model: String? = null,
     @SerialName("marketing_name") val marketingName: String? = null,
     @SerialName("android_version") val androidVersion: String? = null,
+    /** "android" = Handy mit Demo-App, "windows"/"macos"/"linux" = Laptop-Demo. */
+    val platform: String = "android",
     @SerialName("app_version") val appVersion: String? = null,
     @SerialName("auto_specs") val autoSpecs: List<Spec> = emptyList(),
     @SerialName("custom_specs") val customSpecs: String = "",
@@ -61,7 +63,9 @@ data class Device(
     @SerialName("sync_requested") val syncRequested: Boolean = false,
     @SerialName("last_seen") val lastSeen: Double? = null,
     @SerialName("last_sync") val lastSync: Double? = null,
-)
+) {
+    val isLaptop get() = platform != "android"
+}
 
 @Serializable
 data class DevicePatch(
@@ -94,8 +98,15 @@ data class ServerSettings(
     @SerialName("specs_duration_s") val specsDurationS: Int = 10,
     @SerialName("image_duration_s") val imageDurationS: Int = 8,
     @SerialName("cleanup_interval_h") val cleanupIntervalH: Int = 2,
+    @SerialName("laptop_idle_timeout_s") val laptopIdleTimeoutS: Int = 60,
+    @SerialName("store_name") val storeName: String = "",
     val schedule: Schedule = Schedule(),
+    /** Laden-Logo für die Laptop-Demo (nur lesen; ändern über [ApiClient.uploadLogo]). */
+    val logo: LogoInfo? = null,
 )
+
+@Serializable
+data class LogoInfo(val sha256: String = "", val mime: String = "", val size: Long = 0)
 
 @Serializable
 data class ManifestItem(
