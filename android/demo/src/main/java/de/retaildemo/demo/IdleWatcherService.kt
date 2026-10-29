@@ -11,6 +11,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
+import android.util.Log
 import android.widget.Toast
 
 /**
@@ -26,6 +27,8 @@ class IdleWatcherService : AccessibilityService() {
     private var lastInteraction = SystemClock.elapsedRealtime()
     private var lastBlockToast = 0L
     private var lastUninstallBlock = 0L
+    /** App des zuletzt geöffneten Fensters (auch wenn dessen Inhalt nicht lesbar ist). */
+    private var foregroundPkg = ""
 
     private val check = object : Runnable {
         override fun run() {
@@ -53,6 +56,7 @@ class IdleWatcherService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) foregroundPkg = pkg
         if (pkg == packageName) return
 
         // Deinstallieren-Dialog so früh wie möglich erkennen – auch schon beim Aufbau des Inhalts
@@ -66,16 +70,7 @@ class IdleWatcherService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             demoApp.prefs.blockAlarms && ClockGuard.isClockApp(pkg)
         ) {
-            // Klingelt gerade ein Wecker? Erst versuchen, ihn abzuschalten (Knopf ist evtl. noch nicht geladen)
-            if (ClockGuard.dismissRingingAlarm(rootInActiveWindow)) return
-            handler.postDelayed({
-                val root = rootInActiveWindow
-                if (root?.packageName?.let { ClockGuard.isClockApp(it.toString()) } != true) return@postDelayed
-                if (!ClockGuard.dismissRingingAlarm(root)) {
-                    performGlobalAction(GLOBAL_ACTION_HOME)
-                    showBlockedToast("Wecker und Uhr sind auf Vorführgeräten gesperrt")
-                }
-            }, 500)
+            handleClockWindow(event.source, attempt = 0)
             return
         }
 
@@ -85,6 +80,29 @@ class IdleWatcherService : AccessibilityService() {
             performGlobalAction(GLOBAL_ACTION_HOME)
             showBlockedToast("Diese Einstellung ist auf Vorführgeräten gesperrt")
         }
+    }
+
+    /**
+     * Uhr-App im Vordergrund: Klingelt ein Wecker, "Beenden" drücken – sonst zum Startbildschirm.
+     * Das Fenster ist beim ersten Ereignis oft noch nicht aktiv bzw. geladen, daher mehrere Versuche (bis ca. 4 s).
+     */
+    private fun handleClockWindow(source: android.view.accessibility.AccessibilityNodeInfo?, attempt: Int) {
+        if (!ClockGuard.isClockApp(foregroundPkg)) return // Uhr wurde schon verlassen
+        var root = source ?: rootInActiveWindow
+        if (root != null) repeat(10) { root = root?.parent ?: return@repeat }
+        val readable = root?.packageName?.let { ClockGuard.isClockApp(it.toString()) } == true && (root?.childCount ?: 0) > 0
+        if (readable && ClockGuard.dismissRingingAlarm(root)) {
+            Log.i("DemoGuard", "Wecker beendet")
+            return
+        }
+        if (readable && attempt >= 1 || attempt >= 6) {
+            // Kein Beenden-Knopf (z. B. Wecker stellen) oder Inhalt nicht lesbar -> Uhr verlassen
+            Log.i("DemoGuard", "Uhr gesperrt (lesbar=$readable, Versuch $attempt)")
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            showBlockedToast("Wecker und Uhr sind auf Vorführgeräten gesperrt")
+            return
+        }
+        handler.postDelayed({ handleClockWindow(null, attempt + 1) }, if (attempt == 0) 300L else 700L)
     }
 
     private fun showBlockedToast(text: String) {
@@ -254,7 +272,7 @@ object ClockGuard {
     fun isClockApp(pkg: String) =
         pkg in CLOCK_PACKAGES || pkg.endsWith(".deskclock") || pkg.contains("alarmclock") || pkg.contains("clockpackage")
 
-    private val DISMISS = Regex("(?i)^(beenden|ausschalten|stopp|stop|dismiss|schließen|verwerfen|aus|turn off)$")
+    private val DISMISS = Regex("(?i)^(beenden|stopp|stop|dismiss|verwerfen)$")
 
     /** Sucht im Weckerfenster einen "Beenden"-Knopf und drückt ihn. */
     fun dismissRingingAlarm(root: android.view.accessibility.AccessibilityNodeInfo?): Boolean {

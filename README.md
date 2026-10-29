@@ -122,6 +122,11 @@ umwandeln, z. B. mit HandBrake oder `ffmpeg -i in.mov -c:v libx264 -crf 20 -an o
   Videos und Screenshots (Ordner DCIM, Pictures, Movies) und setzt das Hintergrundbild zurück.
   Läuft nur, während die Demo spielt oder Ruhezeit ist – nie, während ein Kunde das Gerät benutzt.
   Manuell: Demo-Einstellungen → „Jetzt aufräumen“.
+- **Helligkeit immer 100 %:** bei jedem Start der Demo (Erlaubnis „Systemeinstellungen ändern“ nötig).
+- **Wecker sperren:** Die Uhr-App (Wecker, Timer, Stoppuhr) lässt sich nicht öffnen; klingelt trotzdem ein
+  Wecker, drückt die App „Beenden“. Wecker anderer Apps löschen kann eine normale App unter Android nicht.
+  Per Sprachassistent („Stell einen Wecker“) gestellte Wecker lassen sich so nicht verhindern, werden beim
+  Klingeln aber beendet.
 - **Deinstallieren nur mit PIN:** Der Deinstallieren-Dialog wird abgefangen und die Admin-PIN abgefragt.
   Alternativ in den Demo-Einstellungen → „App deinstallieren“.
   (Per USB/adb am PC lässt sich das ohne Root nicht verhindern.)
