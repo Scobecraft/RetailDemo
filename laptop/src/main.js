@@ -5,13 +5,15 @@
 // - Kunde bewegt Maus / tippt -> Präsentation verschwindet sofort, Laptop ist normal benutzbar
 // - Während der Kunde den Laptop benutzt, hängt rechts am Bildschirmrand eine kleine "Specs"-Lasche,
 //   die sich zu einem Datenblatt aufklappen lässt
-// Einstellungen: Tray-Symbol (unten rechts) oder Strg+Alt+Umschalt+D, jeweils mit PIN.
+// Einstellungen: Tray-Symbol (Windows: unten rechts, Mac: Menüleiste) oder Strg+Alt+Umschalt+D
+// (Mac: ⌃⌥⇧D), jeweils mit PIN.
 const { app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, powerSaveBlocker, screen, globalShortcut, nativeImage } = require("electron");
 const path = require("path");
 const { pathToFileURL } = require("url");
 const { Config, normalizeUrl } = require("./config");
 const { Sync } = require("./sync");
 const { isActiveAt } = require("./schedule");
+const filter = require("./filter");
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -19,6 +21,7 @@ app.setAppUserModelId("de.retaildemo.laptop");
 // Videos sollen ohne vorherigen Klick starten
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
+const IS_MAC = process.platform === "darwin";
 const DEFAULT_IDLE_S = 60;
 const PANEL_TAB = { width: 52, height: 168 };
 const PANEL_OPEN = { width: 420, height: 700 };
@@ -65,10 +68,13 @@ const webPrefs = { preload: asset("preload.js"), contextIsolation: true, nodeInt
 function createDemoWindow() {
   const { bounds } = screen.getPrimaryDisplay();
   demoWin = new BrowserWindow({
-    ...bounds, show: false, frame: false, fullscreen: true, kiosk: true, skipTaskbar: true,
-    alwaysOnTop: true, backgroundColor: "#0b0e14", webPreferences: webPrefs,
+    ...bounds, show: false, frame: false, skipTaskbar: true, alwaysOnTop: true, backgroundColor: "#0b0e14", webPreferences: webPrefs,
+    // Mac: kein echtes Vollbild (eigener Desktop mit Animation), sondern "einfaches" Vollbild beim Einblenden
+    ...(IS_MAC ? { fullscreenable: false, enableLargerThanScreen: true, acceptFirstMouse: true } : { fullscreen: true, kiosk: true }),
   });
   demoWin.setAlwaysOnTop(true, "screen-saver");
+  // Mac: auch über Apps im Vollbild und auf allen Schreibtischen (Spaces) sichtbar
+  if (IS_MAC) demoWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   demoWin.setMenu(null);
   demoWin.loadFile(asset("demo.html"));
   demoWin.on("close", e => { if (!quitting) e.preventDefault(); });
@@ -86,9 +92,10 @@ function createPanelWindow() {
   panelWin = new BrowserWindow({
     ...panelBounds(false), show: false, frame: false, transparent: true, resizable: false, movable: false,
     minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, alwaysOnTop: true,
-    hasShadow: false, webPreferences: webPrefs,
+    hasShadow: false, acceptFirstMouse: true, webPreferences: webPrefs,
   });
   panelWin.setAlwaysOnTop(true, "floating");
+  if (IS_MAC) panelWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   panelWin.setMenu(null);
   panelWin.loadFile(asset("panel.html"));
   panelWin.on("close", e => { if (!quitting) e.preventDefault(); });
@@ -108,7 +115,7 @@ function openWindow(file, opts) {
   const w = new BrowserWindow({ show: false, autoHideMenuBar: true, backgroundColor: "#f5f6f8", webPreferences: webPrefs, ...opts });
   w.setMenu(null);
   w.loadFile(asset(file));
-  w.once("ready-to-show", () => { w.show(); w.focus(); });
+  w.once("ready-to-show", () => { if (IS_MAC) app.focus({ steal: true }); w.show(); w.focus(); });
   return w;
 }
 
@@ -138,8 +145,15 @@ function showDemo() {
   setPanelOpen(false);
   if (panelWin) panelWin.hide();
   demoWin.setBounds(screen.getPrimaryDisplay().bounds);
-  demoWin.show();
-  demoWin.setKiosk(true);
+  if (IS_MAC) {
+    // Menüleiste und Dock ausblenden, Tastatur-Fokus holen (die App läuft sonst im Hintergrund)
+    demoWin.show();
+    demoWin.setSimpleFullScreen(true);
+    app.focus({ steal: true });
+  } else {
+    demoWin.show();
+    demoWin.setKiosk(true);
+  }
   demoWin.setAlwaysOnTop(true, "screen-saver");
   demoWin.focus();
   demoWin.webContents.send("demo:start", viewModel());
@@ -150,6 +164,7 @@ function hideDemo() {
   if (!demoWin || !demoVisible) return;
   demoVisible = false;
   demoWin.webContents.send("demo:stop");
+  if (IS_MAC) demoWin.setSimpleFullScreen(false);
   demoWin.hide();
   lastIdle = 0;
   setStatus("Kunde benutzt Gerät");
@@ -195,14 +210,18 @@ function tick() {
 }
 
 /** Während der Öffnungszeiten darf der Bildschirm nicht ausgehen. */
+let appNapBlock = null;
 function setPowerBlock(on) {
+  // Mac: "App Nap" würde die Leerlauf-Prüfung im Hintergrund ausbremsen
+  if (IS_MAC && appNapBlock === null) appNapBlock = powerSaveBlocker.start("prevent-app-suspension");
   if (on && powerBlockId === null) powerBlockId = powerSaveBlocker.start("prevent-display-sleep");
   else if (!on && powerBlockId !== null) { powerSaveBlocker.stop(powerBlockId); powerBlockId = null; }
 }
 
 // ---------------------------------------------------------------- Tray
 function trayIcon() {
-  const img = nativeImage.createFromPath(path.join(__dirname, "..", "build", "icon.png"));
+  const img = nativeImage.createFromPath(path.join(__dirname, "..", "build", IS_MAC ? "trayTemplate.png" : "icon.png"));
+  if (IS_MAC) { img.setTemplateImage(true); return img; } // passt sich hellem/dunklem Menüleisten-Design an
   return img.isEmpty() ? img : img.resize({ width: 16, height: 16 });
 }
 
@@ -247,6 +266,7 @@ ipcMain.handle("setup:get", () => ({
   serverUrl: config.data.serverUrl,
   hasToken: !!config.data.deviceToken,
   hasPin: !!config.data.pinHash,
+  platform: process.platform,
   autostart: config.data.autostart !== false,
   deviceId: config.data.deviceId,
   version: app.getVersion(),
@@ -255,6 +275,13 @@ ipcMain.handle("setup:get", () => ({
   lastError: config.data.lastError,
   local: sync.local,
   manifest: sync.manifest ? { display_name: sync.manifest.display_name, playlist_name: sync.manifest.playlist_name, items: sync.manifest.items.length, idle_timeout_s: sync.manifest.idle_timeout_s } : null,
+  filter: {
+    supported: filter.SUPPORTED,
+    installed: filter.installed(),
+    wanted: (sync.manifest && sync.manifest.web_filter) || "off",
+    domains: (sync.manifest && sync.manifest.blocked_domains || []).length,
+    state: filter.describe(sync.manifest),
+  },
 }));
 
 ipcMain.handle("setup:save", async (_e, form) => {
@@ -278,6 +305,18 @@ ipcMain.handle("setup:sync", () => sync.syncNow());
 ipcMain.on("setup:startDemo", () => { if (setupWin) setupWin.close(); setTimeout(showDemo, 300); });
 ipcMain.on("setup:quit", () => quit());
 
+async function filterAction(fn) {
+  try {
+    await fn();
+    filter.apply(sync.manifest);
+    // Webseite / Admin-App gleich informieren
+    sync.report(false).then(r => sync.request("POST", "/api/device/heartbeat", r)).catch(() => {});
+    return { ok: true };
+  } catch (e) { return { error: e.message }; }
+}
+ipcMain.handle("filter:install", () => filterAction(filter.install));
+ipcMain.handle("filter:uninstall", () => filterAction(filter.uninstall));
+
 // ---------------------------------------------------------------- Start
 function applyAutostart() {
   if (!app.isPackaged) return;
@@ -291,11 +330,11 @@ app.on("before-quit", e => { if (!quitting) e.preventDefault(); });
 app.whenReady().then(async () => {
   config = new Config(app.getPath("userData"));
   sync = new Sync(config, app.getPath("userData"), app.getVersion());
-  sync.on("updated", () => { pushViewModel(); updateTray(); });
+  sync.on("updated", () => { pushViewModel(); updateTray(); filter.apply(sync.manifest); });
   sync.on("state", () => { updateTray(); if (setupWin) setupWin.webContents.send("state", sync.state); });
 
   tray = new Tray(trayIcon());
-  tray.on("click", () => tray.popUpContextMenu());
+  if (!IS_MAC) tray.on("click", () => tray.popUpContextMenu()); // Mac öffnet das Menü von selbst
   updateTray();
 
   createDemoWindow();

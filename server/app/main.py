@@ -9,6 +9,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import secrets
 import shutil
 import sqlite3
@@ -54,7 +55,25 @@ DEFAULT_SETTINGS = {
 # Text-Einstellungen
 TEXT_SETTINGS = {
     "store_name": "",
+    # Kindersicherung der Laptops: off / family (Cloudflare for Families) / strict (CleanBrowsing Family)
+    "web_filter": "off",
+    # zusätzlich gesperrte Webseiten, eine Domain pro Zeile
+    "blocked_domains": "",
 }
+WEB_FILTER_MODES = {"off", "family", "strict"}
+DOMAIN_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+def clean_domains(text: str) -> list[str]:
+    """Sperrliste säubern: 'https://www.Beispiel.de/pfad' -> 'beispiel.de'."""
+    out = []
+    for line in (text or "").splitlines():
+        d = line.strip().lower()
+        d = re.sub(r"^[a-z]+://", "", d).split("/")[0].split(":")[0]
+        d = d.removeprefix("www.").strip(".")
+        if d and DOMAIN_RE.match(d) and d not in out:
+            out.append(d)
+    return out[:500]
 # Einstellungen, bei denen 0 "aus" bedeutet
 ZERO_ALLOWED = {"cleanup_interval_h"}
 WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -350,6 +369,8 @@ def build_manifest(c, device_row) -> dict:
             "logo_url": "/api/logo" if logo else "",
             "logo_sha256": logo["sha256"] if logo else "",
             "logo_mime": logo["mime"] if logo else "",
+            "web_filter": s["web_filter"],
+            "blocked_domains": clean_domains(s["blocked_domains"]),
         })
     manifest["hash"] = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:16]
     return manifest
@@ -744,6 +765,12 @@ def write_settings(body: dict):
             if k in DEFAULT_SETTINGS:
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)",
                           (k, str(max(0 if k in ZERO_ALLOWED else 1, int(v)))))
+            elif k == "web_filter" and isinstance(v, str):
+                if v not in WEB_FILTER_MODES:
+                    raise HTTPException(400, "Unbekannte Filterstufe")
+                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, v))
+            elif k == "blocked_domains" and isinstance(v, str):
+                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, "\n".join(clean_domains(v))))
             elif k in TEXT_SETTINGS and isinstance(v, str):
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, v.strip()[:80]))
             elif k == "schedule" and isinstance(v, dict):

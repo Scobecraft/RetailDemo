@@ -7,7 +7,7 @@ Vier Teile:
 | `server/` | Docker auf Proxmox | speichert Videos/Bilder, Playlists, Geräteliste, Laden-Logo |
 | Admin-App (`android/admin`) | dein Handy | Medien hochladen/löschen, Playlists, Geräte verwalten |
 | Demo-App (`android/demo`) | Ausstellungs-Handys | lädt Inhalte (1×/Stunde), spielt sie in Schleife, zeigt Name + Specs |
-| Laptop-Demo (`laptop/`) | Ausstellungs-Laptops (Windows) | wie Intel iPOS: animierte Spec-Präsentation mit Logo, Videos, Spec-Lasche am Rand |
+| Laptop-Demo (`laptop/`) | Ausstellungs-Laptops (Mac, Windows) | wie Intel iPOS: animierte Spec-Präsentation mit Logo, Videos, Spec-Lasche am Rand |
 
 ---
 
@@ -133,14 +133,24 @@ Alle Zeiten lassen sich in der Admin-App unter *Einstellungen → Demo-Verhalten
 
 ---
 
-## 4. Laptop-Demo (Windows)
+## 4. Laptop-Demo (Mac und Windows)
 
-1. `RetailDemo-Laptop-Setup-x.y.z.exe` auf dem Laptop ausführen (Windows-SmartScreen: „Weitere Informationen“ →
-   „Trotzdem ausführen“, die Datei ist nicht signiert).
-2. Im Einrichtungsfenster Server-Adresse, **DEVICE_TOKEN** (dasselbe wie auf den Handys) und eine PIN eintragen →
-   **Speichern & verbinden**. Der Laptop erscheint danach auf der Webseite und in der Admin-App unter Geräte (💻).
-3. Windows: Energieoptionen → „Bildschirm ausschalten“ und „Energiesparmodus“ bei Netzbetrieb auf **Nie**
-   (die App hält den Bildschirm während der Betriebszeiten zusätzlich wach).
+**Mac** (macOS 12 oder neuer):
+
+1. Passende Datei entpacken: `RetailDemo-Laptop-mac-arm64-….zip` für Macs mit Apple-Chip (M1–M5),
+   `…-mac-x64-….zip` für ältere Intel-Macs. `Retail Demo Laptop.app` in den Ordner **Programme** ziehen.
+2. Einmalig im Terminal (die App ist nicht bei Apple registriert, das signiert sie lokal):
+   ```bash
+   xattr -cr "/Applications/Retail Demo Laptop.app" && codesign --force --deep --sign - "/Applications/Retail Demo Laptop.app"
+   ```
+3. App öffnen. Sie hat kein Dock-Symbol, sondern ein Symbol oben in der **Menüleiste**.
+4. Im Einrichtungsfenster Server-Adresse, **DEVICE_TOKEN** und eine PIN eintragen → **Speichern & verbinden**.
+5. Optional **Kindersicherung → Einrichten** (fragt einmal das Admin-Passwort des Macs ab).
+6. Systemeinstellungen → Sperrbildschirm: „Bildschirmschoner starten“ und „Display ausschalten“ auf **Nie**.
+   Falls die App nach einem Neustart nicht startet: Systemeinstellungen → Allgemein → Anmeldeobjekte → „+“ → App hinzufügen.
+
+**Windows:** `RetailDemo-Laptop-Setup-x.y.z.exe` ausführen (SmartScreen: „Weitere Informationen“ → „Trotzdem
+ausführen“), dann weiter wie oben ab Schritt 4. Energieoptionen: Bildschirm ausschalten/Energiesparmodus bei Netzbetrieb auf **Nie**.
 
 **Verhalten:**
 - Niemand bedient den Laptop (Standard **60 Sekunden**, einstellbar unter Einstellungen → „Laden & Laptops“) →
@@ -154,14 +164,26 @@ Alle Zeiten lassen sich in der Admin-App unter *Einstellungen → Demo-Verhalten
   Ein Eintrag mit der Bezeichnung „Preis“ wird groß als Preisschild gezeigt.
 - **Laden-Logo** und **Ladenname**: Webseite → Einstellungen → „Laden & Laptops“ (oder Admin-App → Einstellungen).
 - Betriebszeiten gelten auch für Laptops: außerhalb erscheint keine Demo, Windows darf in den Energiesparmodus.
-- Mitarbeiter-Zugang: Tray-Symbol unten rechts → „Einstellungen …“ oder **Strg + Alt + Umschalt + D**, jeweils mit PIN.
-  Beenden nur mit PIN. Startet automatisch mit Windows.
+- Mitarbeiter-Zugang: Symbol in der Menüleiste (Mac) bzw. im Tray unten rechts (Windows) → „Einstellungen …“ oder
+  **⌃ ctrl + ⌥ option + ⇧ shift + D** (Windows: Strg + Alt + Umschalt + D), jeweils mit PIN. Beenden nur mit PIN.
+  Startet automatisch beim Anmelden.
+
+**Kindersicherung für Webseiten (Mac):** Webseite → Einstellungen → „Kindersicherung“ (oder Admin-App):
+- *Jugendschutz*: Jugendschutz-DNS von Cloudflare for Families, sperrt Pornografie/Erwachsenen-Seiten und Schadsoftware.
+- *Jugendschutz streng*: CleanBrowsing Family, zusätzlich Glücksspiel, Proxys/VPNs, SafeSearch bei Google/Bing/YouTube erzwungen.
+- Eigene Sperrliste (z. B. `tiktok.com`), gilt bei eingeschalteter Kindersicherung.
+- Gilt für alle Browser. Ein kleiner Systemdienst setzt die Einstellung und stellt sie alle 2 Minuten wieder her,
+  falls jemand den DNS von Hand ändert. Ob sie aktiv ist, steht unter „Geräte“ beim jeweiligen Laptop.
+- Grenzen: Wer im Browser selbst „Sicheres DNS“ mit einem anderen Anbieter einstellt oder ein VPN nutzt, kann den
+  Filter umgehen (bei „streng“ sind die meisten VPN-Seiten gesperrt). Ausschalten: Einstellung auf „Aus“, oder in der
+  Laptop-Demo → Einstellungen → Kindersicherung → Entfernen.
 
 **Selbst bauen** (Node.js 22):
 
 ```bash
 cd laptop
 npm install
+npm run dist:mac     # -> dist/RetailDemo-Laptop-mac-arm64-1.0.0.zip und …-mac-x64-1.0.0.zip
 npm run dist:win     # -> dist/RetailDemo-Laptop-Setup-1.0.0.exe
 ```
 

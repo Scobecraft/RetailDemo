@@ -19,6 +19,10 @@ function msg(text, ok) {
 
 async function load(fillForm) {
   info = await rd.invoke("setup:get");
+  if (info.platform === "darwin") {
+    $("#whereTray").textContent = "Symbol oben in der Menüleiste";
+    $("#hotkey").textContent = "⌃ ctrl + ⌥ option + ⇧ shift + D";
+  }
   if (fillForm) {
     $("#url").value = info.serverUrl;
     $("#token").placeholder = info.hasToken ? "•••••••• (unverändert lassen)" : "";
@@ -39,6 +43,14 @@ async function load(fillForm) {
   ];
   $("#status").innerHTML = rows.map(([k, v]) => `<div>${esc(k)}</div><div>${esc(v)}</div>`).join("");
   $("#start").disabled = !info.hasPin || !info.serverUrl;
+  const f = info.filter;
+  const wanted = { off: "aus", family: "Jugendschutz", strict: "Jugendschutz streng" }[f.wanted] || f.wanted;
+  $("#filterStatus").innerHTML = [
+    ["Eingestellt", `${wanted}${f.domains ? ` + ${f.domains} eigene gesperrte Seiten` : ""}`],
+    ["Auf diesem Gerät", !f.supported ? "nur auf dem Mac verfügbar" : f.installed ? (f.state || "eingerichtet, zurzeit aus") : "nicht eingerichtet"],
+  ].map(([k, v]) => `<div>${esc(k)}</div><div>${esc(v)}</div>`).join("");
+  $("#filterInstall").hidden = !f.supported || f.installed;
+  $("#filterRemove").hidden = !f.supported || !f.installed;
   if (info.local) {
     $("#local").innerHTML = `<b>${esc(info.local.marketing_name || info.local.model)}</b>` +
       `<ul class="specs">${info.local.specs.map(s => `<li>${esc(s.label)}: ${esc(s.value)}</li>`).join("")}</ul>`;
@@ -72,6 +84,18 @@ $("#sync").addEventListener("click", async () => {
   msg(err ? `Abgleich fehlgeschlagen: ${err}` : "✓ Abgleich erfolgreich", !err);
   load(false);
 });
+async function filterAction(channel, button) {
+  button.disabled = true;
+  $("#filterMsg").textContent = "Bitte das Admin-Passwort im macOS-Dialog eingeben …";
+  $("#filterMsg").className = "msg ok";
+  const r = await rd.invoke(channel);
+  button.disabled = false;
+  $("#filterMsg").textContent = r.error ? r.error : channel === "filter:install" ? "✓ Kindersicherung eingerichtet" : "✓ Kindersicherung entfernt";
+  $("#filterMsg").className = "msg " + (r.error ? "err" : "ok");
+  load(false);
+}
+$("#filterInstall").addEventListener("click", e => filterAction("filter:install", e.target));
+$("#filterRemove").addEventListener("click", e => { if (confirm("Kindersicherung von diesem Mac entfernen?")) filterAction("filter:uninstall", e.target); });
 $("#start").addEventListener("click", () => rd.send("setup:startDemo"));
 $("#quit").addEventListener("click", () => { if (confirm("Retail Demo Laptop wirklich beenden? Die Demo läuft dann erst nach dem nächsten Neustart wieder.")) rd.send("setup:quit"); });
 rd.on("state", () => load(false));

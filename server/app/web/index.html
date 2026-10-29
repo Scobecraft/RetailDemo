@@ -293,6 +293,7 @@
         <div class="panel" id="storeSettings"></div>
         <div class="panel" id="behaviourSettings"></div>
         <div class="panel" id="scheduleSettings"></div>
+        <div class="panel" id="filterSettings"></div>
       </div>
     </div>
   </main>
@@ -756,6 +757,24 @@ function renderSettings() {
     el("label", {}, "Name des Ladens (wird ohne Logo groß angezeigt)"), store,
     ...lapIdle.nodes,
     el("button", { class: "btn primary block", onclick: () => saveSettings({ store_name: store.value, laptop_idle_timeout_s: +lapIdle.input.value || s.laptop_idle_timeout_s }) }, "Speichern"));
+
+  // Kindersicherung
+  const FILTERS = [
+    ["off", "Aus", "Keine Einschränkung."],
+    ["family", "Jugendschutz", "Sperrt Pornografie und Seiten für Erwachsene sowie Schadsoftware (Cloudflare for Families)."],
+    ["strict", "Jugendschutz streng", "Zusätzlich Glücksspiel-, Proxy- und VPN-Seiten gesperrt, SafeSearch bei Google, Bing und YouTube erzwungen (CleanBrowsing Family)."],
+  ];
+  let filterMode = s.web_filter || "off";
+  const blocked = el("textarea", { rows: 5, placeholder: "tiktok.com\nbet365.de" });
+  blocked.value = s.blocked_domains || "";
+  $("#filterSettings").replaceChildren(
+    el("h3", {}, "Kindersicherung (Mac-Laptops)"),
+    el("p", { class: "sub" }, "Gilt in allen Browsern. Muss auf jedem Mac einmalig mit dem Admin-Passwort eingerichtet werden (Laptop-Demo → Einstellungen). Den Zustand siehst du unter „Geräte“."),
+    ...FILTERS.map(([value, label, desc]) => el("label", { class: "check-row", style: "display:flex;gap:10px;align-items:flex-start;margin:10px 0 0;color:var(--text);cursor:pointer" },
+      el("input", { type: "radio", name: "webfilter", value, checked: filterMode === value, style: "accent-color:var(--accent);margin-top:4px", onchange: () => filterMode = value }),
+      el("span", {}, el("strong", {}, label), el("br"), el("span", { class: "muted", style: "font-size:13px" }, desc)))),
+    el("label", {}, "Zusätzlich gesperrte Webseiten (eine pro Zeile, nur wenn die Kindersicherung an ist)"), blocked,
+    el("button", { class: "btn primary block", onclick: () => saveSettings({ web_filter: filterMode, blocked_domains: blocked.value }, "Gespeichert – Laptops übernehmen es beim nächsten Abgleich") }, "Speichern"));
 
   // Demo-Verhalten
   const fields = [

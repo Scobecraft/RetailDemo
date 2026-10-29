@@ -8,6 +8,7 @@
   :root { --accent: #ee7f00; --accent-dark: #c96a00; --accent-soft: #fff3e5; --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb; --ok: #16a34a; --danger: #dc2626; }
   @media (prefers-color-scheme: dark) { :root { --bg: #111318; --card: #1b1e25; --text: #e8eaf0; --muted: #9aa1ae; --line: #2c313b; --accent-soft: #33240f; } }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
   h1 { font-size: 20px; margin: 0 0 2px; }
   .sub { color: var(--muted); margin: 0 0 16px; }
@@ -50,7 +51,7 @@
         <div><label for="pin">PIN (4–8 Ziffern)</label><input type="password" id="pin" inputmode="numeric" autocomplete="new-password"></div>
         <div><label for="pin2">PIN wiederholen</label><input type="password" id="pin2" inputmode="numeric" autocomplete="new-password"></div>
       </div>
-      <label class="check"><input type="checkbox" id="autostart" checked> Beim Anmelden an Windows automatisch starten</label>
+      <label class="check"><input type="checkbox" id="autostart" checked> Beim Anmelden automatisch starten</label>
       <div class="row"><button class="btn primary" type="submit" id="save">Speichern &amp; verbinden</button></div>
       <div class="msg" id="msg"></div>
     </form>
@@ -68,6 +69,18 @@
   </div>
 
   <div class="card">
+    <h2>Kindersicherung für Webseiten</h2>
+    <p class="sub" style="margin:0 0 8px">Sperrt Seiten für Erwachsene (Pornografie, Glücksspiel u. Ä.) in allen Browsern. Ein- und ausschalten
+      und eigene Sperrliste: Webseite bzw. Admin-App → Einstellungen. Auf diesem Mac einmalig mit dem Admin-Passwort einrichten.</p>
+    <div class="kv" id="filterStatus"></div>
+    <div class="row">
+      <button class="btn primary" id="filterInstall">Einrichten (Admin-Passwort)</button>
+      <button class="btn danger" id="filterRemove">Entfernen</button>
+    </div>
+    <div class="msg" id="filterMsg"></div>
+  </div>
+
+  <div class="card">
     <h2>Automatisch erkannt</h2>
     <div id="local" class="sub" style="margin:0">wird ermittelt …</div>
   </div>
@@ -75,7 +88,7 @@
   <p class="hint">
     Name, Playlist und eigene Specs (z. B. Preis) legst du auf der Webseite oder in der Admin-App unter <b>Geräte</b> fest,
     Logo und Ladenname unter <b>Einstellungen</b>.<br>
-    Zurück in dieses Fenster: Tray-Symbol unten rechts → „Einstellungen …“ oder <b>Strg + Alt + Umschalt + D</b> (jeweils mit PIN).
+    Zurück in dieses Fenster: <span id="whereTray">Tray-Symbol unten rechts</span> → „Einstellungen …“ oder <b id="hotkey">Strg + Alt + Umschalt + D</b> (jeweils mit PIN).
   </p>
 
 <script src="setup.js"></script>

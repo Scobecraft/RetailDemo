@@ -9,6 +9,7 @@ const { Readable } = require("stream");
 const { pipeline } = require("stream/promises");
 const { net } = require("electron");
 const specs = require("./specs");
+const filter = require("./filter");
 
 const EXT = {
   "video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm", "video/x-matroska": ".mkv", "video/x-m4v": ".m4v",
@@ -97,7 +98,7 @@ class Sync extends EventEmitter {
       app_version: this.appVersion,
       specs: withSpecs ? l.specs || [] : [],
       synced_hash: this.config.data.syncedHash || null,
-      status: this.status,
+      status: [this.status, filter.describe(this.manifest)].filter(Boolean).join(" · "),
       error: this.config.data.lastError || null,
       battery: await specs.batteryPercent(),
     };

@@ -2,7 +2,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 const SEND = ["demo:input", "demo:startNow", "panel:toggle", "setup:startDemo", "setup:quit"];
-const INVOKE = ["vm", "pin:check", "setup:get", "setup:save", "setup:sync"];
+const INVOKE = ["vm", "pin:check", "setup:get", "setup:save", "setup:sync", "filter:install", "filter:uninstall"];
 const LISTEN = ["vm", "demo:start", "demo:stop", "panel:open", "state"];
 
 contextBridge.exposeInMainWorld("rd", {

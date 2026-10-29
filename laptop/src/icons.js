@@ -8,7 +8,7 @@
     [/grafik|gpu|graphics/i, svg('<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="9" cy="12" r="3"/><circle cx="16.5" cy="12" r="1.5"/><path d="M5 18v2M10 18v2"/>')],
     [/display|bildschirm|screen|panel/i, svg('<rect x="3" y="4" width="18" height="12" rx="1.8"/><path d="M2 19h20M9 16l-.5 3M15 16l.5 3"/>')],
     [/akku|batter/i, svg('<rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 10.5v3M11 9l-2.5 3.5h4L10 16"/>')],
-    [/betriebssystem|windows|os\b|system/i, svg('<path d="M3 5.5l7.5-1v7H3zM12 4.2L21 3v8.5h-9zM3 13h7.5v7L3 19zM12 13h9v8l-9-1.2z"/>')],
+    [/betriebssystem|windows|macos|os\b|system/i, svg('<rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/>')],
     [/gewicht|weight/i, svg('<path d="M6.5 8h11l2.5 12H4z"/><circle cx="12" cy="5.5" r="2.5"/>')],
     [/kamera|webcam|camera/i, svg('<path d="M3 8h3.5L8.5 5h7l2 3H21v11H3z"/><circle cx="12" cy="13" r="3.5"/>')],
     [/wlan|wifi|wi-fi|funk|bluetooth/i, svg('<path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.2" r="1"/>')],

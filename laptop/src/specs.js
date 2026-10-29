@@ -1,6 +1,10 @@
 // Liest die Hardware des Laptops aus und macht daraus verkaufsfertige Specs auf Deutsch.
 const si = require("systeminformation");
 const crypto = require("crypto");
+const { execFile } = require("child_process");
+
+const run = (cmd, args) => new Promise(resolve =>
+  execFile(cmd, args, { timeout: 20_000, maxBuffer: 16 * 1024 * 1024 }, (err, out) => resolve(err ? "" : String(out))));
 
 const BRANDS = [
   [/lenovo/i, "Lenovo"], [/^hp|hewlett/i, "HP"], [/dell/i, "Dell"], [/asus/i, "ASUS"], [/acer/i, "Acer"],
@@ -33,7 +37,76 @@ async function deviceId() {
   return "pc-" + crypto.createHash("sha256").update(String(raw)).digest("hex").slice(0, 24);
 }
 
+// ---------------------------------------------------------------- Mac
+// system_profiler/ioreg kennen Verkaufsname ("MacBook Air (13-inch, M3, 2024)"), Chip und GPU-Kerne.
+async function collectMac() {
+  const [hwJson, ioreg, disks, bat, os] = await Promise.all([
+    run("/usr/sbin/system_profiler", ["-json", "SPHardwareDataType", "SPDisplaysDataType"]),
+    run("/usr/sbin/ioreg", ["-rd1", "-c", "IOPlatformExpertDevice"]),
+    settle(si.diskLayout()), settle(si.battery()), settle(si.osInfo()),
+  ]);
+  let hw = {}, gpu = {}, display = null;
+  try {
+    const j = JSON.parse(hwJson);
+    hw = (j.SPHardwareDataType || [])[0] || {};
+    gpu = (j.SPDisplaysDataType || [])[0] || {};
+    const screens = gpu.spdisplays_ndrvs || [];
+    display = screens.find(d => /internal|built-in/i.test(`${d.spdisplays_connection_type} ${d.spdisplays_display_type}`)) || screens[0] || null;
+  } catch {}
+  // Apple Silicon: Verkaufsname steht in ioreg als product-name
+  const m = /"product-name"\s*=\s*<"([^"]+)">/.exec(ioreg);
+  const marketing = (m && m[1]) || hw.machine_name || "Mac";
+
+  const specs = [];
+  const chip = hw.chip_type || hw.cpu_type || "";
+  if (chip) {
+    // "proc 12:6:6" = gesamt : Performance : Effizienz
+    const p = /proc (\d+):(\d+):(\d+)/.exec(hw.number_processors || "");
+    const cores = p ? ` (${p[1]} Kerne: ${p[2]} Performance + ${p[3]} Effizienz)` : hw.number_processors ? ` (${hw.number_processors} Kerne)` : "";
+    specs.push({ label: "Chip", value: chip + cores });
+  }
+  if (gpu.sppci_cores) specs.push({ label: "Grafik", value: `${gpu.sppci_cores}-Kern-GPU` });
+  else if (gpu.sppci_model && gpu.sppci_model !== chip) specs.push({ label: "Grafik", value: gpu.sppci_model });
+  if (hw.physical_memory) specs.push({ label: "Arbeitsspeicher", value: hw.physical_memory.replace(/\s+/, " ") });
+  const storage = storageSpec(disks);
+  if (storage) specs.push(storage);
+  if (display) {
+    const type = String(display.spdisplays_display_type || "").toLowerCase();
+    const name = /xdr/.test(type) ? "Liquid Retina XDR" : /liquid/.test(type) ? "Liquid Retina" : /retina/.test(type) ? "Retina" : "";
+    const size = /\((\d+(?:[.,]\d)?)-inch/i.exec(marketing);
+    const px = /(\d+)\s*x\s*(\d+)/.exec(display._spdisplays_pixels || display.spdisplays_resolution || "");
+    const hz = /@\s*([\d.]+)\s*Hz/i.exec(display._spdisplays_resolution || "");
+    const parts = [size ? `${size[1].replace(".", ",")}"` : "", name, px ? `${px[1]} × ${px[2]}` : "", hz && +hz[1] > 61 ? `${Math.round(+hz[1])} Hz` : ""].filter(Boolean);
+    if (parts.length) specs.push({ label: "Display", value: parts.join(" · ") });
+  }
+  const battery = batterySpec(bat);
+  if (battery) specs.push(battery);
+  const osName = os ? `macOS ${os.codename ? os.codename.replace(/^macOS\s*/i, "") + " " : ""}${os.release || ""}`.trim() : "";
+  if (osName) specs.push({ label: "Betriebssystem", value: osName });
+
+  return { manufacturer: "Apple", model: hw.machine_model || hw.model_number || "", marketing_name: marketing, os_version: osName, specs };
+}
+
+function storageSpec(disks) {
+  if (!disks || !disks.length) return null;
+  const internal = disks.filter(d => d.size > 32e9 && !/usb/i.test(d.interfaceType || ""));
+  const total = internal.reduce((a, d) => a + d.size, 0);
+  if (!total) return null;
+  const tb = total / 1e12;
+  const size = tb >= 0.9 ? `${de(Math.round(tb * 2) / 2)} TB` : `${[128, 256, 512].find(s => total / 1e9 <= s * 1.05) || Math.round(total / 1e9)} GB`;
+  const ssd = internal.some(d => /ssd|nvme|apple/i.test(`${d.type} ${d.interfaceType} ${d.name}`));
+  return { label: "Speicher", value: `${size} ${ssd ? "SSD" : ""}`.trim() };
+}
+
+function batterySpec(bat) {
+  if (!bat || !bat.hasBattery) return null;
+  const wh = bat.capacityUnit === "mWh" && bat.designedCapacity ? Math.round(bat.designedCapacity / 1000) : 0;
+  return wh > 10 ? { label: "Akku", value: `${wh} Wh` } : null;
+}
+
+// ---------------------------------------------------------------- Windows / Linux
 async function collect() {
+  if (process.platform === "darwin") return collectMac();
   const [sys, cpu, mem, memLayout, disks, gfx, bat, os] = await Promise.all([
     settle(si.system()), settle(si.cpu()), settle(si.mem()), settle(si.memLayout()),
     settle(si.diskLayout()), settle(si.graphics()), settle(si.battery()), settle(si.osInfo()),
@@ -63,16 +136,8 @@ async function collect() {
     const type = memLayout && memLayout.find(m => m.type && !/unknown/i.test(m.type));
     specs.push({ label: "Arbeitsspeicher", value: `${nice} GB${type ? " " + type.type : ""}` });
   }
-  if (disks && disks.length) {
-    const internal = disks.filter(d => d.size > 32e9 && !/usb/i.test(d.interfaceType || ""));
-    const total = internal.reduce((a, d) => a + d.size, 0);
-    if (total) {
-      const tb = total / 1e12;
-      const size = tb >= 0.9 ? `${de(Math.round(tb * 2) / 2)} TB` : `${[128, 256, 512].find(s => total / 1e9 <= s * 1.05) || Math.round(total / 1e9)} GB`;
-      const ssd = internal.some(d => /ssd|nvme/i.test(`${d.type} ${d.interfaceType}`));
-      specs.push({ label: "Speicher", value: `${size} ${ssd ? "SSD" : ""}`.trim() });
-    }
-  }
+  const storage = storageSpec(disks);
+  if (storage) specs.push(storage);
   if (gfx && gfx.controllers && gfx.controllers.length) {
     const ctrls = gfx.controllers.filter(c => c.model && !/basic display|remote|virtual|llvmpipe/i.test(c.model));
     // Dedizierte Grafik zuerst
@@ -97,10 +162,8 @@ async function collect() {
     if (d.currentRefreshRate > 61) parts.push(`${Math.round(d.currentRefreshRate)} Hz`);
     if (parts.length) specs.push({ label: "Display", value: parts.join(" · ") });
   }
-  if (bat && bat.hasBattery) {
-    const wh = bat.capacityUnit === "mWh" && bat.designedCapacity ? Math.round(bat.designedCapacity / 1000) : 0;
-    if (wh > 10) specs.push({ label: "Akku", value: `${wh} Wh` });
-  }
+  const battery = batterySpec(bat);
+  if (battery) specs.push(battery);
   if (os) {
     const name = String(os.distro || os.platform).replace(/^Microsoft\s+/i, "").replace(/\s+/g, " ").trim();
     if (name) specs.push({ label: "Betriebssystem", value: name });

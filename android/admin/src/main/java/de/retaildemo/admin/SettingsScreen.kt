@@ -32,6 +32,8 @@ import android.app.TimePickerDialog
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -100,6 +102,7 @@ fun SettingsScreen(vm: AdminViewModel, modifier: Modifier) {
 
             if (vm.isConfigured) {
                 StoreCard(vm, settings) { vm.saveSettings(it) }
+                WebFilterCard(settings) { vm.saveSettings(it) }
                 ScheduleCard(settings) { vm.saveSettings(settings.copy(schedule = it)) }
                 ServerSettingsCard(settings) { vm.saveSettings(it) }
             }
@@ -208,6 +211,49 @@ private fun StoreCard(vm: AdminViewModel, current: ServerSettings, onSave: (Serv
                     )
                 )
             }) { Text("Speichern") }
+        }
+    }
+}
+
+private val WEB_FILTERS = listOf(
+    Triple("off", "Aus", "Keine Einschränkung"),
+    Triple("family", "Jugendschutz", "Sperrt Pornografie, Seiten für Erwachsene und Schadsoftware"),
+    Triple("strict", "Jugendschutz streng", "Zusätzlich Glücksspiel, Proxys/VPNs; SafeSearch erzwungen"),
+)
+
+@Composable
+private fun WebFilterCard(current: ServerSettings, onSave: (ServerSettings) -> Unit) {
+    var mode by remember(current) { mutableStateOf(current.webFilter) }
+    var domains by remember(current) { mutableStateOf(current.blockedDomains) }
+
+    Card {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Kindersicherung (Mac-Laptops)", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Gilt in allen Browsern. Auf jedem Mac einmalig in der Laptop-Demo unter Einstellungen mit dem Admin-Passwort einrichten.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            WEB_FILTERS.forEach { (value, label, desc) ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { mode = value },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = mode == value, onClick = { mode = value })
+                    Column {
+                        Text(label)
+                        Text(desc, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    }
+                }
+            }
+            OutlinedTextField(
+                domains, { domains = it },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3,
+                label = { Text("Zusätzlich gesperrte Webseiten") },
+                placeholder = { Text("tiktok.com\nbet365.de") },
+                supportingText = { Text("Eine pro Zeile, gilt nur bei eingeschalteter Kindersicherung") },
+            )
+            Button(onClick = { onSave(current.copy(webFilter = mode, blockedDomains = domains)) }) { Text("Speichern") }
         }
     }
 }

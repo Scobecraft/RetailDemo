@@ -100,6 +100,10 @@ data class ServerSettings(
     @SerialName("cleanup_interval_h") val cleanupIntervalH: Int = 2,
     @SerialName("laptop_idle_timeout_s") val laptopIdleTimeoutS: Int = 60,
     @SerialName("store_name") val storeName: String = "",
+    /** Kindersicherung der Mac-Laptops: "off", "family" oder "strict". */
+    @SerialName("web_filter") val webFilter: String = "off",
+    /** Zusätzlich gesperrte Webseiten, eine Domain pro Zeile. */
+    @SerialName("blocked_domains") val blockedDomains: String = "",
     val schedule: Schedule = Schedule(),
     /** Laden-Logo für die Laptop-Demo (nur lesen; ändern über [ApiClient.uploadLogo]). */
     val logo: LogoInfo? = null,
