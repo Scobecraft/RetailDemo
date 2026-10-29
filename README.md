@@ -190,6 +190,17 @@ npm run dist:win     # -> dist/RetailDemo-Laptop-Setup-1.0.0.exe
 Zum Ausprobieren ohne Installer: `npm start`. Für Updates in `laptop/package.json` die `version` erhöhen und die
 neue Setup-Datei einfach über die alte installieren (Einstellungen bleiben erhalten).
 
+## Apps aktualisieren (ohne neu einzurichten)
+
+Neue Versionen einfach **über die alte installieren**: APK auf dem Gerät öffnen → „Aktualisieren“.
+Server-Adresse, Token, PIN, Berechtigungen und Einstellungen bleiben erhalten.
+**Die alte Version vorher nicht löschen!**
+
+Das klappt nur, wenn die neue APK mit **demselben Signaturschlüssel** gebaut wurde
+(`android/keystore/release.jks` + `android/keystore.properties`, siehe RetailDemo-Signaturschluessel.zip).
+Ohne diesen Schlüssel bricht der Build absichtlich ab. In einer neuen Sitzung mit Claude die ZIP-Datei
+deshalb immer mitgeben.
+
 ## APKs selbst bauen
 
 ```bash

@@ -75,43 +75,71 @@ class IdleWatcherService : AccessibilityService() {
         }
     }
 
+    /** Hinweise darauf, dass es ums Deinstallieren geht (nicht um Installieren/Aktualisieren). */
+    private val uninstallPattern = Regex(
+        "(?i)(deinstall|uninstall|désinstall|disinstall|desinstal|odinstal|verwijder|удал|kaldır)"
+    )
+
+    private fun looksLikeUninstall(className: CharSequence?, texts: List<String>) =
+        className?.contains("uninstall", ignoreCase = true) == true || texts.any { uninstallPattern.containsMatchIn(it) }
+
     private val appLabelPattern by lazy {
         Regex("\\b" + Regex.escape(applicationInfo.loadLabel(packageManager).toString()) + "\\b")
     }
+
+    // Zustand des aktuell geöffneten Installer-Fensters. Abfragen des Fensterinhalts müssen vom Installer
+    // selbst beantwortet werden – deshalb sparsam: nur kurz nach dem Öffnen, gedrosselt, einmal entschieden ist entschieden.
+    private var installerWindowSince = 0L
+    private var installerWindowClass: CharSequence? = null
+    private var installerWindowDecided = false
+    private var lastInstallerScan = 0L
 
     /** Will jemand diese App deinstallieren? Dann Dialog sofort schließen und nach der PIN fragen. */
     private fun checkUninstallDialog(event: AccessibilityEvent) {
         val now = SystemClock.elapsedRealtime()
         if (now < demoApp.uninstallUnlockedUntil || now - lastUninstallBlock < 3_000) return
-        if (isAboutThisApp(event)) {
-            blockUninstall(now)
-        } else if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            // Inhalt evtl. noch nicht da: kurz hintereinander erneut nachsehen
-            for (delay in longArrayOf(50, 150, 300, 600)) {
-                handler.postDelayed({
-                    val t = SystemClock.elapsedRealtime()
-                    if (t - lastUninstallBlock >= 3_000 && t >= demoApp.uninstallUnlockedUntil &&
-                        textsOf(rootInActiveWindow).any { appLabelPattern.containsMatchIn(it) } &&
-                        rootInActiveWindow?.packageName?.contains("packageinstaller") == true
-                    ) blockUninstall(t)
-                }, delay)
-            }
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            installerWindowSince = now
+            installerWindowClass = event.className
+            installerWindowDecided = false
+            lastInstallerScan = 0
+            // Falls keine weiteren Ereignisse kommen: zweimal nachsehen
+            for (delay in longArrayOf(300, 900)) handler.postDelayed({ scanInstallerWindow(null) }, delay)
         }
+        if (installerWindowDecided || now - installerWindowSince > 2_000) return
+
+        // 1. Texte direkt aus dem Ereignis (kostet nichts)
+        val eventTexts = event.text.map { it.toString() }
+        if (eventTexts.any { appLabelPattern.containsMatchIn(it) } && looksLikeUninstall(installerWindowClass, eventTexts)) {
+            installerWindowDecided = true
+            blockUninstall(now)
+            return
+        }
+        // 2. Fensterinhalt lesen – höchstens alle 150 ms
+        if (now - lastInstallerScan >= 150) scanInstallerWindow(event.source)
     }
 
-    private fun isAboutThisApp(event: AccessibilityEvent): Boolean {
-        // 1. Texte direkt aus dem Ereignis (kostet nichts)
-        if (event.text.any { appLabelPattern.containsMatchIn(it) }) return true
-        // 2. Fenster, zu dem das Ereignis gehört
-        var node = event.source ?: return false
-        repeat(10) { node = node.parent ?: return@repeat }
-        return textsOf(node).any { appLabelPattern.containsMatchIn(it) }
+    private fun scanInstallerWindow(source: android.view.accessibility.AccessibilityNodeInfo?) {
+        val now = SystemClock.elapsedRealtime()
+        if (installerWindowDecided || now - installerWindowSince > 2_000 ||
+            now < demoApp.uninstallUnlockedUntil || now - lastUninstallBlock < 3_000
+        ) return
+        lastInstallerScan = now
+        var root = source ?: rootInActiveWindow ?: return
+        repeat(10) { root = root.parent ?: return@repeat }
+        if (root.packageName?.contains("packageinstaller") != true) return
+        val texts = textsOf(root)
+        if (texts.none { appLabelPattern.containsMatchIn(it) }) return // Inhalt noch nicht geladen
+        installerWindowDecided = true
+        if (looksLikeUninstall(installerWindowClass, texts)) blockUninstall(now)
     }
 
     private fun textsOf(root: android.view.accessibility.AccessibilityNodeInfo?): List<String> {
         val texts = mutableListOf<String>()
+        var visited = 0
         fun collect(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
-            if (node == null || depth > 8 || texts.size > 50) return
+            if (node == null || depth > 7 || visited >= 40) return
+            visited++
             node.text?.let { texts += it.toString() }
             for (i in 0 until node.childCount) collect(node.getChild(i), depth + 1)
         }

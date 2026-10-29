@@ -19,12 +19,21 @@ android {
         applicationId = "de.retaildemo.demo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 5
+        versionName = "1.3.1"
     }
 
     signingConfigs {
         create("release") {
+            // Updates lassen sich nur mit DEMSELBEN Schlüssel über die alte Version installieren.
+            // Ohne Schlüssel lieber abbrechen als eine inkompatible APK bauen.
+            val wantsRelease = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+            if (keystoreProps.isEmpty() && wantsRelease) {
+                throw GradleException(
+                    "Signaturschlüssel fehlt: keystore/release.jks und keystore.properties " +
+                        "(aus RetailDemo-Signaturschluessel.zip) in den Ordner android/ entpacken."
+                )
+            }
             if (keystoreProps.isNotEmpty()) {
                 storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
                 storePassword = keystoreProps.getProperty("storePassword")
@@ -37,7 +46,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName(if (keystoreProps.isNotEmpty()) "release" else "debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
