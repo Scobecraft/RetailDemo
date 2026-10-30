@@ -204,6 +204,10 @@ Webseite und Admin-App starten mit einer **Übersicht**: wie viele Geräte verbu
 Demo gerade läuft (bzw. ein Kunde das Gerät benutzt, pausiert, Ruhezeit, offline), welche App-Versionen im
 Einsatz sind und wie ausgelastet der Server-Container ist (CPU, RAM, Speicher, Verlauf der letzten Stunde).
 
+Die Übersicht ist **live**: Die Webseite aktualisiert alle Werte alle 2 Sekunden (Admin-App alle 3 s),
+ohne neu zu laden. Geräte melden Statusänderungen (Kunde tippt, Demo läuft wieder, Pause) sofort –
+nicht erst beim nächsten Heartbeat. Ist der Browser-Tab im Hintergrund, pausiert die Aktualisierung.
+
 Damit die Auslastung des **Proxmox-Containers** (und nicht nur die Docker-Sicht) angezeigt wird, bindet
 `docker-compose.yml` drei Dateien aus `/proc` lesend ein – nach dem Update einmal
 `docker compose up -d --build` ausführen.
