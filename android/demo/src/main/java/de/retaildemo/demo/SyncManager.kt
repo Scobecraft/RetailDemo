@@ -41,6 +41,29 @@ class SyncManager(private val app: DemoApp) {
 
     /** Wird von der Demo-Ansicht gesetzt und im Heartbeat gemeldet. */
     @Volatile var playerStatus: String = "Gestartet"
+        set(value) {
+            val changed = field != value
+            field = value
+            if (changed) reportStatusSoon()
+        }
+
+    private var statusJob: kotlinx.coroutines.Job? = null
+
+    /** Statusänderung (z. B. "Kunde benutzt Gerät") gleich melden, damit die Übersicht live ist. */
+    private fun reportStatusSoon() {
+        if (!prefs.isConfigured) return
+        statusJob?.cancel()
+        statusJob = app.scope.launch {
+            delay(1_500) // kurz sammeln, falls sich der Status gleich wieder ändert
+            runCatching { handleHeartbeat(api().heartbeat(report(withSpecs = false))) }
+        }
+    }
+
+    private suspend fun handleHeartbeat(r: de.retaildemo.core.HeartbeatResponse): Int {
+        r.appUpdate?.let { u -> app.updater.prefetchInBackground(u) }
+        if (r.syncNow) syncNow()
+        return r.heartbeatIntervalS
+    }
 
     val mediaDir: File by lazy { File(app.filesDir, "media").apply { mkdirs() } }
 
@@ -73,11 +96,7 @@ class SyncManager(private val app: DemoApp) {
             var waitS = 300
             if (prefs.isConfigured) {
                 runCatching { api().heartbeat(report(withSpecs = false)) }
-                    .onSuccess {
-                        waitS = it.heartbeatIntervalS
-                        it.appUpdate?.let { u -> app.updater.prefetchInBackground(u) }
-                        if (it.syncNow) syncNow()
-                    }
+                    .onSuccess { waitS = handleHeartbeat(it) }
                     .onFailure { Log.w(TAG, "Heartbeat fehlgeschlagen", it) }
             }
             delay(waitS * 1000L)

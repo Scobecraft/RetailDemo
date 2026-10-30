@@ -192,7 +192,13 @@
   .kpi.hero { background: linear-gradient(135deg, var(--accent), #c96a00); color: #fff; border: 0; }
   .kpi.hero h3, .kpi.hero .note, .kpi.hero .value small { color: rgba(255,255,255,.85); }
   .seg { display: flex; gap: 2px; height: 44px; border-radius: 6px; overflow: hidden; margin: 6px 0 12px; background: var(--card); }
-  .seg div { display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; font-size: 14px; min-width: 0; transition: flex-grow .4s; cursor: default; }
+  .seg div { display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; font-size: 14px; min-width: 0; flex-basis: 0; overflow: hidden; transition: flex-grow .6s ease; cursor: default; }
+  .seg div.zero { margin-left: -2px; }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ok); }
+  .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: pulse 2s infinite; }
+  .live.lost { color: var(--danger); } .live.lost i { background: var(--danger); animation: none; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(22,163,74,.5); } 70% { box-shadow: 0 0 0 7px rgba(22,163,74,0); } 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); } }
+  @media (prefers-reduced-motion: reduce) { .live i { animation: none; } .seg div, .meter .fill { transition: none; } }
   .seg div.dark-ink { color: #0b0b0b; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--text); }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -204,7 +210,7 @@
   .meter .lbl { font-weight: 600; }
   .meter .detail { color: var(--muted); font-size: 13px; margin-left: auto; text-align: right; }
   .meter .track { height: 10px; border-radius: 5px; background: var(--meter-track); margin-top: 6px; overflow: hidden; }
-  .meter .fill { height: 100%; border-radius: 5px; background: var(--meter-fill); transition: width .5s; }
+  .meter .fill { height: 100%; border-radius: 5px; background: var(--meter-fill); transition: width .8s ease; }
   .meter .warn { color: var(--warn); font-size: 13px; margin-top: 4px; font-weight: 600; }
   .chart-wrap { position: relative; }
   .chart-wrap svg { display: block; width: 100%; height: 220px; }
@@ -899,83 +905,154 @@ function duration(sec) {
   const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600);
   return d ? `${d} T. ${h} Std.` : `${h} Std. ${Math.floor(sec % 3600 / 60)} Min.`;
 }
-async function loadOverview() {
-  const o = await api("/api/admin/overview");
-  const d = o.devices, sys = o.system;
-  const kpi = (title, value, of, note, hero) => el("div", { class: "ov-card kpi span-3" + (hero ? " hero" : "") },
-    el("h3", {}, title), el("div", { class: "value" }, String(value), of != null ? el("small", {}, ` / ${of}`) : null),
-    el("div", { class: "note" }, note));
+// Die Übersicht wird einmal aufgebaut und danach alle 2 s nur mit neuen Werten versorgt (live, ohne Flackern).
+const ov = { built: false, refs: {}, historyT: null, timer: null, busy: false };
 
-  const rel = o.app_release;
-  // Verteilung der Geräte (ein Ganzes in <= 5 Teile: segmentierter Balken mit Legende)
-  const parts = [
-    ["Demo läuft", d.running, "var(--s1)", false],
-    ["Kunde benutzt", d.customer, "var(--s2)", false],
-    ["Pausiert", d.paused, "var(--s3)", false],
-    ["Ruhezeit", d.sleeping, "var(--s4)", true],
-    ["Offline", d.offline, "var(--s-off)", true],
-  ];
-  const other = d.online - d.running - d.customer - d.paused - d.sleeping;
-  if (other > 0) parts.splice(4, 0, ["Sonstiges", other, "var(--muted)", false]);
-  const seg = el("div", { class: "seg", role: "img", "aria-label": parts.map(p => `${p[0]} ${p[1]}`).join(", ") },
-    ...parts.filter(p => p[1] > 0).map(([name, n, color, darkInk]) =>
-      el("div", { style: `flex-grow:${n};background:${color}`, class: darkInk ? "dark-ink" : "", title: `${name}: ${n}` },
-        n / Math.max(1, d.total) >= 0.08 ? String(n) : "")));
+// Zahl sanft auf den neuen Wert zählen lassen
+function tweenNumber(node, to, fmt = v => String(Math.round(v))) {
+  const from = node._value ?? to;
+  node._value = to;
+  if (from === to) { node.textContent = fmt(to); return; }
+  const t0 = performance.now(), dur = 450;
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    node.textContent = fmt(from + (to - from) * e);
+    if (k < 1 && node._value === to) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function buildOverview() {
+  const r = ov.refs;
+  const kpi = (key, title, hero) => {
+    r[key] = { value: el("span"), of: el("small"), note: el("div", { class: "note" }) };
+    return el("div", { class: "ov-card kpi span-3" + (hero ? " hero" : "") },
+      el("h3", {}, title), el("div", { class: "value" }, r[key].value, r[key].of), r[key].note);
+  };
+  // Gerätezustände: feste Reihenfolge der Teile, Breiten werden live angepasst
+  r.parts = [
+    ["running", "Demo läuft", "var(--s1)", false], ["customer", "Kunde benutzt", "var(--s2)", false],
+    ["paused", "Pausiert", "var(--s3)", false], ["sleeping", "Ruhezeit", "var(--s4)", true],
+    ["other", "Sonstiges", "var(--muted)", false], ["offline", "Offline", "var(--s-off)", true],
+  ].map(([key, name, color, darkInk]) => ({
+    key, name, color,
+    seg: el("div", { style: `background:${color}`, class: darkInk ? "dark-ink" : "" }),
+    num: el("b"), item: null,
+  }));
+  r.seg = el("div", { class: "seg", role: "img" }, ...r.parts.map(p => p.seg));
+  r.legend = el("div", { class: "legend" }, ...r.parts.map(p => (p.item = el("span", {}, el("i", { style: `background:${p.color}` }), p.name, p.num))));
+  r.noDevices = el("div", { class: "empty", style: "padding:12px 0" }, "Noch keine Geräte verbunden.");
+  r.onlineBox = el("div"); r.versionsBox = el("div");
   const statusCard = el("div", { class: "ov-card span-6" },
-    el("h3", {}, "Was die Geräte gerade tun"),
-    d.total ? seg : el("div", { class: "empty", style: "padding:12px 0" }, "Noch keine Geräte verbunden."),
-    el("div", { class: "legend" }, ...parts.map(([name, n, color]) =>
-      el("span", {}, el("i", { style: `background:${color}` }), name, el("b", {}, String(n))))),
+    el("h3", {}, "Was die Geräte gerade tun"), r.noDevices, r.seg, r.legend,
     el("div", { class: "ov-split" },
-      el("div", {}, el("div", { class: "ov-mini" }, "Online"),
-        el("div", { class: "ov-line" }, el("span", {}, "📱 Handys"), el("b", {}, `${d.phones_online} / ${d.phones}`)),
-        el("div", { class: "ov-line" }, el("span", {}, "💻 Laptops"), el("b", {}, `${d.laptops_online} / ${d.laptops}`))),
-      el("div", {}, el("div", { class: "ov-mini" }, "Demo-App-Versionen"),
-        ...(Object.keys(o.app_versions).length ? Object.entries(o.app_versions).map(([v, n]) =>
-          el("div", { class: "ov-line" },
-            el("span", {}, `Version ${v}`, rel && v === rel.version_name ? el("span", { class: "tag" }, "neueste") : null),
-            el("b", {}, `${n}`))) : [el("div", { class: "ov-line" }, el("span", {}, "–"))]))));
-
-  // Auslastung: drei Füllbalken
-  const meter = (label, pct, detail) => el("div", { class: "meter" },
-    el("div", { class: "top" }, el("span", { class: "lbl" }, label), el("span", { class: "pct" }, `${Math.round(pct)} %`), el("span", { class: "detail" }, detail)),
-    el("div", { class: "track", role: "meter", "aria-valuenow": Math.round(pct), "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": label },
-      el("div", { class: "fill", style: `width:${Math.min(100, pct)}%` })),
-    pct >= 85 ? el("div", { class: "warn" }, "⚠ Hohe Auslastung") : null);
-  const ramPct = sys.ram_total ? sys.ram_used / sys.ram_total * 100 : 0;
-  const diskPct = sys.disk_total ? sys.disk_used / sys.disk_total * 100 : 0;
-  const loadCard = el("div", { class: "ov-card span-6" },
-    el("h3", {}, sys.source === "proxmox" ? "Auslastung des Containers" : "Auslastung (Docker-Sicht)"),
-    el("div", { class: "meter-row" },
-      meter("CPU", sys.cpu_percent, `${sys.cpu_cores} Kerne`),
-      meter("RAM", ramPct, `${gb(sys.ram_used)} von ${gb(sys.ram_total)}`),
-      meter("Speicher", diskPct, `${gb(sys.disk_used)} von ${gb(sys.disk_total)}`)),
-    el("div", { class: "ov-foot" }, [
-      `Medien: ${o.media.count} Dateien, ${gb(o.media.bytes)}`,
-      sys.uptime_s != null ? `läuft seit ${duration(sys.uptime_s)}` : null,
-    ].filter(Boolean).join(" · ")));
-
+      el("div", {}, el("div", { class: "ov-mini" }, "Online"), r.onlineBox),
+      el("div", {}, el("div", { class: "ov-mini" }, "Demo-App-Versionen"), r.versionsBox)));
+  // Auslastung
+  const meter = key => {
+    r[key] = { pct: el("span", { class: "pct" }), detail: el("span", { class: "detail" }), fill: el("div", { class: "fill" }),
+      warn: el("div", { class: "warn", hidden: true }, "⚠ Hohe Auslastung") };
+    r[key].track = el("div", { class: "track", role: "meter", "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": key }, r[key].fill);
+    return el("div", { class: "meter" },
+      el("div", { class: "top" }, el("span", { class: "lbl" }, { cpu: "CPU", ram: "RAM", disk: "Speicher" }[key]), r[key].pct, r[key].detail),
+      r[key].track, r[key].warn);
+  };
+  r.loadTitle = el("h3"); r.loadFoot = el("div", { class: "ov-foot" });
+  const loadCard = el("div", { class: "ov-card span-6" }, r.loadTitle,
+    el("div", { class: "meter-row" }, meter("cpu"), meter("ram"), meter("disk")), r.loadFoot);
+  r.chart = el("div");
   const chartCard = el("div", { class: "ov-card span-12" },
     el("div", { class: "row" }, el("h3", { style: "margin:0" }, "CPU und RAM – letzte Stunde"), el("div", { class: "spacer" }),
       el("div", { class: "legend" },
         el("span", {}, el("i", { style: "background:var(--s1)" }), "CPU"),
         el("span", {}, el("i", { style: "background:var(--s2)" }), "RAM"))),
-    historyChart(o.history));
+    r.chart);
+  $("#ovGrid").replaceChildren(
+    kpi("kRunning", "Demo läuft", true), kpi("kOnline", "Verbunden"), kpi("kTotal", "Geräte"), kpi("kApp", "Demo-App"),
+    statusCard, loadCard, chartCard);
+  ov.built = true;
+}
 
-  const appNote = !rel ? "Noch keine Demo-App hochgeladen (Einstellungen → App-Updates)"
+function updateOverview(o) {
+  if (!ov.built) buildOverview();
+  const r = ov.refs, d = o.devices, sys = o.system, rel = o.app_release;
+  // Kennzahlen
+  tweenNumber(r.kRunning.value, d.running); r.kRunning.of.textContent = ` / ${d.total}`;
+  r.kRunning.note.textContent = d.running === 1 ? "Gerät zeigt gerade die Demo" : "Geräte zeigen gerade die Demo";
+  tweenNumber(r.kOnline.value, d.online); r.kOnline.of.textContent = ` / ${d.total}`;
+  r.kOnline.note.textContent = d.offline ? `${d.offline} offline` : "alle online";
+  tweenNumber(r.kTotal.value, d.total); r.kTotal.of.textContent = "";
+  r.kTotal.note.textContent = `${d.phones} Handys · ${d.laptops} Laptops`;
+  r.kApp.value.textContent = rel ? rel.version_name : "–"; r.kApp.of.textContent = "";
+  r.kApp.note.textContent = !rel ? "Noch keine Demo-App hochgeladen (Einstellungen → App-Updates)"
     : !d.outdated ? "Alle Handys aktuell"
     : o.rolled_out ? `${d.update_ready} von ${d.outdated} veralteten Handys haben das Update geladen`
     : `${d.outdated} Handy(s) mit älterer Version`;
-
-  $("#ovGrid").replaceChildren(
-    kpi("Demo läuft", d.running, d.total, d.running === 1 ? "Gerät zeigt gerade die Demo" : "Geräte zeigen gerade die Demo", true),
-    kpi("Verbunden", d.online, d.total, d.offline ? `${d.offline} offline` : "alle online"),
-    kpi("Geräte", d.total, null, `${d.phones} Handys · ${d.laptops} Laptops`),
-    kpi("Demo-App", rel ? rel.version_name : "–", null, appNote),
-    statusCard, loadCard, chartCard);
-  $("#ovSub").textContent = `Live-Stand aller Geräte und des Servers · aktualisiert ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+  // Gerätezustände
+  const values = { ...d, other: Math.max(0, d.online - d.running - d.customer - d.paused - d.sleeping) };
+  r.noDevices.hidden = d.total > 0; r.seg.hidden = d.total === 0;
+  r.seg.setAttribute("aria-label", r.parts.map(p => `${p.name} ${values[p.key]}`).join(", "));
+  for (const p of r.parts) {
+    const n = values[p.key];
+    p.seg.style.flexGrow = n; p.seg.classList.toggle("zero", n === 0);
+    p.seg.textContent = d.total && n / d.total >= 0.08 ? String(n) : "";
+    p.seg.title = `${p.name}: ${n}`;
+    tweenNumber(p.num, n);
+    p.item.hidden = p.key === "other" && n === 0;
+  }
+  r.onlineBox.replaceChildren(
+    el("div", { class: "ov-line" }, el("span", {}, "📱 Handys"), el("b", {}, `${d.phones_online} / ${d.phones}`)),
+    el("div", { class: "ov-line" }, el("span", {}, "💻 Laptops"), el("b", {}, `${d.laptops_online} / ${d.laptops}`)));
+  const versions = Object.entries(o.app_versions);
+  r.versionsBox.replaceChildren(...(versions.length ? versions.map(([v, n]) =>
+    el("div", { class: "ov-line" },
+      el("span", {}, `Version ${v}`, rel && v === rel.version_name ? el("span", { class: "tag" }, "neueste") : null),
+      el("b", {}, `${n}`))) : [el("div", { class: "ov-line" }, el("span", {}, "–"))]));
+  // Auslastung
+  const setMeter = (key, pct, detail) => {
+    const m = r[key];
+    tweenNumber(m.pct, pct, v => `${Math.round(v)} %`);
+    m.detail.textContent = detail;
+    m.fill.style.width = `${Math.min(100, pct)}%`;
+    m.track.setAttribute("aria-valuenow", Math.round(pct));
+    m.warn.hidden = pct < 85;
+  };
+  r.loadTitle.textContent = sys.source === "proxmox" ? "Auslastung des Containers" : "Auslastung (Docker-Sicht)";
+  setMeter("cpu", sys.cpu_percent, `${sys.cpu_cores} Kerne`);
+  setMeter("ram", sys.ram_total ? sys.ram_used / sys.ram_total * 100 : 0, `${gb(sys.ram_used)} von ${gb(sys.ram_total)}`);
+  setMeter("disk", sys.disk_total ? sys.disk_used / sys.disk_total * 100 : 0, `${gb(sys.disk_used)} von ${gb(sys.disk_total)}`);
+  r.loadFoot.textContent = [`Medien: ${o.media.count} Dateien, ${gb(o.media.bytes)}`,
+    sys.uptime_s != null ? `läuft seit ${duration(sys.uptime_s)}` : null].filter(Boolean).join(" · ");
+  // Verlauf nur neu zeichnen, wenn ein neuer Punkt dazukam
+  if (o.history) { r.chart.replaceChildren(historyChart(o.history)); ov.historyT = o.history_last_t; }
+  setLive(true);
 }
-setInterval(() => { if (!$("[data-page=overview]").hidden && !$("#app").hidden && !$("#dlg").open) loadOverview().catch(() => {}); }, 15000);
+
+function setLive(ok) {
+  const t = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  $("#ovSub").replaceChildren(
+    el("span", { class: "live" + (ok ? "" : " lost") }, el("i"), ok ? "Live" : "Verbindung unterbrochen"),
+    ok ? ` · aktualisiert ${t}` : " · neuer Versuch in wenigen Sekunden");
+}
+
+async function loadOverview() {
+  if (ov.busy) return;
+  ov.busy = true;
+  try {
+    // Schlanke Abfrage; den Verlauf nur holen, wenn ein neuer Punkt da ist (alle 15 s)
+    let o = await api("/api/admin/overview?history=false");
+    if (!ov.built || o.history_last_t !== ov.historyT) o = await api("/api/admin/overview");
+    updateOverview(o);
+  } catch (err) {
+    if (ov.built) setLive(false); else throw err;
+  } finally {
+    ov.busy = false;
+  }
+}
+// Alle 2 s aktualisieren, solange die Übersicht sichtbar ist (pausiert, wenn der Tab im Hintergrund ist)
+setInterval(() => {
+  if (!$("[data-page=overview]").hidden && !$("#app").hidden && !document.hidden) loadOverview().catch(() => {});
+}, 2000);
 
 // Liniendiagramm CPU/RAM (eine %-Achse 0–100), mit Fadenkreuz und Tooltip – in echter Pixelbreite gezeichnet
 function historyChart(hist) {

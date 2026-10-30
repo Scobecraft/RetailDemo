@@ -87,7 +87,7 @@ fun OverviewScreen(vm: AdminViewModel, modifier: Modifier) {
     LaunchedEffect(Unit) {
         while (true) {
             if (vm.isConfigured) vm.refreshOverview()
-            delay(15_000)
+            delay(3_000) // nahezu live, wie die Webseite
         }
     }
     val viz = VizColors(isSystemInDarkTheme())

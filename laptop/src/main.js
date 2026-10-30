@@ -170,9 +170,18 @@ function hideDemo() {
   setStatus("Kunde benutzt Gerät");
 }
 
+// Statusänderung kurz danach sofort melden, damit die Übersicht auf der Webseite live ist
+let statusTimer = null;
 function setStatus(s) {
+  const changed = sync && sync.status !== s;
   if (sync) sync.status = s;
   updateTray();
+  if (changed && config.configured) {
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => {
+      sync.report(false).then(r => sync.request("POST", "/api/device/heartbeat", r)).catch(() => {});
+    }, 1500);
+  }
 }
 
 // ---------------------------------------------------------------- Hauptschleife (1×/Sekunde)

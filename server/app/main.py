@@ -1242,13 +1242,18 @@ def device_app_update_apk():
 # --------------------------------------------------------------------- overview
 
 class SystemMonitor:
-    """Misst alle 15 s CPU und RAM des (Proxmox-)Containers und hält eine Stunde Verlauf vor."""
-    INTERVAL_S = 15
+    """Misst alle 2 s CPU und RAM des (Proxmox-)Containers (Live-Anzeige) und speichert alle 15 s
+    den Durchschnitt als Verlauf (eine Stunde)."""
+    INTERVAL_S = 2
+    HISTORY_STEP_S = 15
 
     def __init__(self):
-        self.history: deque = deque(maxlen=3600 // self.INTERVAL_S)
+        self.history: deque = deque(maxlen=3600 // self.HISTORY_STEP_S)
         self._last_cpu: Optional[tuple[int, int]] = None
+        self._window: list[tuple[float, float]] = []
+        self._window_start = time.time()
         self.cpu_percent = 0.0
+        self.ram_percent = 0.0
         threading.Thread(target=self._loop, daemon=True).start()
 
     @staticmethod
@@ -1283,11 +1288,18 @@ class SystemMonitor:
             self.cpu_percent = round(max(0.0, min(100.0, 100.0 * (dt - di) / dt)), 1) if dt > 0 else 0.0
         self._last_cpu = (total, idle)
         used, mem_total = self.memory()
-        self.history.append({
-            "t": int(time.time()),
-            "cpu": self.cpu_percent,
-            "ram": round(100.0 * used / mem_total, 1) if mem_total else 0.0,
-        })
+        self.ram_percent = round(100.0 * used / mem_total, 1) if mem_total else 0.0
+        self._window.append((self.cpu_percent, self.ram_percent))
+        now = time.time()
+        if now - self._window_start >= self.HISTORY_STEP_S or not self.history:
+            n = len(self._window)
+            self.history.append({
+                "t": int(now),
+                "cpu": round(sum(c for c, _ in self._window) / n, 1),
+                "ram": round(sum(r for _, r in self._window) / n, 1),
+            })
+            self._window = []
+            self._window_start = now
 
     def _loop(self):
         while True:
@@ -1320,7 +1332,8 @@ def _status_group(status: Optional[str]) -> str:
 
 
 @app.get("/api/admin/overview", dependencies=[Depends(require_admin)])
-def admin_overview():
+def admin_overview(history: bool = True):
+    """Übersicht. Die Webseite fragt alle 2 s mit history=false ab (schlank), den Verlauf seltener."""
     release = _app_release()
     counts = {"total": 0, "online": 0, "offline": 0, "running": 0, "paused": 0, "customer": 0,
               "sleeping": 0, "phones": 0, "laptops": 0, "outdated": 0, "phones_online": 0, "laptops_online": 0, "update_ready": 0}
@@ -1329,8 +1342,11 @@ def admin_overview():
         s = get_settings(c)
         rows = c.execute("SELECT * FROM devices WHERE removed=0").fetchall()
         media = c.execute("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM media").fetchone()
+        now = time.time()
         for row in rows:
-            d = device_dict(c, row, s)
+            # Bewusst ohne device_dict(): das baut je Gerät die ganze Playlist (zu teuer für 2-s-Takt)
+            d = {"online": row["last_seen"] is not None and now - row["last_seen"] < ONLINE_WINDOW_S,
+                 "status": row["status"]}
             counts["total"] += 1
             counts["laptops" if is_laptop(row) else "phones"] += 1
             if not d["online"]:
@@ -1363,6 +1379,7 @@ def admin_overview():
         "devices": counts,
         "system": {
             "cpu_percent": monitor.cpu_percent,
+            "ram_percent": monitor.ram_percent,
             "cpu_cores": SystemMonitor.cpu_count(),
             "ram_used": used,
             "ram_total": total,
@@ -1373,7 +1390,9 @@ def admin_overview():
         },
         "media": {"count": media[0], "bytes": media[1]},
         "app_versions": dict(sorted(versions.items(), key=lambda kv: _version_tuple(kv[0]), reverse=True)),
-        "history": list(monitor.history),
+        "history": list(monitor.history) if history else None,
+        "history_last_t": monitor.history[-1]["t"] if monitor.history else None,
+        "server_time": time.time(),
         "app_release": release,
         "rolled_out": bool(release) and _rollout() == release["version_code"],
     }
