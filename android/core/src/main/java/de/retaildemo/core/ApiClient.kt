@@ -132,6 +132,8 @@ class ApiClient(baseUrl: String, private val token: String) {
     suspend fun heartbeat(report: DeviceReport): HeartbeatResponse =
         JSON.decodeFromString(call("POST", "/api/device/heartbeat", jsonBody(report)))
 
+    suspend fun overview(): Overview = JSON.decodeFromString(call("GET", "/api/admin/overview"))
+
     suspend fun appUpdate(): AppRelease = JSON.decodeFromString(call("GET", "/api/device/app-update"))
 
     suspend fun unregister(deviceId: String) {

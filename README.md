@@ -198,7 +198,24 @@ npm run dist:win     # -> dist/RetailDemo-Laptop-Setup-1.0.0.exe
 Zum Ausprobieren ohne Installer: `npm start`. Für Updates in `laptop/package.json` die `version` erhöhen und die
 neue Setup-Datei einfach über die alte installieren (Einstellungen bleiben erhalten).
 
+## Übersicht
+
+Webseite und Admin-App starten mit einer **Übersicht**: wie viele Geräte verbunden sind, auf wie vielen die
+Demo gerade läuft (bzw. ein Kunde das Gerät benutzt, pausiert, Ruhezeit, offline), welche App-Versionen im
+Einsatz sind und wie ausgelastet der Server-Container ist (CPU, RAM, Speicher, Verlauf der letzten Stunde).
+
+Damit die Auslastung des **Proxmox-Containers** (und nicht nur die Docker-Sicht) angezeigt wird, bindet
+`docker-compose.yml` drei Dateien aus `/proc` lesend ein – nach dem Update einmal
+`docker compose up -d --build` ausführen.
+
 ## Apps aktualisieren (ohne neu einzurichten)
+
+**Am einfachsten über den Server:** Webseite → Einstellungen → **App-Updates** → neue `RetailDemo-Demo-….apk`
+hochladen. Auf jedem Gerät zeigen die Demo-Einstellungen unter „App-Version“ dann „Update verfügbar“ –
+**„Jetzt aktualisieren“** tippen. Beim ersten Mal fragt Android nach der Erlaubnis „Unbekannte Apps
+installieren“ und nach einer Bestätigung; danach (Android 12+) meist ohne Rückfrage.
+
+**Oder von Hand:**
 
 Neue Versionen einfach **über die alte installieren**: APK auf dem Gerät öffnen → „Aktualisieren“.
 Server-Adresse, Token, PIN, Berechtigungen und Einstellungen bleiben erhalten.

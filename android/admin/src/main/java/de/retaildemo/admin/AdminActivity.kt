@@ -8,6 +8,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayArrow
@@ -51,6 +52,7 @@ class AdminActivity : ComponentActivity() {
 }
 
 private enum class Tab(val label: String, val icon: ImageVector) {
+    Overview("Übersicht", Icons.Filled.Home),
     Media("Medien", Icons.Filled.PlayArrow),
     Playlists("Playlists", Icons.Filled.List),
     Devices("Geräte", Icons.Filled.Phone),
@@ -78,7 +80,7 @@ private fun AdminRoot(vm: AdminViewModel) {
                         selected = tab == t.ordinal,
                         onClick = { tab = t.ordinal },
                         icon = { Icon(t.icon, contentDescription = null) },
-                        label = { Text(t.label) },
+                        label = { Text(t.label, maxLines = 1, style = MaterialTheme.typography.labelSmall) },
                     )
                 }
             }
@@ -86,6 +88,7 @@ private fun AdminRoot(vm: AdminViewModel) {
     ) { padding ->
         val mod = Modifier.padding(padding)
         when (Tab.entries[tab]) {
+            Tab.Overview -> OverviewScreen(vm, mod)
             Tab.Media -> MediaScreen(vm, mod)
             Tab.Playlists -> PlaylistsScreen(vm, mod)
             Tab.Devices -> DevicesScreen(vm, mod)

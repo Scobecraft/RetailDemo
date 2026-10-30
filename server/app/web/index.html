@@ -173,6 +173,52 @@
   .pick input:checked + .mini { border-color: var(--accent); }
   .pick span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
 
+  /* ---------- Übersicht ---------- */
+  .ov { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s-off: #c3c6cc;
+        --meter-track: #e3edfb; --meter-fill: #2a78d6; --warn: #b45309; --grid: #eceef1; }
+  @media (prefers-color-scheme: dark) {
+    .ov { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-off: #4b505b;
+          --meter-track: #23324a; --meter-fill: #3987e5; --warn: #fab219; --grid: #262a33; }
+  }
+  .ov-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+  .ov-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; min-width: 0; }
+  .ov-card h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .span-3 { grid-column: span 3; } .span-4 { grid-column: span 4; } .span-6 { grid-column: span 6; }
+  .span-8 { grid-column: span 8; } .span-12 { grid-column: span 12; }
+  @media (max-width: 900px) { .span-3 { grid-column: span 6; } .span-4, .span-6, .span-8 { grid-column: span 12; } }
+  .kpi .value { font-size: 40px; font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .kpi .value small { font-size: 18px; color: var(--muted); font-weight: 500; }
+  .kpi .note { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .kpi.hero { background: linear-gradient(135deg, var(--accent), #c96a00); color: #fff; border: 0; }
+  .kpi.hero h3, .kpi.hero .note, .kpi.hero .value small { color: rgba(255,255,255,.85); }
+  .seg { display: flex; gap: 2px; height: 44px; border-radius: 6px; overflow: hidden; margin: 6px 0 12px; background: var(--card); }
+  .seg div { display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; font-size: 14px; min-width: 0; transition: flex-grow .4s; cursor: default; }
+  .seg div.dark-ink { color: #0b0b0b; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--text); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .legend b { font-variant-numeric: tabular-nums; }
+  .meter-row { display: grid; gap: 18px; }
+  .meter .top { display: flex; align-items: baseline; gap: 8px; }
+  .meter .pct { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .meter .lbl { font-weight: 600; }
+  .meter .detail { color: var(--muted); font-size: 13px; margin-left: auto; text-align: right; }
+  .meter .track { height: 10px; border-radius: 5px; background: var(--meter-track); margin-top: 6px; overflow: hidden; }
+  .meter .fill { height: 100%; border-radius: 5px; background: var(--meter-fill); transition: width .5s; }
+  .meter .warn { color: var(--warn); font-size: 13px; margin-top: 4px; font-weight: 600; }
+  .chart-wrap { position: relative; }
+  .chart-wrap svg { display: block; width: 100%; height: 220px; }
+  .chart-wrap .tip { position: absolute; pointer-events: none; background: var(--text); color: var(--card); font-size: 12px; padding: 6px 9px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -110%); opacity: 0; transition: opacity .1s; }
+  .chart-wrap .tip.show { opacity: 1; }
+  .ov-foot { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .ov-split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .ov-mini { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+  .ov-line { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 14px; }
+  .ov-line b { font-variant-numeric: tabular-nums; }
+  .tag { margin-left: 6px; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .release { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .release .ver { font-size: 22px; font-weight: 700; }
+
   /* ---------- Handy ---------- */
   @media (max-width: 640px) {
     .bar { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 6px; gap: 8px 12px; }
@@ -236,7 +282,8 @@
       <img src="/logo.svg" alt="">
       <span class="brand">Retail Demo</span>
       <nav>
-        <button data-tab="media" class="active">Medien</button>
+        <button data-tab="overview" class="active">Übersicht</button>
+        <button data-tab="media">Medien</button>
         <button data-tab="playlists">Playlists</button>
         <button data-tab="devices">Geräte</button>
         <button data-tab="settings">Einstellungen</button>
@@ -248,7 +295,14 @@
 
   <main>
     <!-- Medien -->
-    <div data-page="media">
+    <!-- Übersicht -->
+    <div data-page="overview" class="ov">
+      <h2>Übersicht</h2>
+      <p class="sub" id="ovSub">Live-Stand aller Geräte und des Servers.</p>
+      <div class="ov-grid" id="ovGrid"></div>
+    </div>
+
+    <div data-page="media" hidden>
       <h2>Medien</h2>
       <p class="sub">Videos und Bilder, die auf den Demo-Geräten laufen. Neue Inhalte kommen beim nächsten Abgleich auf die Geräte.</p>
       <div class="drop" id="drop">
@@ -294,6 +348,7 @@
         <div class="panel" id="behaviourSettings"></div>
         <div class="panel" id="scheduleSettings"></div>
         <div class="panel" id="filterSettings"></div>
+        <div class="panel" id="appUpdateSettings"></div>
       </div>
     </div>
   </main>
@@ -440,13 +495,15 @@ document.querySelectorAll("nav button").forEach(b => b.addEventListener("click",
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("active", x === b));
   document.querySelectorAll("[data-page]").forEach(p => p.hidden = p.dataset.page !== b.dataset.tab);
   if (b.dataset.tab === "devices") loadDevices();
-  if (b.dataset.tab === "settings") renderSettings();
+  if (b.dataset.tab === "settings") { renderSettings(); renderAppUpdate(); }
+  if (b.dataset.tab === "overview") loadOverview();
 }));
 
 async function loadAll() {
   [state.media, state.playlists, state.settings] = await Promise.all([
     api("/api/admin/media"), api("/api/admin/playlists"), api("/api/admin/settings")]);
   renderMedia(); renderTargets(); renderPlaylists();
+  if (!$("[data-page=overview]").hidden) loadOverview();
 }
 
 // ---------------------------------------------------------------- Medien
@@ -817,6 +874,188 @@ function renderSettings() {
     el("div", { class: "toggles" }, el("label", {}, enabled, "Zeitsteuerung aktiv")),
     days, copy,
     el("button", { class: "btn primary block", onclick: () => saveSettings({ schedule: sched }) }, "Speichern"));
+}
+
+
+// ---------------------------------------------------------------- Übersicht
+const GB = 1024 ** 3;
+function gb(b) { return (b / GB).toFixed(b >= 100 * GB ? 0 : 1).replace(".", ",") + " GB"; }
+function duration(sec) {
+  if (sec == null) return "";
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600);
+  return d ? `${d} T. ${h} Std.` : `${h} Std. ${Math.floor(sec % 3600 / 60)} Min.`;
+}
+async function loadOverview() {
+  const o = await api("/api/admin/overview");
+  const d = o.devices, sys = o.system;
+  const kpi = (title, value, of, note, hero) => el("div", { class: "ov-card kpi span-3" + (hero ? " hero" : "") },
+    el("h3", {}, title), el("div", { class: "value" }, String(value), of != null ? el("small", {}, ` / ${of}`) : null),
+    el("div", { class: "note" }, note));
+
+  const rel = o.app_release;
+  // Verteilung der Geräte (ein Ganzes in <= 5 Teile: segmentierter Balken mit Legende)
+  const parts = [
+    ["Demo läuft", d.running, "var(--s1)", false],
+    ["Kunde benutzt", d.customer, "var(--s2)", false],
+    ["Pausiert", d.paused, "var(--s3)", false],
+    ["Ruhezeit", d.sleeping, "var(--s4)", true],
+    ["Offline", d.offline, "var(--s-off)", true],
+  ];
+  const other = d.online - d.running - d.customer - d.paused - d.sleeping;
+  if (other > 0) parts.splice(4, 0, ["Sonstiges", other, "var(--muted)", false]);
+  const seg = el("div", { class: "seg", role: "img", "aria-label": parts.map(p => `${p[0]} ${p[1]}`).join(", ") },
+    ...parts.filter(p => p[1] > 0).map(([name, n, color, darkInk]) =>
+      el("div", { style: `flex-grow:${n};background:${color}`, class: darkInk ? "dark-ink" : "", title: `${name}: ${n}` },
+        n / Math.max(1, d.total) >= 0.08 ? String(n) : "")));
+  const statusCard = el("div", { class: "ov-card span-6" },
+    el("h3", {}, "Was die Geräte gerade tun"),
+    d.total ? seg : el("div", { class: "empty", style: "padding:12px 0" }, "Noch keine Geräte verbunden."),
+    el("div", { class: "legend" }, ...parts.map(([name, n, color]) =>
+      el("span", {}, el("i", { style: `background:${color}` }), name, el("b", {}, String(n))))),
+    el("div", { class: "ov-split" },
+      el("div", {}, el("div", { class: "ov-mini" }, "Online"),
+        el("div", { class: "ov-line" }, el("span", {}, "📱 Handys"), el("b", {}, `${d.phones_online} / ${d.phones}`)),
+        el("div", { class: "ov-line" }, el("span", {}, "💻 Laptops"), el("b", {}, `${d.laptops_online} / ${d.laptops}`))),
+      el("div", {}, el("div", { class: "ov-mini" }, "Demo-App-Versionen"),
+        ...(Object.keys(o.app_versions).length ? Object.entries(o.app_versions).map(([v, n]) =>
+          el("div", { class: "ov-line" },
+            el("span", {}, `Version ${v}`, rel && v === rel.version_name ? el("span", { class: "tag" }, "neueste") : null),
+            el("b", {}, `${n}`))) : [el("div", { class: "ov-line" }, el("span", {}, "–"))]))));
+
+  // Auslastung: drei Füllbalken
+  const meter = (label, pct, detail) => el("div", { class: "meter" },
+    el("div", { class: "top" }, el("span", { class: "lbl" }, label), el("span", { class: "pct" }, `${Math.round(pct)} %`), el("span", { class: "detail" }, detail)),
+    el("div", { class: "track", role: "meter", "aria-valuenow": Math.round(pct), "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": label },
+      el("div", { class: "fill", style: `width:${Math.min(100, pct)}%` })),
+    pct >= 85 ? el("div", { class: "warn" }, "⚠ Hohe Auslastung") : null);
+  const ramPct = sys.ram_total ? sys.ram_used / sys.ram_total * 100 : 0;
+  const diskPct = sys.disk_total ? sys.disk_used / sys.disk_total * 100 : 0;
+  const loadCard = el("div", { class: "ov-card span-6" },
+    el("h3", {}, sys.source === "proxmox" ? "Auslastung des Containers" : "Auslastung (Docker-Sicht)"),
+    el("div", { class: "meter-row" },
+      meter("CPU", sys.cpu_percent, `${sys.cpu_cores} Kerne`),
+      meter("RAM", ramPct, `${gb(sys.ram_used)} von ${gb(sys.ram_total)}`),
+      meter("Speicher", diskPct, `${gb(sys.disk_used)} von ${gb(sys.disk_total)}`)),
+    el("div", { class: "ov-foot" }, [
+      `Medien: ${o.media.count} Dateien, ${gb(o.media.bytes)}`,
+      sys.uptime_s != null ? `läuft seit ${duration(sys.uptime_s)}` : null,
+    ].filter(Boolean).join(" · ")));
+
+  const chartCard = el("div", { class: "ov-card span-12" },
+    el("div", { class: "row" }, el("h3", { style: "margin:0" }, "CPU und RAM – letzte Stunde"), el("div", { class: "spacer" }),
+      el("div", { class: "legend" },
+        el("span", {}, el("i", { style: "background:var(--s1)" }), "CPU"),
+        el("span", {}, el("i", { style: "background:var(--s2)" }), "RAM"))),
+    historyChart(o.history));
+
+  const appNote = !rel ? "Noch keine Demo-App hochgeladen (Einstellungen → App-Updates)"
+    : d.outdated ? `${d.outdated} Handy(s) mit älterer Version` : "Alle Handys aktuell";
+
+  $("#ovGrid").replaceChildren(
+    kpi("Demo läuft", d.running, d.total, d.running === 1 ? "Gerät zeigt gerade die Demo" : "Geräte zeigen gerade die Demo", true),
+    kpi("Verbunden", d.online, d.total, d.offline ? `${d.offline} offline` : "alle online"),
+    kpi("Geräte", d.total, null, `${d.phones} Handys · ${d.laptops} Laptops`),
+    kpi("Demo-App", rel ? rel.version_name : "–", null, appNote),
+    statusCard, loadCard, chartCard);
+  $("#ovSub").textContent = `Live-Stand aller Geräte und des Servers · aktualisiert ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+}
+setInterval(() => { if (!$("[data-page=overview]").hidden && !$("#app").hidden && !$("#dlg").open) loadOverview().catch(() => {}); }, 15000);
+
+// Liniendiagramm CPU/RAM (eine %-Achse 0–100), mit Fadenkreuz und Tooltip – in echter Pixelbreite gezeichnet
+function historyChart(hist) {
+  const wrap = el("div", { class: "chart-wrap" });
+  if (hist.length < 2) { wrap.append(el("div", { class: "empty", style: "padding:30px 0" }, "Der Verlauf füllt sich in den nächsten Minuten.")); return wrap; }
+  let lastW = 0;
+  const ro = new ResizeObserver(() => { const w = Math.round(wrap.clientWidth); if (w && w !== lastW) { lastW = w; drawHistory(wrap, hist, w); } });
+  ro.observe(wrap);
+  return wrap;
+}
+function drawHistory(wrap, hist, W) {
+  const NS = "http://www.w3.org/2000/svg";
+  const H = 220, L = 40, R = W < 500 ? 62 : 74, T = 10, B = 24;
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "Verlauf CPU und RAM in Prozent, letzte Stunde");
+  const mk = (tag, attrs) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); svg.append(n); return n; };
+  const t0 = hist[0].t, t1 = hist[hist.length - 1].t;
+  const x = t => L + (t - t0) / Math.max(1, t1 - t0) * (W - L - R);
+  const y = v => T + (1 - v / 100) * (H - T - B);
+  for (const v of [0, 25, 50, 75, 100]) {
+    mk("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--grid)", "stroke-width": 1 });
+    mk("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 11 }).textContent = v + " %";
+  }
+  const fmt = t => new Date(t * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const ticks = W < 500 ? [t0, t1] : [t0, (t0 + t1) / 2, t1];
+  for (const t of ticks) {
+    mk("text", { x: x(t), y: H - 6, "text-anchor": t === t0 ? "start" : t === t1 ? "end" : "middle", fill: "var(--muted)", "font-size": 11 }).textContent = fmt(t);
+  }
+  const series = [["cpu", "var(--s1)", "CPU"], ["ram", "var(--s2)", "RAM"]];
+  const last = hist[hist.length - 1];
+  // Endbeschriftungen mindestens 15 px auseinander, damit sie sich nie überlappen
+  const ends = series.map(([key, , name]) => ({ name, key, y: y(last[key]) + 4 })).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 15) ends[i].y = ends[i - 1].y + 15;
+  const overflow = ends[ends.length - 1].y - (H - B + 4);
+  if (overflow > 0) ends.forEach(e => e.y -= overflow);
+  for (const [key, color] of series) {
+    mk("path", { d: hist.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p[key]).toFixed(1)}`).join(""),
+      fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
+  }
+  for (const e of ends) mk("text", { x: W - R + 8, y: e.y, fill: "var(--text)", "font-size": 12, "font-weight": 600 }).textContent = `${e.name} ${Math.round(last[e.key])} %`;
+  const cross = mk("line", { y1: T, y2: H - B, stroke: "var(--muted)", "stroke-width": 1, "stroke-dasharray": "3 3", opacity: 0 });
+  const dots = series.map(([, color]) => mk("circle", { r: 4.5, fill: color, stroke: "var(--card)", "stroke-width": 2, opacity: 0 }));
+  // Unsichtbare Fläche als großes Ziel für Maus/Finger
+  mk("rect", { x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent" });
+  const tip = el("div", { class: "tip" });
+  wrap.replaceChildren(svg, tip);
+  const hide = () => { cross.setAttribute("opacity", 0); dots.forEach(d => d.setAttribute("opacity", 0)); tip.classList.remove("show"); };
+  svg.addEventListener("pointermove", e => {
+    const r = svg.getBoundingClientRect();
+    const vx = e.clientX - r.left;
+    let best = hist[0];
+    for (const p of hist) if (Math.abs(x(p.t) - vx) < Math.abs(x(best.t) - vx)) best = p;
+    const px = x(best.t);
+    cross.setAttribute("x1", px); cross.setAttribute("x2", px); cross.setAttribute("opacity", 1);
+    series.forEach(([key], i) => { dots[i].setAttribute("cx", px); dots[i].setAttribute("cy", y(best[key])); dots[i].setAttribute("opacity", 1); });
+    tip.textContent = `${fmt(best.t)} · CPU ${Math.round(best.cpu)} % · RAM ${Math.round(best.ram)} %`;
+    tip.style.left = `${Math.min(Math.max(px, 90), W - 90)}px`; tip.style.top = `${Math.max(y(Math.max(best.cpu, best.ram)), 40)}px`;
+    tip.classList.add("show");
+  });
+  svg.addEventListener("pointerleave", hide);
+}
+
+// ---------------------------------------------------------------- App-Updates
+async function renderAppUpdate() {
+  const box = $("#appUpdateSettings");
+  const rel = await api("/api/admin/app-release").catch(() => ({}));
+  const input = el("input", { type: "file", accept: ".apk,application/vnd.android.package-archive", hidden: true });
+  const bar = el("div"), status = el("span", { class: "meta" });
+  const progress = el("div", { class: "progress", hidden: true }, bar);
+  input.addEventListener("change", async () => {
+    const f = input.files[0]; input.value = "";
+    if (!f) return;
+    progress.hidden = false; status.textContent = "Lade hoch …";
+    try {
+      const { id } = await api("/api/admin/uploads", json("POST", { filename: f.name, size: f.size, kind: "apk" }));
+      let off = 0;
+      while (off < f.size) {
+        const r = await api(`/api/admin/uploads/${id}?offset=${off}`, { method: "PUT", body: f.slice(off, off + CHUNK), headers: { "Content-Type": "application/octet-stream" } });
+        off = r.received; bar.style.width = Math.round(off / f.size * 100) + "%";
+      }
+      const res = await api(`/api/admin/uploads/${id}/complete`, json("POST", {}));
+      toast(`Version ${res.version_name} bereitgestellt`); renderAppUpdate();
+    } catch (err) { status.textContent = "Fehler: " + err.message; }
+  });
+  box.replaceChildren(
+    el("h3", {}, "App-Updates (Demo-App)"),
+    el("p", { class: "sub", style: "margin:0 0 12px" }, "Neue Demo-App-Version hier hochladen. Auf jedem Gerät steht sie dann in den Demo-Einstellungen unter „App-Version“ → „Jetzt aktualisieren“ bereit."),
+    el("div", { class: "release" },
+      rel.version_name
+        ? el("div", {}, el("div", { class: "ver" }, `Version ${rel.version_name}`),
+            el("div", { class: "meta" }, `${size(rel.size)} · hochgeladen ${new Date(rel.uploaded_at * 1000).toLocaleString("de-DE")}`))
+        : el("div", { class: "meta" }, "Noch keine Version hochgeladen."),
+      el("div", { class: "spacer" }),
+      el("button", { class: "btn primary", onclick: () => input.click() }, "APK hochladen"), input),
+    progress, status);
 }
 
 // ---------------------------------------------------------------- Start

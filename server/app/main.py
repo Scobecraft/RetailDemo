@@ -1213,6 +1213,11 @@ class SystemMonitor:
 monitor = SystemMonitor()
 
 
+def _version_tuple(v: str) -> tuple:
+    """"1.10.2" -> (1, 10, 2), damit 1.10 nach 1.9 kommt."""
+    return tuple(int(x) if x.isdigit() else 0 for x in re.split(r"[.\-]", v or "0"))
+
+
 def _status_group(status: Optional[str]) -> str:
     s = (status or "").lower()
     if s.startswith("pausiert"):
@@ -1230,7 +1235,8 @@ def _status_group(status: Optional[str]) -> str:
 def admin_overview():
     release = _app_release()
     counts = {"total": 0, "online": 0, "offline": 0, "running": 0, "paused": 0, "customer": 0,
-              "sleeping": 0, "phones": 0, "laptops": 0, "outdated": 0}
+              "sleeping": 0, "phones": 0, "laptops": 0, "outdated": 0, "phones_online": 0, "laptops_online": 0}
+    versions: dict[str, int] = {}
     with db() as c:
         s = get_settings(c)
         rows = c.execute("SELECT * FROM devices WHERE removed=0").fetchall()
@@ -1246,8 +1252,16 @@ def admin_overview():
             group = _status_group(d["status"])
             if group in counts:
                 counts[group] += 1
-            if release and not is_laptop(row) and d["app_version"] and d["app_version"] != release["version_name"]:
+            if release and not is_laptop(row) and d["app_version"] and \
+                    _version_tuple(d["app_version"]) < _version_tuple(release["version_name"]):
                 counts["outdated"] += 1
+            if is_laptop(row):
+                counts["laptops_online"] += 1
+            else:
+                counts["phones_online"] += 1
+        for row in rows:
+            if not is_laptop(row) and row["app_version"]:
+                versions[row["app_version"]] = versions.get(row["app_version"], 0) + 1
     used, total = SystemMonitor.memory()
     disk = shutil.disk_usage(DATA_DIR)
     try:
@@ -1267,6 +1281,7 @@ def admin_overview():
             "source": "proxmox" if HOST_PROC != Path("/proc") else "docker",
         },
         "media": {"count": media[0], "bytes": media[1]},
+        "app_versions": dict(sorted(versions.items(), key=lambda kv: _version_tuple(kv[0]), reverse=True)),
         "history": list(monitor.history),
         "app_release": release,
     }

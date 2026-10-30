@@ -174,3 +174,49 @@ data class AppRelease(
     val sha256: String = "",
     val url: String = "",
 )
+
+// ------------------------------------------------------------------ Übersicht
+
+@Serializable
+data class OverviewDevices(
+    val total: Int = 0,
+    val online: Int = 0,
+    val offline: Int = 0,
+    val running: Int = 0,
+    val paused: Int = 0,
+    val customer: Int = 0,
+    val sleeping: Int = 0,
+    val phones: Int = 0,
+    val laptops: Int = 0,
+    val outdated: Int = 0,
+    @SerialName("phones_online") val phonesOnline: Int = 0,
+    @SerialName("laptops_online") val laptopsOnline: Int = 0,
+)
+
+@Serializable
+data class SystemInfo(
+    @SerialName("cpu_percent") val cpuPercent: Double = 0.0,
+    @SerialName("cpu_cores") val cpuCores: Int = 0,
+    @SerialName("ram_used") val ramUsed: Long = 0,
+    @SerialName("ram_total") val ramTotal: Long = 0,
+    @SerialName("disk_used") val diskUsed: Long = 0,
+    @SerialName("disk_total") val diskTotal: Long = 0,
+    @SerialName("uptime_s") val uptimeS: Long? = null,
+    val source: String = "",
+)
+
+@Serializable
+data class HistoryPoint(val t: Long, val cpu: Double, val ram: Double)
+
+@Serializable
+data class MediaStats(val count: Int = 0, val bytes: Long = 0)
+
+@Serializable
+data class Overview(
+    val devices: OverviewDevices = OverviewDevices(),
+    val system: SystemInfo = SystemInfo(),
+    val media: MediaStats = MediaStats(),
+    val history: List<HistoryPoint> = emptyList(),
+    @SerialName("app_release") val appRelease: AppRelease? = null,
+    @SerialName("app_versions") val appVersions: Map<String, Int> = emptyMap(),
+)

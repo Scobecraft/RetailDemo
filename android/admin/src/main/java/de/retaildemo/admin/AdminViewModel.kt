@@ -36,6 +36,7 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
     val media = MutableStateFlow<List<MediaItem>>(emptyList())
     val playlists = MutableStateFlow<List<Playlist>>(emptyList())
     val devices = MutableStateFlow<List<Device>>(emptyList())
+    val overview = MutableStateFlow<de.retaildemo.core.Overview?>(null)
     val settings = MutableStateFlow(ServerSettings())
     val uploads = MutableStateFlow<List<Upload>>(emptyList())
     val loading = MutableStateFlow(false)
@@ -81,6 +82,8 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refreshDevices() = launchSafe { devices.value = api.devices() }
+
+    fun refreshOverview() = launchSafe { overview.value = api.overview() }
 
     // ------------------------------------------------------------------ media
     fun upload(uris: List<Uri>) = viewModelScope.launch {
