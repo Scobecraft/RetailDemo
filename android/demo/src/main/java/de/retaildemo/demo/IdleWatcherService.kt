@@ -40,7 +40,7 @@ class IdleWatcherService : AccessibilityService() {
     private val screenOffReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val app = demoApp
-            if (!app.prefs.isConfigured || !app.schedule.active.value) return
+            if (!app.prefs.isConfigured || !app.schedule.active.value || app.prefs.isPaused) return
             // Standby während der Betriebszeit -> Display wieder an, Demo läuft weiter
             handler.postDelayed({ ScheduleManager.wakeAndStartDemo(this@IdleWatcherService) }, 300)
         }
@@ -68,14 +68,14 @@ class IdleWatcherService : AccessibilityService() {
         }
 
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            demoApp.prefs.blockAlarms && ClockGuard.isClockApp(pkg)
+            demoApp.prefs.blockAlarms && !demoApp.prefs.isPaused && ClockGuard.isClockApp(pkg)
         ) {
             handleClockWindow(event.source, attempt = 0)
             return
         }
 
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            demoApp.prefs.blockSettings && SettingsGuard.isForbidden(event)
+            demoApp.prefs.blockSettings && !demoApp.prefs.isPaused && SettingsGuard.isForbidden(event)
         ) {
             performGlobalAction(GLOBAL_ACTION_HOME)
             showBlockedToast("Diese Einstellung ist auf Vorführgeräten gesperrt")
@@ -201,7 +201,9 @@ class IdleWatcherService : AccessibilityService() {
     private fun checkIdle() {
         val app = demoApp
         // Während eines freigegebenen Deinstallierens (nach PIN) die Demo nicht dazwischenschieben
-        if (app.isUiVisible || !app.prefs.isConfigured || SystemClock.elapsedRealtime() < app.uninstallUnlockedUntil) {
+        if (app.isUiVisible || !app.prefs.isConfigured || app.prefs.isPaused ||
+            SystemClock.elapsedRealtime() < app.uninstallUnlockedUntil
+        ) {
             lastInteraction = SystemClock.elapsedRealtime()
             return
         }

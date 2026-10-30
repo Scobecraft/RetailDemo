@@ -41,7 +41,7 @@ class CleanupManager(private val app: DemoApp) {
                 val due = intervalH > 0 &&
                     System.currentTimeMillis() - app.prefs.lastCleanup >= intervalH * 3_600_000L
                 val customerAway = app.demoVisible || !app.schedule.active.value
-                if (due && customerAway && app.prefs.isConfigured) runNow()
+                if (due && customerAway && app.prefs.isConfigured && !app.prefs.isPaused) runNow()
             }
         }
     }

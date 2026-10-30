@@ -9,7 +9,7 @@ import android.util.Log
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.demoApp // startet auch den Abgleich mit dem Server
-        if (!app.prefs.isConfigured || !app.schedule.active.value) return
+        if (!app.prefs.isConfigured || !app.schedule.active.value || app.prefs.isPaused) return
         // Funktioniert, wenn "Über anderen Apps einblenden" erlaubt ist. Sonst übernimmt der
         // Bedienungshilfe-Dienst nach Ablauf der Wartezeit.
         try {

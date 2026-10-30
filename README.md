@@ -132,6 +132,9 @@ umwandeln, z. B. mit HandBrake oder `ffmpeg -i in.mov -c:v libx264 -crf 20 -an o
   (Per USB/adb am PC lässt sich das ohne Root nicht verhindern.)
 - Inhalte werden lokal gespeichert, die Demo läuft also auch bei einem WLAN-Ausfall weiter.
 - 1× pro Stunde wird abgeglichen: Neues wird geladen, Gelöschtes entfernt.
+- **Demo pausieren:** in den Demo-Einstellungen ganz oben „Demo pausieren“ (30 Min., 1 Std., 4 Std. oder bis
+  „Fortsetzen“). Während der Pause ist das Gerät frei benutzbar: keine automatische Demo, keine Wecker-/Sprach-
+  Sperre, kein Aufräumen. „Demo fortsetzen“ oder Tippen auf das Demo-Symbol startet die Demo wieder.
 - **Zurück in die Einstellungen:** in der laufenden Demo **mit 3 Fingern oben rechts 3 Sekunden** gedrückt halten → PIN.
 
 Alle Zeiten lassen sich in der Admin-App unter *Einstellungen → Demo-Verhalten* ändern.

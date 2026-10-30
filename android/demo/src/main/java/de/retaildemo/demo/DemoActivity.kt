@@ -83,6 +83,8 @@ class DemoActivity : ComponentActivity() {
             finish()
             return
         }
+        // Wer die Demo (z. B. über das App-Symbol) öffnet, beendet damit eine Pause
+        if (app.prefs.isPaused) app.resumeDemo()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setShowWhenLocked(true)
         setTurnScreenOn(true)

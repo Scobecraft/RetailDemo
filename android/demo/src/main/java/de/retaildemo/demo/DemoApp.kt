@@ -32,6 +32,26 @@ class DemoApp : Application() {
     @Volatile var closeDemoCallback: (() -> Unit)? = null
     fun closeDemo() { closeDemoCallback?.invoke() }
 
+    /** Demo pausieren: Gerät ist frei benutzbar, Sperren und Aufräumen sind aus. [minutes] = null -> bis "Fortsetzen". */
+    fun pauseDemo(minutes: Int?) {
+        val until = if (minutes == null) Long.MAX_VALUE else System.currentTimeMillis() + minutes * 60_000L
+        prefs.pausedUntil = until
+        sync.playerStatus = pauseLabel()
+        closeDemo()
+    }
+
+    fun resumeDemo() {
+        prefs.pausedUntil = 0
+        sync.playerStatus = "Demo läuft"
+    }
+
+    fun pauseLabel(): String {
+        val until = prefs.pausedUntil
+        if (until == Long.MAX_VALUE) return "Pausiert"
+        val t = java.time.Instant.ofEpochMilli(until).atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+        return "Pausiert bis %02d:%02d".format(t.hour, t.minute)
+    }
+
     /** Läuft so lange wie der Prozess; der Bedienungshilfe-Dienst hält den Prozess am Leben. */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

@@ -54,6 +54,13 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("block_alarms", true)
         set(v) = sp.edit().putBoolean("block_alarms", v).apply()
 
+    /** Demo pausiert bis zu diesem Zeitpunkt (ms seit 1970). 0 = nicht pausiert, Long.MAX_VALUE = bis "Fortsetzen". */
+    var pausedUntil: Long
+        get() = sp.getLong("paused_until", 0)
+        set(v) = sp.edit().putLong("paused_until", v).apply()
+
+    val isPaused get() = System.currentTimeMillis() < pausedUntil
+
     var lastCleanup: Long
         get() = sp.getLong("last_cleanup", 0)
         set(v) = sp.edit().putLong("last_cleanup", v).apply()

@@ -62,7 +62,7 @@ import de.retaildemo.core.shortLabel
 import java.text.DateFormat
 import java.util.Date
 
-/** Einrichtung des Demo-Geräts (erreichbar über 3 s oben links drücken + PIN). */
+/** Einrichtung des Demo-Geräts (erreichbar über 3 Finger oben rechts, 3 s halten + PIN). */
 class SetupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,7 +73,13 @@ class SetupActivity : ComponentActivity() {
                     SetupScreen(
                         app = demoApp,
                         onStartDemo = {
+                            demoApp.resumeDemo()
                             startActivity(Intent(this, DemoActivity::class.java))
+                            finish()
+                        },
+                        onPaused = {
+                            // Gerät frei benutzen: zum Startbildschirm
+                            startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                             finish()
                         },
                     )
@@ -93,7 +99,7 @@ private fun Context.batteryUnrestricted() =
     getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
 
 @Composable
-private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
+private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> Unit) {
     val ctx = app
     val scope = rememberCoroutineScope()
     val prefs = app.prefs
@@ -134,6 +140,8 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Demo einrichten", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+
+        if (prefs.isConfigured) PauseCard(app, refresh, onStartDemo, onPaused)
 
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -398,4 +406,53 @@ private fun StatusLine(label: String, value: String) {
         Text(label, Modifier.width(140.dp), color = Color.Gray)
         Text(value)
     }
+}
+
+@Composable
+private fun PauseCard(app: DemoApp, refreshKey: Int, onResume: () -> Unit, onPaused: () -> Unit) {
+    val paused = remember(refreshKey) { app.prefs.isPaused }
+    var choose by remember { mutableStateOf(false) }
+    Card(
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = if (paused) Color(0xFFFFF3E0) else MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (paused) {
+                Text("⏸  ${app.pauseLabel()}", style = MaterialTheme.typography.titleMedium, color = Color(0xFF8A4B00))
+                Text(
+                    "Das Gerät ist frei benutzbar: keine automatische Demo, keine Sperren, kein Aufräumen.",
+                    style = MaterialTheme.typography.bodySmall, color = Color(0xFF5C3A00),
+                )
+                Button(onClick = onResume, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("▶  Demo fortsetzen") }
+            } else {
+                Text("Demo läuft", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Zum Vorführen, Einrichten oder Ausprobieren: Demo pausieren, dann ist das Gerät frei benutzbar.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(onClick = { choose = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("⏸  Demo pausieren") }
+            }
+        }
+    }
+    if (choose) AlertDialog(
+        onDismissRequest = { choose = false },
+        title = { Text("Demo pausieren – wie lange?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(30 to "30 Minuten", 60 to "1 Stunde", 240 to "4 Stunden", null to "Bis ich fortsetze").forEach { (min, label) ->
+                    OutlinedButton(
+                        onClick = { choose = false; app.pauseDemo(min); onPaused() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(label) }
+                }
+                Text(
+                    "Bei einer Zeitangabe startet die Demo danach automatisch wieder.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = { choose = false }) { Text("Abbrechen") } },
+    )
 }

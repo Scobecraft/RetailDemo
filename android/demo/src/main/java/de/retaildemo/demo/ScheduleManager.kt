@@ -61,11 +61,13 @@ class ScheduleManager(private val app: DemoApp) {
         if (isActive && (!wasActive || fromAlarm)) {
             Log.i(TAG, "Betriebszeit beginnt -> Demo starten")
             app.sync.playerStatus = "Demo läuft"
-            if (app.prefs.isConfigured && !app.isUiVisible) wakeAndStartDemo(app)
+            if (app.prefs.isConfigured && !app.isUiVisible && !app.prefs.isPaused) wakeAndStartDemo(app)
         } else if (!isActive && (wasActive || fromAlarm)) {
             Log.i(TAG, "Betriebszeit endet -> Standby")
-            app.sync.playerStatus = "Ruhezeit"
-            goToSleep()
+            if (!app.prefs.isPaused) {
+                app.sync.playerStatus = "Ruhezeit"
+                goToSleep()
+            }
         }
     }
 
