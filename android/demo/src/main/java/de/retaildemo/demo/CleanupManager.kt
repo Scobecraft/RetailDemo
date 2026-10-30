@@ -94,7 +94,12 @@ class CleanupManager(private val app: DemoApp) {
             }
         }.onFailure { Log.w(TAG, "MediaStore-Löschen fehlgeschlagen", it) }
 
-        // 2. Übrig gebliebene Dateien direkt löschen (Ordnerstruktur bleibt erhalten)
+        // 2. Von Hand auf das Gerät kopierte Demo-App-APKs im Download-Ordner
+        File(root, Environment.DIRECTORY_DOWNLOADS).listFiles()
+            ?.filter { it.isFile && it.name.startsWith("RetailDemo", ignoreCase = true) && it.name.endsWith(".apk", ignoreCase = true) }
+            ?.forEach { if (it.delete()) count++ }
+
+        // 3. Übrig gebliebene Dateien direkt löschen (Ordnerstruktur bleibt erhalten)
         folders.map { File(root, it) }.forEach { dir ->
             dir.walkBottomUp().filter { it.isFile }.forEach { if (it.delete()) count++ }
         }

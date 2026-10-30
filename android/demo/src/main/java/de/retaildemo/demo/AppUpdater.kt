@@ -70,12 +70,16 @@ class AppUpdater(private val app: DemoApp) {
     private val prefetchMutex = kotlinx.coroutines.sync.Mutex()
 
     init {
-        // Nach erfolgreichem Update: alte Datei aufräumen
-        if (app.prefs.updateReadyCode in 1..installedCode) {
+        // Nach erfolgreichem Update bzw. bei jedem Start: alte Update-Dateien aufräumen
+        if (app.prefs.updateReadyCode <= installedCode) {
             readyFile.delete()
             app.prefs.updateReadyCode = 0
             app.prefs.updateReadySha = ""
         }
+        listOf(
+            File(app.cacheDir, "update.apk"), File(app.cacheDir, "update.apk.part"),
+            File(app.filesDir, "update-download.apk"), File(app.filesDir, "update-download.apk.part"),
+        ).forEach { it.delete() }
     }
 
     private fun isReady(r: AppRelease) =
