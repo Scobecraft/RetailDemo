@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nur Test-Builds (debug): Einstellungsseite für automatische Tests per adb erreichbar machen.
+     Die Release-APK ist davon nicht betroffen. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <activity
+            android:name=".SetupActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
+    </application>
+</manifest>

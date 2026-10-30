@@ -1252,9 +1252,7 @@ def admin_overview():
             group = _status_group(d["status"])
             if group in counts:
                 counts[group] += 1
-            if release and not is_laptop(row) and d["app_version"] and \
-                    _version_tuple(d["app_version"]) < _version_tuple(release["version_name"]):
-                counts["outdated"] += 1
+
             if is_laptop(row):
                 counts["laptops_online"] += 1
             else:
@@ -1262,6 +1260,9 @@ def admin_overview():
         for row in rows:
             if not is_laptop(row) and row["app_version"]:
                 versions[row["app_version"]] = versions.get(row["app_version"], 0) + 1
+                # Veraltet zählt auch, wenn das Gerät gerade offline ist
+                if release and _version_tuple(row["app_version"]) < _version_tuple(release["version_name"]):
+                    counts["outdated"] += 1
     used, total = SystemMonitor.memory()
     disk = shutil.disk_usage(DATA_DIR)
     try:
