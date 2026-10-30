@@ -85,27 +85,44 @@ class AppUpdater(private val app: DemoApp) {
     private fun isReady(r: AppRelease) =
         app.prefs.updateReadyCode == r.versionCode && app.prefs.updateReadySha == r.sha256 && readyFile.exists()
 
-    /** Vom Server "an alle Geräte verteilt": still im Hintergrund herunterladen. */
+    /**
+     * Vom Server verteilt: still im Hintergrund herunterladen. Wurde auf der Webseite
+     * "Jetzt auf allen Handys aktualisieren" gedrückt, danach sofort den Android-Dialog zeigen.
+     */
     fun prefetchInBackground(r: AppRelease) {
-        if (!isNewer(r) || isReady(r)) return
+        if (!isNewer(r)) return
+        val wantsInstall = (r.installRequest ?: 0) > app.prefs.handledInstallRequest
+        if (isReady(r) && !wantsInstall) return
         app.scope.launch {
             prefetchMutex.withLock {
-                if (isReady(r)) return@withLock
-                try {
-                    val tmp = File(app.filesDir, "update-download.apk")
-                    api().download(r.url, tmp)
-                    if (r.sha256.isNotEmpty() && sha256(tmp) != r.sha256) {
-                        tmp.delete()
-                        error("Prüfsumme falsch")
+                if (!isReady(r)) {
+                    try {
+                        val tmp = File(app.filesDir, "update-download.apk")
+                        api().download(r.url, tmp)
+                        if (r.sha256.isNotEmpty() && sha256(tmp) != r.sha256) {
+                            tmp.delete()
+                            error("Prüfsumme falsch")
+                        }
+                        if (!tmp.renameTo(readyFile)) error("Konnte Update nicht speichern")
+                        app.prefs.updateReadySha = r.sha256
+                        app.prefs.updateReadyCode = r.versionCode
+                        _ready.value = r.versionCode
+                        Log.i(TAG, "Update ${r.versionName} vorab heruntergeladen")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Vorab-Download fehlgeschlagen", e)
+                        return@withLock
                     }
-                    if (!tmp.renameTo(readyFile)) error("Konnte Update nicht speichern")
-                    app.prefs.updateReadySha = r.sha256
-                    app.prefs.updateReadyCode = r.versionCode
-                    _ready.value = r.versionCode
-                    Log.i(TAG, "Update ${r.versionName} vorab heruntergeladen")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Vorab-Download fehlgeschlagen", e)
                 }
+                val request = r.installRequest ?: return@withLock
+                if (request <= app.prefs.handledInstallRequest) return@withLock
+                app.prefs.handledInstallRequest = request
+                if (!canInstall()) {
+                    Log.w(TAG, "Update angefordert, aber 'Unbekannte Apps installieren' ist nicht erlaubt")
+                    app.prefs.lastError = "Update ${r.versionName}: in den Demo-Einstellungen „Unbekannte Apps installieren“ erlauben"
+                    return@withLock
+                }
+                Log.i(TAG, "Update ${r.versionName} von der Webseite angefordert – zeige Dialog")
+                install(r)
             }
         }
     }
@@ -123,7 +140,8 @@ class AppUpdater(private val app: DemoApp) {
             }
             _state.value = State.Installing
             // Während der Installation die Demo nicht dazwischenschieben
-            app.updateInProgressUntil = SystemClock.elapsedRealtime() + 5 * 60_000
+            // 15 Minuten: Zeit, um durch den Laden zu gehen und überall "Aktualisieren" zu tippen
+            app.updateInProgressUntil = SystemClock.elapsedRealtime() + 15 * 60_000
             withContext(Dispatchers.IO) { commit(apk) }
         } catch (e: Exception) {
             Log.w(TAG, "Update fehlgeschlagen", e)

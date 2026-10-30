@@ -50,7 +50,10 @@ DEMO_PACKAGE = "de.retaildemo.demo"
 # Werte des Proxmox-Containers (per docker-compose eingebunden); sonst die von Docker selbst
 HOST_PROC = Path("/host/proc") if Path("/host/proc/meminfo").exists() else Path("/proc")
 
-HEARTBEAT_INTERVAL_S = 300
+# Geräte melden sich jede Minute (damit "Jetzt auf allen Handys aktualisieren" sofort ankommt).
+HEARTBEAT_INTERVAL_S = 60
+# Als "online" gilt ein Gerät, das sich in den letzten 11 Minuten gemeldet hat (Standby verzögert Meldungen).
+ONLINE_WINDOW_S = 660
 DEFAULT_SETTINGS = {
     "sync_interval_min": 60,
     "idle_timeout_s": 30,
@@ -692,7 +695,7 @@ def delete_playlist(pid: int):
 def device_dict(c, row, settings) -> dict:
     manifest = build_manifest(c, row)
     now = time.time()
-    online = row["last_seen"] is not None and now - row["last_seen"] < HEARTBEAT_INTERVAL_S * 2 + 60
+    online = row["last_seen"] is not None and now - row["last_seen"] < ONLINE_WINDOW_S
     return {
         "id": row["id"],
         "display_name": row["display_name"] or "",
@@ -1140,6 +1143,13 @@ def _rollout() -> Optional[int]:
     return int(row["value"]) if row else None
 
 
+def _install_request() -> Optional[dict]:
+    """"Jetzt auf allen Handys aktualisieren": {version_code, id} oder None."""
+    with db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='app_install_request'").fetchone()
+    return json.loads(row["value"]) if row else None
+
+
 def _pushed_update_for(device_row) -> Optional[dict]:
     """Update-Hinweis für ein Gerät: nur Handys, nur wenn verteilt und neuer als installiert."""
     if device_row is None or is_laptop(device_row):
@@ -1150,7 +1160,9 @@ def _pushed_update_for(device_row) -> Optional[dict]:
     installed = device_row["app_version_code"]
     if installed is not None and installed >= release["version_code"]:
         return None
-    return {**release, "url": "/api/device/app-update/apk"}
+    request = _install_request()
+    install_request = request["id"] if request and request["version_code"] == release["version_code"] else None
+    return {**release, "url": "/api/device/app-update/apk", "install_request": install_request}
 
 
 @app.get("/api/admin/app-release", dependencies=[Depends(require_admin)])
@@ -1164,6 +1176,7 @@ def admin_app_release():
     return {
         **release,
         "rolled_out": _rollout() == code,
+        "install_requested_at": (_install_request() or {}).get("id") if (_install_request() or {}).get("version_code") == code else None,
         "phones": len(phones),
         "up_to_date": sum(1 for r in phones if (r["app_version_code"] or 0) >= code),
         "ready": sum(1 for r in phones if (r["app_version_code"] or 0) < code and (r["update_ready"] or 0) >= code),
@@ -1181,10 +1194,23 @@ def admin_rollout():
     return {"ok": True}
 
 
+@app.post("/api/admin/app-release/install-now", dependencies=[Depends(require_admin)])
+def admin_install_now():
+    """Alle Handys zeigen (nach dem Herunterladen) sofort den Android-Dialog zum Aktualisieren."""
+    release = _app_release()
+    if not release:
+        raise HTTPException(400, "Zuerst eine APK hochladen")
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_rollout', ?)", (str(release["version_code"]),))
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_install_request', ?)",
+                  (json.dumps({"version_code": release["version_code"], "id": int(time.time())}),))
+    return {"ok": True}
+
+
 @app.delete("/api/admin/app-release/rollout", dependencies=[Depends(require_admin)])
 def admin_stop_rollout():
     with db() as c:
-        c.execute("DELETE FROM settings WHERE key='app_rollout'")
+        c.execute("DELETE FROM settings WHERE key IN ('app_rollout', 'app_install_request')")
     return {"ok": True}
 
 

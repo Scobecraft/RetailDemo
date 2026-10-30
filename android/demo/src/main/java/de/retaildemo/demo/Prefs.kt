@@ -70,6 +70,11 @@ class Prefs(context: Context) {
         get() = sp.getString("update_ready_sha", "") ?: ""
         set(v) = sp.edit().putString("update_ready_sha", v).apply()
 
+    /** Zuletzt beantwortete "Jetzt aktualisieren"-Anforderung von der Webseite (Dialog nur einmal je Anforderung). */
+    var handledInstallRequest: Long
+        get() = sp.getLong("handled_install_request", 0)
+        set(v) = sp.edit().putLong("handled_install_request", v).apply()
+
     var lastCleanup: Long
         get() = sp.getLong("last_cleanup", 0)
         set(v) = sp.edit().putLong("last_cleanup", v).apply()

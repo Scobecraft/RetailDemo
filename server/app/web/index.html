@@ -1042,17 +1042,27 @@ function drawHistory(wrap, hist, W) {
 // ---------------------------------------------------------------- App-Updates
 function rolloutBox(rel) {
   const pending = rel.phones - rel.up_to_date;
-  const body = rel.rolled_out
-    ? [el("div", {}, el("strong", {}, `✅ An alle Geräte verteilt`),
-        el("div", { class: "meta" }, `${rel.up_to_date} von ${rel.phones} Handys aktuell · ${rel.ready} haben das Update geladen und warten auf „Jetzt aktualisieren“` +
-          (pending - rel.ready > 0 ? ` · ${pending - rel.ready} laden noch (bzw. sind offline)` : ""))),
-       el("div", { class: "spacer" }),
-       el("button", { class: "btn small", onclick: async () => { await api("/api/admin/app-release/rollout", { method: "DELETE" }); renderAppUpdate(); } }, "Verteilen stoppen")]
-    : [el("div", {}, el("strong", {}, "Noch nicht verteilt"),
-        el("div", { class: "meta" }, `Alle Handys laden Version ${rel.version_name} dann innerhalb von ca. 5 Minuten im Hintergrund herunter. Am Gerät ist danach nur noch „Jetzt aktualisieren“ nötig.`)),
-       el("div", { class: "spacer" }),
-       el("button", { class: "btn primary", onclick: async () => { await api("/api/admin/app-release/rollout", { method: "POST" }); toast("Wird an alle Geräte verteilt"); renderAppUpdate(); } }, "An alle Geräte verteilen")];
-  return el("div", { class: "release rollout" }, ...body);
+  const requested = rel.install_requested_at
+    ? ` · Update-Dialog angefordert um ${new Date(rel.install_requested_at * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}` : "";
+  const installNow = el("button", { class: "btn primary", onclick: async () => {
+    if (!await confirmDlg("Jetzt auf allen Handys aktualisieren?",
+      `Alle Handys mit älterer Version laden ${rel.version_name} (falls noch nicht geschehen) und zeigen innerhalb von ca. 1 Minute den Android-Dialog „Aktualisieren?“. Den musst du am Gerät nur noch bestätigen. Kunden sehen den Dialog ebenfalls – am besten außerhalb der Stoßzeiten.`,
+      "Jetzt aktualisieren")) return;
+    await api("/api/admin/app-release/install-now", { method: "POST" });
+    toast("Update-Dialog wird auf allen Handys angezeigt"); renderAppUpdate();
+  } }, rel.install_requested_at ? "Dialog erneut anzeigen" : "Jetzt auf allen Handys aktualisieren");
+  const info = rel.rolled_out
+    ? el("div", {}, el("strong", {}, "✅ An alle Geräte verteilt"),
+        el("div", { class: "meta" }, `${rel.up_to_date} von ${rel.phones} Handys aktuell · ${rel.ready} haben das Update geladen` +
+          (pending - rel.ready > 0 ? ` · ${pending - rel.ready} laden noch (bzw. sind offline)` : "") + requested))
+    : el("div", {}, el("strong", {}, "Noch nicht verteilt"),
+        el("div", { class: "meta" }, `„Im Hintergrund verteilen“: Handys laden ${rel.version_name} still herunter, am Gerät dann „Jetzt aktualisieren“ tippen. „Jetzt auf allen Handys aktualisieren“: der Android-Dialog erscheint direkt auf allen Handys.`));
+  const buttons = el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" },
+    rel.rolled_out
+      ? el("button", { class: "btn small", onclick: async () => { await api("/api/admin/app-release/rollout", { method: "DELETE" }); renderAppUpdate(); } }, "Verteilen stoppen")
+      : el("button", { class: "btn", onclick: async () => { await api("/api/admin/app-release/rollout", { method: "POST" }); toast("Wird im Hintergrund verteilt"); renderAppUpdate(); } }, "Im Hintergrund verteilen"),
+    pending > 0 || !rel.phones ? installNow : null);
+  return el("div", { class: "rollout" }, info, el("div", { style: "height:10px" }), buttons);
 }
 
 async function renderAppUpdate() {

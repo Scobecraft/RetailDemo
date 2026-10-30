@@ -1,6 +1,12 @@
 package de.retaildemo.demo
 
 import android.content.Intent
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.produceState
+import androidx.compose.material3.CircularProgressIndicator
+import android.os.SystemClock
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -182,6 +188,7 @@ private fun DemoScreen(app: DemoApp, onCustomerTouch: () -> Unit, onAdminGesture
     }
     DisposableEffect(Unit) { onDispose { player.release() } }
 
+    var holdStartedAt by remember { mutableStateOf<Long?>(null) }
     val onTouch by rememberUpdatedState(onCustomerTouch)
     val onAdmin by rememberUpdatedState(onAdminGesture)
 
@@ -241,35 +248,63 @@ private fun DemoScreen(app: DemoApp, onCustomerTouch: () -> Unit, onAdminGesture
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     awaitEachGesture {
-                        // Geheime Geste für dich: 3 Finger oben rechts 3 Sekunden halten -> PIN
-                        fun inTopRight(p: Offset) = p.x > size.width / 2f && p.y < size.height / 2f
+                        // Geheime Geste: 3 Finger oben rechts 3 Sekunden halten -> PIN.
+                        // Robust gegen Handys, die 3-Finger-Gesten selbst nutzen (z. B. Screenshot) und der App
+                        // die Berührung entziehen: Sobald 2+ Finger lagen, wird die Demo NIE als Kunden-Tipp geschlossen.
+                        fun inZone(p: Offset) = p.x > size.width * 0.4f && p.y < size.height * 0.5f
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        if (!inTopRight(down.position)) {
+                        if (!inZone(down.position)) {
                             onTouch()
                             return@awaitEachGesture
                         }
-                        // Kurz warten, ob insgesamt drei Finger oben rechts aufgesetzt werden
-                        val threeFingers = withTimeoutOrNull(600) {
+                        var maxFingers = 1
+                        // Phase 1: bis zu 1,5 s Zeit, alle drei Finger aufzusetzen
+                        val threeFingers = withTimeoutOrNull(1_500) {
                             while (true) {
-                                val pressed = awaitPointerEvent().changes.filter { it.pressed }
-                                if (pressed.isEmpty()) return@withTimeoutOrNull false
-                                if (pressed.size >= 3) return@withTimeoutOrNull pressed.all { inTopRight(it.position) }
+                                val pressed = awaitPointerEvent().changes.count { it.pressed }
+                                maxFingers = maxOf(maxFingers, pressed)
+                                if (pressed == 0) return@withTimeoutOrNull false
+                                if (pressed >= 3) return@withTimeoutOrNull true
                             }
                             @Suppress("UNREACHABLE_CODE") false
                         } ?: false
                         if (!threeFingers) {
-                            onTouch()
+                            // Ein Finger = Kunde. Zwei Finger = abgebrochener Versuch -> nichts tun.
+                            if (maxFingers < 2) onTouch()
                             return@awaitEachGesture
                         }
-                        // Alle drei Finger müssen 3 Sekunden liegen bleiben
-                        val lifted = withTimeoutOrNull(3_000) {
-                            while (awaitPointerEvent().changes.count { it.pressed } >= 3) { /* weiter halten */ }
+                        // Phase 2: 3 Sekunden halten (mindestens 2 Finger, falls das System einen schluckt)
+                        holdStartedAt = SystemClock.uptimeMillis()
+                        val released = withTimeoutOrNull(3_000) {
+                            while (awaitPointerEvent().changes.count { it.pressed } >= 2) { /* weiter halten */ }
                             true
                         }
-                        if (lifted == null) onAdmin() else onTouch()
+                        holdStartedAt = null
+                        if (released == null) onAdmin() // losgelassen/abgebrochen: einfach nichts tun
                     }
                 }
         )
+        // Rückmeldung beim Halten: Ring oben rechts füllt sich in 3 Sekunden
+        holdStartedAt?.let { started ->
+            val progress by produceState(0f, started) {
+                while (value < 1f) {
+                    value = ((SystemClock.uptimeMillis() - started) / 3_000f).coerceAtMost(1f)
+                    withFrameNanos { }
+                }
+            }
+            Column(
+                Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 32.dp)
+                    .background(Color(0xCC000000), RoundedCornerShape(16.dp)).padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator(
+                    progress = { progress }, color = Color(0xFFEE7F00), trackColor = Color(0x44FFFFFF),
+                    strokeWidth = 5.dp, modifier = Modifier.size(56.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Einstellungen …", color = Color.White, fontSize = 13.sp)
+            }
+        }
     }
 }
 

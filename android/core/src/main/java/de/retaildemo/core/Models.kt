@@ -179,6 +179,8 @@ data class AppRelease(
     val size: Long = 0,
     val sha256: String = "",
     val url: String = "",
+    /** Gesetzt, wenn auf der Webseite "Jetzt auf allen Handys aktualisieren" gedrückt wurde (Zeitstempel). */
+    @SerialName("install_request") val installRequest: Long? = null,
 )
 
 // ------------------------------------------------------------------ Übersicht
