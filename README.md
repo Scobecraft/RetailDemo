@@ -211,7 +211,10 @@ Damit die Auslastung des **Proxmox-Containers** (und nicht nur die Docker-Sicht)
 ## Apps aktualisieren (ohne neu einzurichten)
 
 **Am einfachsten über den Server:** Webseite → Einstellungen → **App-Updates** → neue `RetailDemo-Demo-….apk`
-hochladen. Auf jedem Gerät zeigen die Demo-Einstellungen unter „App-Version“ dann „Update verfügbar“ –
+hochladen → **„An alle Geräte verteilen“**. Alle Handys laden die neue Version innerhalb von ca. 5 Minuten
+im Hintergrund herunter (die Demo läuft weiter). In der Geräteliste steht dann „⬇️ Update bereit“ – am
+Gerät nur noch Demo-Einstellungen → **„Jetzt aktualisieren“** tippen. Ohne „Verteilen“ wird das Update
+erst beim Tippen auf „Jetzt aktualisieren“ geladen. Auf jedem Gerät zeigen die Demo-Einstellungen unter „App-Version“ dann „Update verfügbar“ –
 **„Jetzt aktualisieren“** tippen. Beim ersten Mal fragt Android nach der Erlaubnis „Unbekannte Apps
 installieren“ und nach einer Bestätigung; danach (Android 12+) meist ohne Rückfrage.
 

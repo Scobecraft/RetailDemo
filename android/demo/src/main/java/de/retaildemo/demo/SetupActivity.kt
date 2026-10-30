@@ -469,6 +469,8 @@ private fun UpdateCard(app: DemoApp, refreshKey: Int) {
     LaunchedEffect(Unit) { latest = updater.check() }
 
     val newer = updater.isNewer(latest)
+    val readyCode by updater.ready.collectAsState()
+    val downloaded = newer && readyCode == latest?.versionCode
     val busy = state is AppUpdater.State.Downloading || state is AppUpdater.State.Installing || state is AppUpdater.State.Checking
     Card {
         Column(Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -480,6 +482,7 @@ private fun UpdateCard(app: DemoApp, refreshKey: Int) {
                 (state as? AppUpdater.State.Result)?.error != null ->
                     Triple("⚠️", "Server nicht erreichbar", MaterialTheme.colorScheme.error)
                 latest == null -> Triple("ℹ️", "Auf dem Server ist noch keine App-Version hochgeladen (Webseite → App-Updates)", Color.Gray)
+                downloaded -> Triple("⬇️", "Update ${latest!!.versionName} ist heruntergeladen – nur noch aktualisieren", Color(0xFFB45309))
                 newer -> Triple("⬆️", "Update auf ${latest!!.versionName} verfügbar", Color(0xFFB45309))
                 else -> Triple("✅", "Die neueste Version ist installiert", Color(0xFF15803D))
             }

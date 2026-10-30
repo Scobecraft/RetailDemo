@@ -96,7 +96,8 @@ THUMB_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 APP_DIR.mkdir(parents=True, exist_ok=True)
 LOGO_DIR.mkdir(parents=True, exist_ok=True)
-_db_lock = threading.Lock()
+# RLock: Hilfsfunktionen dürfen db() auch innerhalb eines laufenden db()-Blocks aufrufen
+_db_lock = threading.RLock()
 
 
 @contextmanager
@@ -172,6 +173,10 @@ def init_db():
             """
         )
         cols = {r["name"] for r in c.execute("PRAGMA table_info(devices)")}
+        if "app_version_code" not in cols:
+            # Versionsnummer der installierten Demo-App und bereits heruntergeladenes Update
+            c.execute("ALTER TABLE devices ADD COLUMN app_version_code INTEGER")
+            c.execute("ALTER TABLE devices ADD COLUMN update_ready INTEGER")
         if "removed" not in cols:
             # 1 = App wurde (mit PIN) deinstalliert -> in der Admin-App ausblenden
             c.execute("ALTER TABLE devices ADD COLUMN removed INTEGER NOT NULL DEFAULT 0")
@@ -698,6 +703,8 @@ def device_dict(c, row, settings) -> dict:
         "android_version": row["android_version"],
         "platform": row["platform"],
         "app_version": row["app_version"],
+        "app_version_code": row["app_version_code"],
+        "update_ready": row["update_ready"],
         "auto_specs": json.loads(row["auto_specs"]),
         "custom_specs": row["custom_specs"],
         "show_specs": bool(row["show_specs"]),
@@ -855,6 +862,9 @@ class DeviceReport(BaseModel):
     os_version: str = ""
     # Frühere ID desselben Geräts (ältere App-Versionen nutzten eine Zufalls-ID)
     previous_id: Optional[str] = None
+    # Demo-App: installierte Versionsnummer und ggf. schon heruntergeladenes Update (Versionsnummer)
+    app_version_code: Optional[int] = None
+    update_ready: Optional[int] = None
 
 
 def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
@@ -880,8 +890,9 @@ def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
             + ((json.dumps(r.specs),) if r.specs else ()) + (r.device_id,))
     c.execute(
         "UPDATE devices SET last_seen=?, status=?, last_error=?, battery=?, ip=?,"
-        " synced_hash=COALESCE(?, synced_hash), removed=0 WHERE id=?",
-        (now, r.status, r.error, r.battery, ip, r.synced_hash, r.device_id))
+        " synced_hash=COALESCE(?, synced_hash), removed=0,"
+        " app_version_code=COALESCE(?, app_version_code), update_ready=? WHERE id=?",
+        (now, r.status, r.error, r.battery, ip, r.synced_hash, r.app_version_code, r.update_ready, r.device_id))
     if full_sync:
         c.execute("UPDATE devices SET last_sync=?, sync_requested=0 WHERE id=?", (now, r.device_id))
     return c.execute("SELECT * FROM devices WHERE id=?", (r.device_id,)).fetchone()
@@ -892,7 +903,7 @@ def device_sync(report: DeviceReport, x_forwarded_for: Optional[str] = Header(No
     """Stündlicher Abgleich: liefert die vollständige Playlist (Manifest)."""
     with db() as c:
         row = _upsert_device(c, report, x_forwarded_for, full_sync=True)
-        return build_manifest(c, row)
+        return {**build_manifest(c, row), "app_update": _pushed_update_for(row)}
 
 
 @app.post("/api/device/heartbeat", dependencies=[Depends(require_device)])
@@ -900,7 +911,8 @@ def device_heartbeat(report: DeviceReport, x_forwarded_for: Optional[str] = Head
     """Alle paar Minuten: nur Online-Status. sync_now=True wenn der Admin 'Jetzt aktualisieren' gedrückt hat."""
     with db() as c:
         row = _upsert_device(c, report, x_forwarded_for, full_sync=False)
-        return {"sync_now": bool(row["sync_requested"]), "heartbeat_interval_s": HEARTBEAT_INTERVAL_S}
+        return {"sync_now": bool(row["sync_requested"]), "heartbeat_interval_s": HEARTBEAT_INTERVAL_S,
+                "app_update": _pushed_update_for(row)}
 
 
 class Unregister(BaseModel):
@@ -1121,9 +1133,59 @@ def _register_app_release(tmp: Path) -> dict:
     return release
 
 
+def _rollout() -> Optional[int]:
+    """Versionsnummer, die per "An alle Geräte verteilen" freigegeben wurde (oder None)."""
+    with db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='app_rollout'").fetchone()
+    return int(row["value"]) if row else None
+
+
+def _pushed_update_for(device_row) -> Optional[dict]:
+    """Update-Hinweis für ein Gerät: nur Handys, nur wenn verteilt und neuer als installiert."""
+    if device_row is None or is_laptop(device_row):
+        return None
+    release = _app_release()
+    if not release or _rollout() != release["version_code"]:
+        return None
+    installed = device_row["app_version_code"]
+    if installed is not None and installed >= release["version_code"]:
+        return None
+    return {**release, "url": "/api/device/app-update/apk"}
+
+
 @app.get("/api/admin/app-release", dependencies=[Depends(require_admin)])
 def admin_app_release():
-    return _app_release() or {}
+    release = _app_release()
+    if not release:
+        return {}
+    with db() as c:
+        phones = [r for r in c.execute("SELECT * FROM devices WHERE removed=0") if not is_laptop(r)]
+    code = release["version_code"]
+    return {
+        **release,
+        "rolled_out": _rollout() == code,
+        "phones": len(phones),
+        "up_to_date": sum(1 for r in phones if (r["app_version_code"] or 0) >= code),
+        "ready": sum(1 for r in phones if (r["app_version_code"] or 0) < code and (r["update_ready"] or 0) >= code),
+    }
+
+
+@app.post("/api/admin/app-release/rollout", dependencies=[Depends(require_admin)])
+def admin_rollout():
+    """Alle Handys laden die aktuelle Version im Hintergrund herunter."""
+    release = _app_release()
+    if not release:
+        raise HTTPException(400, "Zuerst eine APK hochladen")
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_rollout', ?)", (str(release["version_code"]),))
+    return {"ok": True}
+
+
+@app.delete("/api/admin/app-release/rollout", dependencies=[Depends(require_admin)])
+def admin_stop_rollout():
+    with db() as c:
+        c.execute("DELETE FROM settings WHERE key='app_rollout'")
+    return {"ok": True}
 
 
 @app.delete("/api/admin/app-release", dependencies=[Depends(require_admin)])
@@ -1235,7 +1297,7 @@ def _status_group(status: Optional[str]) -> str:
 def admin_overview():
     release = _app_release()
     counts = {"total": 0, "online": 0, "offline": 0, "running": 0, "paused": 0, "customer": 0,
-              "sleeping": 0, "phones": 0, "laptops": 0, "outdated": 0, "phones_online": 0, "laptops_online": 0}
+              "sleeping": 0, "phones": 0, "laptops": 0, "outdated": 0, "phones_online": 0, "laptops_online": 0, "update_ready": 0}
     versions: dict[str, int] = {}
     with db() as c:
         s = get_settings(c)
@@ -1263,6 +1325,8 @@ def admin_overview():
                 # Veraltet zählt auch, wenn das Gerät gerade offline ist
                 if release and _version_tuple(row["app_version"]) < _version_tuple(release["version_name"]):
                     counts["outdated"] += 1
+                    if (row["update_ready"] or 0) >= release["version_code"]:
+                        counts["update_ready"] += 1
     used, total = SystemMonitor.memory()
     disk = shutil.disk_usage(DATA_DIR)
     try:
@@ -1285,4 +1349,5 @@ def admin_overview():
         "app_versions": dict(sorted(versions.items(), key=lambda kv: _version_tuple(kv[0]), reverse=True)),
         "history": list(monitor.history),
         "app_release": release,
+        "rolled_out": bool(release) and _rollout() == release["version_code"],
     }

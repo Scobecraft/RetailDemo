@@ -61,6 +61,15 @@ class Prefs(context: Context) {
 
     val isPaused get() = System.currentTimeMillis() < pausedUntil
 
+    /** Versionsnummer und Prüfsumme eines im Hintergrund schon heruntergeladenen App-Updates (0 = keins). */
+    var updateReadyCode: Int
+        get() = sp.getInt("update_ready_code", 0)
+        set(v) = sp.edit().putInt("update_ready_code", v).apply()
+
+    var updateReadySha: String
+        get() = sp.getString("update_ready_sha", "") ?: ""
+        set(v) = sp.edit().putString("update_ready_sha", v).apply()
+
     var lastCleanup: Long
         get() = sp.getLong("last_cleanup", 0)
         set(v) = sp.edit().putLong("last_cleanup", v).apply()

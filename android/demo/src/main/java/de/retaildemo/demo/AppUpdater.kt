@@ -13,6 +13,8 @@ import de.retaildemo.core.AppRelease
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
@@ -58,15 +60,62 @@ class AppUpdater(private val app: DemoApp) {
 
     fun canInstall() = app.packageManager.canRequestPackageInstalls()
 
+    /** Datei eines vorab heruntergeladenen Updates (überlebt Neustarts, anders als der Cache). */
+    private val readyFile get() = File(app.filesDir, "update.apk")
+
+    private val _ready = MutableStateFlow(app.prefs.updateReadyCode.takeIf { it > installedCode })
+    /** Versionsnummer eines fertig heruntergeladenen Updates, sonst null. */
+    val ready: StateFlow<Int?> = _ready
+
+    private val prefetchMutex = kotlinx.coroutines.sync.Mutex()
+
+    init {
+        // Nach erfolgreichem Update: alte Datei aufräumen
+        if (app.prefs.updateReadyCode in 1..installedCode) {
+            readyFile.delete()
+            app.prefs.updateReadyCode = 0
+            app.prefs.updateReadySha = ""
+        }
+    }
+
+    private fun isReady(r: AppRelease) =
+        app.prefs.updateReadyCode == r.versionCode && app.prefs.updateReadySha == r.sha256 && readyFile.exists()
+
+    /** Vom Server "an alle Geräte verteilt": still im Hintergrund herunterladen. */
+    fun prefetchInBackground(r: AppRelease) {
+        if (!isNewer(r) || isReady(r)) return
+        app.scope.launch {
+            prefetchMutex.withLock {
+                if (isReady(r)) return@withLock
+                try {
+                    val tmp = File(app.filesDir, "update-download.apk")
+                    api().download(r.url, tmp)
+                    if (r.sha256.isNotEmpty() && sha256(tmp) != r.sha256) {
+                        tmp.delete()
+                        error("Prüfsumme falsch")
+                    }
+                    if (!tmp.renameTo(readyFile)) error("Konnte Update nicht speichern")
+                    app.prefs.updateReadySha = r.sha256
+                    app.prefs.updateReadyCode = r.versionCode
+                    _ready.value = r.versionCode
+                    Log.i(TAG, "Update ${r.versionName} vorab heruntergeladen")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Vorab-Download fehlgeschlagen", e)
+                }
+            }
+        }
+    }
+
     /** Lädt die neue Version und startet die Installation. */
     suspend fun install(release: AppRelease) {
         try {
-            val apk = File(app.cacheDir, "update.apk")
-            _state.value = State.Downloading(0f)
-            api().download(release.url, apk)
-            if (release.sha256.isNotEmpty() && sha256(apk) != release.sha256) {
-                apk.delete()
-                error("Download beschädigt – bitte erneut versuchen")
+            val apk = if (isReady(release)) readyFile else File(app.cacheDir, "update.apk").also { apk ->
+                _state.value = State.Downloading(0f)
+                api().download(release.url, apk)
+                if (release.sha256.isNotEmpty() && sha256(apk) != release.sha256) {
+                    apk.delete()
+                    error("Download beschädigt – bitte erneut versuchen")
+                }
             }
             _state.value = State.Installing
             // Während der Installation die Demo nicht dazwischenschieben

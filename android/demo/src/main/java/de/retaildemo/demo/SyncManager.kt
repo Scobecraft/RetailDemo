@@ -75,6 +75,7 @@ class SyncManager(private val app: DemoApp) {
                 runCatching { api().heartbeat(report(withSpecs = false)) }
                     .onSuccess {
                         waitS = it.heartbeatIntervalS
+                        it.appUpdate?.let { u -> app.updater.prefetchInBackground(u) }
                         if (it.syncNow) syncNow()
                     }
                     .onFailure { Log.w(TAG, "Heartbeat fehlgeschlagen", it) }
@@ -96,6 +97,8 @@ class SyncManager(private val app: DemoApp) {
         error = prefs.lastError,
         battery = DeviceInfo.batteryPercent(app),
         previousId = prefs.legacyDeviceId,
+        appVersionCode = BuildConfig.VERSION_CODE,
+        updateReady = prefs.updateReadyCode.takeIf { it > BuildConfig.VERSION_CODE },
     )
 
     /** Vollständiger Abgleich. Gibt null bei Erfolg zurück, sonst die Fehlermeldung. */
@@ -105,6 +108,7 @@ class SyncManager(private val app: DemoApp) {
         val error = try {
             val api = api()
             val m = api.sync(report(withSpecs = true))
+            m.appUpdate?.let { u -> app.updater.prefetchInBackground(u) }
             // Server hat den alten Eintrag übernommen -> alte Zufalls-ID nicht mehr melden
             if (prefs.legacyDeviceId != null) prefs.legacyDeviceId = prefs.deviceId
             var failed = 0

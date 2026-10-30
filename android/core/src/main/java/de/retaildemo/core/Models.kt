@@ -49,6 +49,8 @@ data class Device(
     /** "android" = Handy mit Demo-App, "windows"/"macos"/"linux" = Laptop-Demo. */
     val platform: String = "android",
     @SerialName("app_version") val appVersion: String? = null,
+    @SerialName("app_version_code") val appVersionCode: Int? = null,
+    @SerialName("update_ready") val updateReady: Int? = null,
     @SerialName("auto_specs") val autoSpecs: List<Spec> = emptyList(),
     @SerialName("custom_specs") val customSpecs: String = "",
     @SerialName("show_specs") val showSpecs: Boolean = true,
@@ -141,6 +143,7 @@ data class Manifest(
     val schedule: Schedule = Schedule(),
     @SerialName("cleanup_interval_h") val cleanupIntervalH: Int = 2,
     @SerialName("heartbeat_interval_s") val heartbeatIntervalS: Int = 300,
+    @SerialName("app_update") val appUpdate: AppRelease? = null
 )
 
 @Serializable
@@ -157,10 +160,13 @@ data class DeviceReport(
     val error: String? = null,
     val battery: Int? = null,
     @SerialName("previous_id") val previousId: String? = null,
+    @SerialName("app_version_code") val appVersionCode: Int? = null,
+    @SerialName("update_ready") val updateReady: Int? = null,
 )
 
 @Serializable
 data class HeartbeatResponse(
+    @SerialName("app_update") val appUpdate: AppRelease? = null,
     @SerialName("sync_now") val syncNow: Boolean = false,
     @SerialName("heartbeat_interval_s") val heartbeatIntervalS: Int = 300,
 )
@@ -190,6 +196,7 @@ data class OverviewDevices(
     val laptops: Int = 0,
     val outdated: Int = 0,
     @SerialName("phones_online") val phonesOnline: Int = 0,
+    @SerialName("update_ready") val updateReady: Int = 0,
     @SerialName("laptops_online") val laptopsOnline: Int = 0,
 )
 
@@ -219,4 +226,5 @@ data class Overview(
     val history: List<HistoryPoint> = emptyList(),
     @SerialName("app_release") val appRelease: AppRelease? = null,
     @SerialName("app_versions") val appVersions: Map<String, Int> = emptyMap(),
+    @SerialName("rolled_out") val rolledOut: Boolean = false,
 )

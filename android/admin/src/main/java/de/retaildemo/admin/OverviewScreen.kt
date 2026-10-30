@@ -132,6 +132,7 @@ private fun KpiGrid(o: Overview) {
                 "Demo-App", rel?.versionName ?: "–", null,
                 when {
                     rel == null -> "keine Version hochgeladen"
+                    d.outdated > 0 && o.rolledOut -> "${d.updateReady} von ${d.outdated} haben das Update geladen"
                     d.outdated > 0 -> "${d.outdated} Handy(s) veraltet"
                     else -> "alle Handys aktuell"
                 },

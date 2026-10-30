@@ -57,6 +57,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun DevicesScreen(vm: AdminViewModel, modifier: Modifier) {
     val devices by vm.devices.collectAsState()
+    val overview by vm.overview.collectAsState()
+    val release = overview?.appRelease?.takeIf { it.versionCode > 0 }
     val playlists by vm.playlists.collectAsState()
     var editingId by remember { mutableStateOf<String?>(null) }
     var showStale by remember { mutableStateOf(false) }
@@ -68,7 +70,7 @@ fun DevicesScreen(vm: AdminViewModel, modifier: Modifier) {
     // Liste aktualisieren, solange dieser Tab offen ist
     LaunchedEffect(Unit) {
         while (true) {
-            if (vm.isConfigured) vm.refreshDevices()
+            if (vm.isConfigured) { vm.refreshDevices(); vm.refreshOverview() }
             delay(20_000)
         }
     }
@@ -91,7 +93,7 @@ fun DevicesScreen(vm: AdminViewModel, modifier: Modifier) {
                     Modifier.padding(12.dp),
                 )
             }
-            items(active, key = { it.id }) { d -> DeviceCard(d) { editingId = d.id } }
+            items(active, key = { it.id }) { d -> DeviceCard(d, release, overview?.rolledOut == true) { editingId = d.id } }
             if (stale.isNotEmpty()) {
                 item {
                     Row(
@@ -108,7 +110,7 @@ fun DevicesScreen(vm: AdminViewModel, modifier: Modifier) {
                         }
                     }
                 }
-                if (showStale) items(stale, key = { it.id }) { d -> DeviceCard(d) { editingId = d.id } }
+                if (showStale) items(stale, key = { it.id }) { d -> DeviceCard(d, release, overview?.rolledOut == true) { editingId = d.id } }
             }
         }
     }
@@ -131,7 +133,7 @@ fun DevicesScreen(vm: AdminViewModel, modifier: Modifier) {
 }
 
 @Composable
-private fun DeviceCard(d: Device, onClick: () -> Unit) {
+private fun DeviceCard(d: Device, release: de.retaildemo.core.AppRelease?, rolledOut: Boolean, onClick: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -167,6 +169,13 @@ private fun DeviceCard(d: Device, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = if (d.lastError != null) MaterialTheme.colorScheme.error else Color.Unspecified,
                 )
+                appStatus(d, release, rolledOut)?.let { (text, highlight) ->
+                    Text(
+                        text, style = MaterialTheme.typography.bodySmall,
+                        color = if (highlight) Color(0xFFEE7F00) else Color.Unspecified,
+                        fontWeight = if (highlight) FontWeight.SemiBold else null,
+                    )
+                }
             }
         }
     }
@@ -292,5 +301,20 @@ private fun ago(epochS: Double?): String {
         s < 3600 -> "vor ${s / 60} Min."
         s < 86400 -> "vor ${s / 3600} Std."
         else -> "vor ${s / 86400} Tagen"
+    }
+}
+
+/** App-Version eines Handys im Vergleich zur Version auf dem Server (Text, hervorheben?). */
+private fun appStatus(d: Device, release: de.retaildemo.core.AppRelease?, rolledOut: Boolean): Pair<String, Boolean>? {
+    if ((d.platform ?: "android") != "android" || d.appVersion.isNullOrBlank()) return null
+    val base = "App ${d.appVersion}"
+    val installed = d.appVersionCode ?: return base to false
+    if (release == null) return base to false
+    return when {
+        installed >= release.versionCode -> "$base · ✅ aktuell" to false
+        (d.updateReady ?: 0) >= release.versionCode ->
+            "$base · ⬇️ Update ${release.versionName} bereit – am Gerät „Jetzt aktualisieren“ tippen" to true
+        rolledOut -> "$base · ⏳ lädt Update ${release.versionName} …" to false
+        else -> "$base · Update ${release.versionName} verfügbar" to false
     }
 }

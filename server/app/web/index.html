@@ -218,6 +218,7 @@
   .tag { margin-left: 6px; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
   .release { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .release .ver { font-size: 22px; font-weight: 700; }
+  .rollout { margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); }
 
   /* ---------- Handy ---------- */
   @media (max-width: 640px) {
@@ -713,12 +714,25 @@ function deviceRow(d) {
       el("div", { class: "meta" }, [d.manufacturer, d.model, d.android_version].filter(Boolean).join(" · ")),
       el("div", { class: "meta" }, `Playlist: ${d.playlist_name} · ` + (d.online ? "Online" : "Offline, zuletzt " + ago(d.last_seen)) + (d.status ? ` · ${d.status}` : "") + (d.battery != null ? ` · 🔋 ${d.battery} %` : "")),
       el("div", { class: "meta", style: d.last_error ? "color:var(--danger)" : "" },
-        d.last_error ? "⚠️ " + d.last_error : d.sync_requested ? "⏳ Aktualisierung angefordert" : d.up_to_date ? "✅ Inhalte aktuell" : "🔄 Änderungen beim nächsten Abgleich")),
+        d.last_error ? "⚠️ " + d.last_error : d.sync_requested ? "⏳ Aktualisierung angefordert" : d.up_to_date ? "✅ Inhalte aktuell" : "🔄 Änderungen beim nächsten Abgleich"),
+      appStatusLine(d)),
     el("div", { class: "actions" },
       el("button", { class: "btn small", onclick: () => editDevice(d) }, "Bearbeiten"),
       el("button", { class: "btn small", onclick: async () => { await api(`/api/admin/devices/${d.id}/sync-now`, { method: "POST" }); toast("Gerät aktualisiert sich in ca. 5 Minuten"); loadDevices(); } }, "Jetzt aktualisieren")));
 }
+// App-Version eines Handys im Vergleich zur Version auf dem Server
+function appStatusLine(d) {
+  if (isLaptop(d) || !d.app_version) return null;
+  const rel = state.appRelease;
+  let text = `App ${d.app_version}`, color = "";
+  if (rel && rel.version_code && d.app_version_code != null && d.app_version_code < rel.version_code) {
+    if ((d.update_ready || 0) >= rel.version_code) { text += ` · ⬇️ Update ${rel.version_name} bereit – am Gerät „Jetzt aktualisieren“ tippen`; color = "color:var(--accent)"; }
+    else text += rel.rolled_out ? ` · ⏳ lädt Update ${rel.version_name} …` : ` · Update ${rel.version_name} verfügbar`;
+  } else if (rel && rel.version_code && d.app_version_code >= rel.version_code) text += " · ✅ aktuell";
+  return el("div", { class: "meta", style: color }, text);
+}
 async function loadDevices() {
+  state.appRelease = await api("/api/admin/app-release").catch(() => ({}));
   state.devices = await api("/api/admin/devices");
   renderDevices();
 }
@@ -949,7 +963,9 @@ async function loadOverview() {
     historyChart(o.history));
 
   const appNote = !rel ? "Noch keine Demo-App hochgeladen (Einstellungen → App-Updates)"
-    : d.outdated ? `${d.outdated} Handy(s) mit älterer Version` : "Alle Handys aktuell";
+    : !d.outdated ? "Alle Handys aktuell"
+    : o.rolled_out ? `${d.update_ready} von ${d.outdated} veralteten Handys haben das Update geladen`
+    : `${d.outdated} Handy(s) mit älterer Version`;
 
   $("#ovGrid").replaceChildren(
     kpi("Demo läuft", d.running, d.total, d.running === 1 ? "Gerät zeigt gerade die Demo" : "Geräte zeigen gerade die Demo", true),
@@ -1024,6 +1040,21 @@ function drawHistory(wrap, hist, W) {
 }
 
 // ---------------------------------------------------------------- App-Updates
+function rolloutBox(rel) {
+  const pending = rel.phones - rel.up_to_date;
+  const body = rel.rolled_out
+    ? [el("div", {}, el("strong", {}, `✅ An alle Geräte verteilt`),
+        el("div", { class: "meta" }, `${rel.up_to_date} von ${rel.phones} Handys aktuell · ${rel.ready} haben das Update geladen und warten auf „Jetzt aktualisieren“` +
+          (pending - rel.ready > 0 ? ` · ${pending - rel.ready} laden noch (bzw. sind offline)` : ""))),
+       el("div", { class: "spacer" }),
+       el("button", { class: "btn small", onclick: async () => { await api("/api/admin/app-release/rollout", { method: "DELETE" }); renderAppUpdate(); } }, "Verteilen stoppen")]
+    : [el("div", {}, el("strong", {}, "Noch nicht verteilt"),
+        el("div", { class: "meta" }, `Alle Handys laden Version ${rel.version_name} dann innerhalb von ca. 5 Minuten im Hintergrund herunter. Am Gerät ist danach nur noch „Jetzt aktualisieren“ nötig.`)),
+       el("div", { class: "spacer" }),
+       el("button", { class: "btn primary", onclick: async () => { await api("/api/admin/app-release/rollout", { method: "POST" }); toast("Wird an alle Geräte verteilt"); renderAppUpdate(); } }, "An alle Geräte verteilen")];
+  return el("div", { class: "release rollout" }, ...body);
+}
+
 async function renderAppUpdate() {
   const box = $("#appUpdateSettings");
   const rel = await api("/api/admin/app-release").catch(() => ({}));
@@ -1054,8 +1085,9 @@ async function renderAppUpdate() {
             el("div", { class: "meta" }, `${size(rel.size)} · hochgeladen ${new Date(rel.uploaded_at * 1000).toLocaleString("de-DE")}`))
         : el("div", { class: "meta" }, "Noch keine Version hochgeladen."),
       el("div", { class: "spacer" }),
-      el("button", { class: "btn primary", onclick: () => input.click() }, "APK hochladen"), input),
-    progress, status);
+      el("button", { class: rel.version_name ? "btn" : "btn primary", onclick: () => input.click() }, "APK hochladen"), input),
+    progress, status,
+    rel.version_name ? rolloutBox(rel) : null);
 }
 
 // ---------------------------------------------------------------- Start
