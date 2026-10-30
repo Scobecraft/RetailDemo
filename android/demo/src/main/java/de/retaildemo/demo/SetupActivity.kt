@@ -142,6 +142,7 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> U
         Text("Demo einrichten", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
 
         if (prefs.isConfigured) PauseCard(app, refresh, onStartDemo, onPaused)
+        if (prefs.isConfigured) UpdateCard(app, refresh)
 
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -455,4 +456,63 @@ private fun PauseCard(app: DemoApp, refreshKey: Int, onResume: () -> Unit, onPau
         confirmButton = {},
         dismissButton = { TextButton(onClick = { choose = false }) { Text("Abbrechen") } },
     )
+}
+
+@Composable
+private fun UpdateCard(app: DemoApp, refreshKey: Int) {
+    val ctx = app
+    val scope = rememberCoroutineScope()
+    val updater = app.updater
+    val state by updater.state.collectAsState()
+    var latest by remember { mutableStateOf<de.retaildemo.core.AppRelease?>(null) }
+    val canInstall = remember(refreshKey) { updater.canInstall() }
+    LaunchedEffect(Unit) { latest = updater.check() }
+
+    val newer = updater.isNewer(latest)
+    val busy = state is AppUpdater.State.Downloading || state is AppUpdater.State.Installing || state is AppUpdater.State.Checking
+    Card {
+        Column(Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("App-Version", style = MaterialTheme.typography.titleMedium)
+            StatusLine("Installiert", updater.installedName)
+            StatusLine("Neueste", latest?.versionName ?: if (state is AppUpdater.State.Checking) "wird geprüft …" else "–")
+            val (icon, text, color) = when {
+                state is AppUpdater.State.Checking -> Triple("⏳", "Prüfe auf Updates …", Color.Gray)
+                (state as? AppUpdater.State.Result)?.error != null ->
+                    Triple("⚠️", "Server nicht erreichbar", MaterialTheme.colorScheme.error)
+                latest == null -> Triple("ℹ️", "Auf dem Server ist noch keine App-Version hochgeladen (Webseite → App-Updates)", Color.Gray)
+                newer -> Triple("⬆️", "Update auf ${latest!!.versionName} verfügbar", Color(0xFFB45309))
+                else -> Triple("✅", "Die neueste Version ist installiert", Color(0xFF15803D))
+            }
+            Text("$icon  $text", color = color, fontWeight = FontWeight.Medium)
+            when (val st = state) {
+                is AppUpdater.State.Downloading -> Text("Lade Update herunter …", style = MaterialTheme.typography.bodySmall)
+                is AppUpdater.State.Installing -> Text(
+                    "Installiere … Falls Android nachfragt: „Aktualisieren“ antippen.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                is AppUpdater.State.Failed -> Text("❌ ${st.message}", color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+                else -> {}
+            }
+            if (newer && !canInstall) {
+                Text(
+                    "Einmalig nötig: der Demo-App erlauben, Apps zu installieren.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(onClick = {
+                    ctx.startActivity(
+                        Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }) { Text("Erlauben") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = newer && canInstall && !busy,
+                    onClick = { latest?.let { r -> scope.launch { updater.install(r) } } },
+                ) { Text("Jetzt aktualisieren") }
+                OutlinedButton(enabled = !busy, onClick = { scope.launch { latest = updater.check() } }) { Text("Erneut prüfen") }
+            }
+        }
+    }
 }

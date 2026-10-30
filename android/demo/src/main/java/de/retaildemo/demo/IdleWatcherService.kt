@@ -202,7 +202,8 @@ class IdleWatcherService : AccessibilityService() {
         val app = demoApp
         // Während eines freigegebenen Deinstallierens (nach PIN) die Demo nicht dazwischenschieben
         if (app.isUiVisible || !app.prefs.isConfigured || app.prefs.isPaused ||
-            SystemClock.elapsedRealtime() < app.uninstallUnlockedUntil
+            SystemClock.elapsedRealtime() < app.uninstallUnlockedUntil ||
+            SystemClock.elapsedRealtime() < app.updateInProgressUntil
         ) {
             lastInteraction = SystemClock.elapsedRealtime()
             return

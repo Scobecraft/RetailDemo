@@ -164,3 +164,13 @@ data class HeartbeatResponse(
     @SerialName("sync_now") val syncNow: Boolean = false,
     @SerialName("heartbeat_interval_s") val heartbeatIntervalS: Int = 300,
 )
+
+/** Neueste Demo-App-Version auf dem Server (leere Felder = keine hochgeladen). */
+@Serializable
+data class AppRelease(
+    @SerialName("version_code") val versionCode: Int = 0,
+    @SerialName("version_name") val versionName: String = "",
+    val size: Long = 0,
+    val sha256: String = "",
+    val url: String = "",
+)

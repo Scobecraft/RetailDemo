@@ -8,3 +8,7 @@ services:
     env_file: .env
     volumes:
       - ./data:/data
+      # Auslastung des Proxmox-Containers für die Übersicht (nur lesend)
+      - /proc/meminfo:/host/proc/meminfo:ro
+      - /proc/stat:/host/proc/stat:ro
+      - /proc/uptime:/host/proc/uptime:ro

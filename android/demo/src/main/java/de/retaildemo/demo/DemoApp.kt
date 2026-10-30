@@ -21,6 +21,11 @@ class DemoApp : Application() {
         private set
     lateinit var cleanup: CleanupManager
         private set
+    lateinit var updater: AppUpdater
+        private set
+
+    /** Bis zu diesem Zeitpunkt (elapsedRealtime) läuft ein App-Update – Demo nicht dazwischenschieben. */
+    @Volatile var updateInProgressUntil = 0L
 
     /** true, solange die Demo-Wiedergabe im Vordergrund läuft. */
     @Volatile var demoVisible = false
@@ -69,6 +74,7 @@ class DemoApp : Application() {
         schedule.start(scope)
         cleanup = CleanupManager(this)
         cleanup.start(scope)
+        updater = AppUpdater(this)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(a: Activity) { resumedActivities++ }

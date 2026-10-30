@@ -21,9 +21,13 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
+from collections import deque
+
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+
+from .apkinfo import read_apk_info
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 MEDIA_DIR = DATA_DIR / "media"
@@ -40,6 +44,11 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 LOGO_DIR = DATA_DIR / "logo"
 LOGO_MAX_BYTES = 10 * 1024 * 1024
 WEB_DIR = Path(__file__).parent / "web"
+APP_DIR = DATA_DIR / "app"
+APP_APK = APP_DIR / "demo-latest.apk"
+DEMO_PACKAGE = "de.retaildemo.demo"
+# Werte des Proxmox-Containers (per docker-compose eingebunden); sonst die von Docker selbst
+HOST_PROC = Path("/host/proc") if Path("/host/proc/meminfo").exists() else Path("/proc")
 
 HEARTBEAT_INTERVAL_S = 300
 DEFAULT_SETTINGS = {
@@ -85,6 +94,7 @@ DEFAULT_SCHEDULE = {
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 THUMB_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+APP_DIR.mkdir(parents=True, exist_ok=True)
 LOGO_DIR.mkdir(parents=True, exist_ok=True)
 _db_lock = threading.Lock()
 
@@ -505,6 +515,7 @@ class UploadInit(BaseModel):
     filename: str
     size: int
     mime: str = ""
+    kind: str = "media"  # "media" oder "apk" (App-Update der Demo-App)
 
 
 class UploadComplete(BaseModel):
@@ -520,7 +531,11 @@ def _upload_paths(upload_id: str) -> tuple[Path, Path]:
 
 @app.post("/api/admin/uploads", dependencies=[Depends(require_admin)])
 def upload_init(body: UploadInit):
-    _media_type(body.mime, body.filename)
+    if body.kind == "apk":
+        if not body.filename.lower().endswith(".apk"):
+            raise HTTPException(400, "Bitte eine .apk-Datei auswählen")
+    else:
+        _media_type(body.mime, body.filename)
     upload_id = uuid.uuid4().hex
     part, meta = _upload_paths(upload_id)
     part.touch()
@@ -551,6 +566,10 @@ def upload_complete(upload_id: str, body: UploadComplete):
     info = json.loads(meta.read_text())
     if part.stat().st_size != info["size"]:
         raise HTTPException(400, "Datei unvollständig")
+    if info.get("kind") == "apk":
+        release = _register_app_release(part)
+        meta.unlink(missing_ok=True)
+        return release
     item = _register_media(part, info["filename"], info["mime"], body.title)
     meta.unlink(missing_ok=True)
     _add_to_playlists(item["id"], body.playlist_ids)
@@ -1063,3 +1082,191 @@ def web_index():
 @app.get("/logo.svg", include_in_schema=False)
 def web_logo():
     return FileResponse(WEB_DIR / "logo.svg", media_type="image/svg+xml")
+
+
+# ------------------------------------------------------------------ app-update
+
+def _app_release() -> Optional[dict]:
+    with db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='app_release'").fetchone()
+    if not row or not APP_APK.exists():
+        return None
+    return json.loads(row["value"])
+
+
+def _register_app_release(tmp: Path) -> dict:
+    try:
+        info = read_apk_info(tmp)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise HTTPException(400, "Die Datei ist keine gültige APK")
+    if info.get("package") != DEMO_PACKAGE:
+        tmp.unlink(missing_ok=True)
+        raise HTTPException(400, f"Das ist nicht die Demo-App (Paket: {info.get('package')}). "
+                                 "Bitte RetailDemo-Demo-….apk hochladen.")
+    sha = hashlib.sha256()
+    with open(tmp, "rb") as f:
+        while chunk := f.read(1024 * 1024):
+            sha.update(chunk)
+    release = {
+        "version_code": int(info["version_code"]),
+        "version_name": str(info.get("version_name") or info["version_code"]),
+        "size": tmp.stat().st_size,
+        "sha256": sha.hexdigest(),
+        "uploaded_at": time.time(),
+    }
+    shutil.move(str(tmp), APP_APK)
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_release', ?)", (json.dumps(release),))
+    return release
+
+
+@app.get("/api/admin/app-release", dependencies=[Depends(require_admin)])
+def admin_app_release():
+    return _app_release() or {}
+
+
+@app.delete("/api/admin/app-release", dependencies=[Depends(require_admin)])
+def admin_delete_app_release():
+    APP_APK.unlink(missing_ok=True)
+    with db() as c:
+        c.execute("DELETE FROM settings WHERE key='app_release'")
+    return {"ok": True}
+
+
+@app.get("/api/device/app-update", dependencies=[Depends(require_device)])
+def device_app_update():
+    """Neueste Demo-App-Version auf dem Server (leer, wenn keine hochgeladen)."""
+    release = _app_release()
+    if not release:
+        return {}
+    return {**release, "url": "/api/device/app-update/apk"}
+
+
+@app.get("/api/device/app-update/apk", dependencies=[Depends(require_device)])
+def device_app_update_apk():
+    if not APP_APK.exists():
+        raise HTTPException(404, "Kein Update vorhanden")
+    return FileResponse(APP_APK, media_type="application/vnd.android.package-archive",
+                        filename="RetailDemo-Demo.apk")
+
+
+# --------------------------------------------------------------------- overview
+
+class SystemMonitor:
+    """Misst alle 15 s CPU und RAM des (Proxmox-)Containers und hält eine Stunde Verlauf vor."""
+    INTERVAL_S = 15
+
+    def __init__(self):
+        self.history: deque = deque(maxlen=3600 // self.INTERVAL_S)
+        self._last_cpu: Optional[tuple[int, int]] = None
+        self.cpu_percent = 0.0
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    @staticmethod
+    def _cpu_times() -> tuple[int, int]:
+        fields = (HOST_PROC / "stat").read_text().splitlines()[0].split()[1:]
+        values = [int(v) for v in fields]
+        idle = values[3] + (values[4] if len(values) > 4 else 0)
+        return sum(values[:8]), idle
+
+    @staticmethod
+    def memory() -> tuple[int, int]:
+        info = {}
+        for line in (HOST_PROC / "meminfo").read_text().splitlines():
+            key, _, rest = line.partition(":")
+            info[key] = int(rest.split()[0]) * 1024
+        total = info.get("MemTotal", 0)
+        available = info.get("MemAvailable", info.get("MemFree", 0))
+        return total - available, total
+
+    @staticmethod
+    def cpu_count() -> int:
+        try:
+            text = (HOST_PROC / "stat").read_text()
+            return max(1, sum(1 for line in text.splitlines() if line.startswith("cpu") and line[3:4].isdigit()))
+        except OSError:
+            return os.cpu_count() or 1
+
+    def sample(self):
+        total, idle = self._cpu_times()
+        if self._last_cpu:
+            dt, di = total - self._last_cpu[0], idle - self._last_cpu[1]
+            self.cpu_percent = round(max(0.0, min(100.0, 100.0 * (dt - di) / dt)), 1) if dt > 0 else 0.0
+        self._last_cpu = (total, idle)
+        used, mem_total = self.memory()
+        self.history.append({
+            "t": int(time.time()),
+            "cpu": self.cpu_percent,
+            "ram": round(100.0 * used / mem_total, 1) if mem_total else 0.0,
+        })
+
+    def _loop(self):
+        while True:
+            try:
+                self.sample()
+            except Exception:
+                pass
+            time.sleep(self.INTERVAL_S)
+
+
+monitor = SystemMonitor()
+
+
+def _status_group(status: Optional[str]) -> str:
+    s = (status or "").lower()
+    if s.startswith("pausiert"):
+        return "paused"
+    if s.startswith("kunde"):
+        return "customer"
+    if s.startswith("ruhezeit"):
+        return "sleeping"
+    if s.startswith("demo läuft") or s.startswith("gestartet"):
+        return "running"
+    return "other"
+
+
+@app.get("/api/admin/overview", dependencies=[Depends(require_admin)])
+def admin_overview():
+    release = _app_release()
+    counts = {"total": 0, "online": 0, "offline": 0, "running": 0, "paused": 0, "customer": 0,
+              "sleeping": 0, "phones": 0, "laptops": 0, "outdated": 0}
+    with db() as c:
+        s = get_settings(c)
+        rows = c.execute("SELECT * FROM devices WHERE removed=0").fetchall()
+        media = c.execute("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM media").fetchone()
+        for row in rows:
+            d = device_dict(c, row, s)
+            counts["total"] += 1
+            counts["laptops" if is_laptop(row) else "phones"] += 1
+            if not d["online"]:
+                counts["offline"] += 1
+                continue
+            counts["online"] += 1
+            group = _status_group(d["status"])
+            if group in counts:
+                counts[group] += 1
+            if release and not is_laptop(row) and d["app_version"] and d["app_version"] != release["version_name"]:
+                counts["outdated"] += 1
+    used, total = SystemMonitor.memory()
+    disk = shutil.disk_usage(DATA_DIR)
+    try:
+        uptime_s = int(float((HOST_PROC / "uptime").read_text().split()[0]))
+    except (OSError, ValueError):
+        uptime_s = None
+    return {
+        "devices": counts,
+        "system": {
+            "cpu_percent": monitor.cpu_percent,
+            "cpu_cores": SystemMonitor.cpu_count(),
+            "ram_used": used,
+            "ram_total": total,
+            "disk_used": disk.used,
+            "disk_total": disk.total,
+            "uptime_s": uptime_s,
+            "source": "proxmox" if HOST_PROC != Path("/proc") else "docker",
+        },
+        "media": {"count": media[0], "bytes": media[1]},
+        "history": list(monitor.history),
+        "app_release": release,
+    }
