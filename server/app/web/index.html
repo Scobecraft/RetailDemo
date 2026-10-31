@@ -848,13 +848,20 @@ function renderSettings() {
   let filterMode = s.web_filter || "off";
   const blocked = el("textarea", { rows: 5, placeholder: "tiktok.com\nbet365.de" });
   blocked.value = s.blocked_domains || "";
+  const blockedInfo = el("p", { class: "muted", style: "font-size:13px;margin:4px 0 0" });
+  const countBlocked = () => {
+    const n = blocked.value.split("\n").filter(l => l.trim() && !/^\s*[#!]/.test(l)).length;
+    blockedInfo.textContent = n > 500 ? `${n.toLocaleString("de-DE")} Zeilen – übernommen werden nur die ersten 500 gültigen Domains.`
+      : "Auch fertige Sperrlisten (z. B. „0.0.0.0 beispiel.de“) können eingefügt werden. Höchstens 500 Domains.";
+  };
+  blocked.oninput = countBlocked; countBlocked();
   $("#filterSettings").replaceChildren(
     el("h3", {}, "Kindersicherung (Mac-Laptops)"),
     el("p", { class: "sub" }, "Gilt in allen Browsern. Muss auf jedem Mac einmalig mit dem Admin-Passwort eingerichtet werden (Laptop-Demo → Einstellungen). Den Zustand siehst du unter „Geräte“."),
     ...FILTERS.map(([value, label, desc]) => el("label", { class: "check-row", style: "display:flex;gap:10px;align-items:flex-start;margin:10px 0 0;color:var(--text);cursor:pointer" },
       el("input", { type: "radio", name: "webfilter", value, checked: filterMode === value, style: "accent-color:var(--accent);margin-top:4px", onchange: () => filterMode = value }),
       el("span", {}, el("strong", {}, label), el("br"), el("span", { class: "muted", style: "font-size:13px" }, desc)))),
-    el("label", {}, "Zusätzlich gesperrte Webseiten (eine pro Zeile, nur wenn die Kindersicherung an ist)"), blocked,
+    el("label", {}, "Zusätzlich gesperrte Webseiten (eine pro Zeile, nur wenn die Kindersicherung an ist)"), blocked, blockedInfo,
     el("button", { class: "btn primary block", onclick: () => saveSettings({ web_filter: filterMode, blocked_domains: blocked.value }, "Gespeichert – Laptops übernehmen es beim nächsten Abgleich") }, "Speichern"));
 
   // Demo-Verhalten

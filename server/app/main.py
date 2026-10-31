@@ -76,16 +76,28 @@ WEB_FILTER_MODES = {"off", "family", "strict"}
 DOMAIN_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 
 
+MAX_BLOCKED_DOMAINS = 500  # mehr verkraftet das /etc/hosts-Skript auf den Macs nicht sinnvoll
+
+
 def clean_domains(text: str) -> list[str]:
-    """Sperrliste säubern: 'https://www.Beispiel.de/pfad' -> 'beispiel.de'."""
-    out = []
+    """Sperrliste säubern: 'https://www.Beispiel.de/pfad' -> 'beispiel.de'.
+
+    Versteht auch Zeilen aus fertigen Sperrlisten ('0.0.0.0 beispiel.de', '||beispiel.de^', Kommentare)
+    und hört nach MAX_BLOCKED_DOMAINS Einträgen auf, damit auch riesige Listen sofort verarbeitet sind."""
+    out, seen = [], set()
     for line in (text or "").splitlines():
-        d = line.strip().lower()
+        d = line.split("#", 1)[0].strip().lower()
+        if not d or d.startswith("!"):
+            continue
+        d = d.split()[-1].removeprefix("||").split("^")[0]  # hosts-Format / Adblock-Format
         d = re.sub(r"^[a-z]+://", "", d).split("/")[0].split(":")[0]
         d = d.removeprefix("www.").strip(".")
-        if d and DOMAIN_RE.match(d) and d not in out:
+        if d and d not in seen and DOMAIN_RE.match(d):
+            seen.add(d)
             out.append(d)
-    return out[:500]
+            if len(out) >= MAX_BLOCKED_DOMAINS:
+                break
+    return out
 # Einstellungen, bei denen 0 "aus" bedeutet
 ZERO_ALLOWED = {"cleanup_interval_h"}
 WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -789,6 +801,9 @@ def read_settings():
 
 @app.put("/api/admin/settings", dependencies=[Depends(require_admin)])
 def write_settings(body: dict):
+    # Sperrliste vor dem Datenbankzugriff säubern: eine lange Liste darf nie die Datenbank blockieren
+    if isinstance(body.get("blocked_domains"), str):
+        body["blocked_domains"] = "\n".join(clean_domains(body["blocked_domains"][:20_000_000]))
     with db() as c:
         for k, v in body.items():
             if k in DEFAULT_SETTINGS:
@@ -799,7 +814,7 @@ def write_settings(body: dict):
                     raise HTTPException(400, "Unbekannte Filterstufe")
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, v))
             elif k == "blocked_domains" and isinstance(v, str):
-                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, "\n".join(clean_domains(v))))
+                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, v))
             elif k in TEXT_SETTINGS and isinstance(v, str):
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, v.strip()[:80]))
             elif k == "schedule" and isinstance(v, dict):
