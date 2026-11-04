@@ -10,6 +10,7 @@ async function load() {
   $("#status").innerHTML = kv([
     ["Programmversion", i.version],
     ["Videos / Bilder", `${i.videos} / ${i.images}`],
+    ["Reguläre / wöchentliche Werbung", `${i.regular} / ${i.weekly}`],
     ["Logo", i.hasLogo ? "vom USB-Stick" : "expert klein (mitgeliefert)"],
     ["Ladenname", i.storeName],
     ["Letztes USB-Update", time(i.lastUpdate)],

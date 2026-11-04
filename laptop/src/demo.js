@@ -24,6 +24,19 @@ function applyTheme(v) {
 }
 
 // ---------------------------------------------------------------- Ablauf
+let lastMediaId = null;
+
+/** Zufällige Reihenfolge (Fisher-Yates); das zuletzt gezeigte Medium kommt nicht direkt wieder. */
+function shuffled(items) {
+  const a = items.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  if (a.length > 1 && a[0].id === lastMediaId) [a[0], a[a.length - 1]] = [a[a.length - 1], a[0]];
+  return a;
+}
+
 function buildSequence(v) {
   const seq = [];
   const hasBrand = !!(v.logo || v.store_name);
@@ -38,9 +51,10 @@ function buildSequence(v) {
   };
   intro();
   const n = Math.max(1, v.specs_every_n || 3);
-  v.items.forEach((item, i) => {
+  const items = v.shuffle ? shuffled(v.items) : v.items;
+  items.forEach((item, i) => {
     seq.push({ kind: "media", item });
-    if ((i + 1) % n === 0 && i < v.items.length - 1) intro();
+    if ((i + 1) % n === 0 && i < items.length - 1) intro();
   });
   if (!seq.length) seq.push({ kind: "specs" });
   return seq;
@@ -192,6 +206,7 @@ function mediaBadge() {
 }
 
 function playMedia(item, id) {
+  lastMediaId = item.id;
   if (item.type === "image") {
     const ms = (item.duration_s || 8) * 1000;
     const node = h(`<section class="scene media" style="--dur:${ms + 1500}ms"><img class="full" src="${escapeHtml(item.src)}" alt="">${mediaBadge()}</section>`);

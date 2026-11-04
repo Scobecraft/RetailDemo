@@ -53,7 +53,8 @@ function viewModel() {
   const logo = content.logoFile();
   const rated = rate(mergedSpecs());
   return {
-    items: content.items().map(it => ({ id: it.id, type: it.type, duration_s: it.duration_s, src: fileUrl(it.file, mtime(it.file)) })),
+    items: content.items().map(it => ({ id: it.id, group: it.group, type: it.type, duration_s: it.duration_s, src: fileUrl(it.file, mtime(it.file)) })),
+    shuffle: true,   // Werbung in zufälliger Reihenfolge
     display_name: (ov && ov.name) || (local && local.marketing_name) || "",
     manufacturer: (local && local.manufacturer) || "",
     specs: rated.specs,
@@ -117,7 +118,7 @@ async function runStickUpdate(dir) {
     return hideOverlay();
   }
   await usb.reportDevice(dir, local);
-  const newContent = (info.media.length || info.logo || info.extras.length) && info.fingerprint !== content.state.lastFingerprint;
+  const newContent = (info.groups.some(g => g.present) || info.logo || info.extras.length) && info.fingerprint !== content.state.lastFingerprint;
   if (!newContent && !info.setup) return; // schon übernommen
 
   stage.hideDemo();
@@ -138,8 +139,9 @@ async function runStickUpdate(dir) {
       stage.pushViewModel();
     }
     if (info.setup) return await installSetup(info.setup);
-    const n = info.media.length;
-    const text = n ? `${n} ${n === 1 ? "Video/Bild" : "Videos/Bilder"} übernommen` : "Einstellungen übernommen";
+    const n = c => `${c} ${c === 1 ? "Video/Bild" : "Videos/Bilder"}`;
+    const parts = info.groups.filter(g => g.present).map(g => `${g.label}: ${n(g.files.length)}`);
+    const text = parts.length ? parts.join(" · ") : "Einstellungen übernommen";
     showOverlay({ kind: "done", title: "Update abgeschlossen", text, hint: "Der USB-Stick kann jetzt entfernt werden" });
     await wait(5000);
   } catch (e) {
@@ -250,6 +252,8 @@ ipcMain.handle("info:get", () => {
     version: app.getVersion(),
     videos: items.filter(i => VIDEO.test(i.id)).length,
     images: items.filter(i => !VIDEO.test(i.id)).length,
+    regular: items.filter(i => i.group === "regulaer").length,
+    weekly: items.filter(i => i.group === "woechentlich").length,
     hasLogo: content.hasOwnLogo(),
     storeName: content.settings.storeName,
     lastUpdate: content.state.lastUpdate || 0,

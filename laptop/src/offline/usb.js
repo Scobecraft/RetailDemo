@@ -9,13 +9,19 @@ const fsp = require("fs/promises");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
-const { isMedia, LOGO, SETTINGS_FILE, DEVICES_FILE } = require("./content");
+const { isMedia, LOGO, SETTINGS_FILE, DEVICES_FILE, naturalSort } = require("./content");
 
 const MARKER = "DEMO-UPDATE";
 const KEY_FILE = "demo-schluessel.txt";
 const REPORT_FILE = "erkannte-geraete.txt";
 // SHA-256 des Schlüssels auf dem Stick (der Schlüssel selbst steht nicht im Programm)
 const KEY_HASH = "4ddbcaef75233a3cc42d6e624d27ecc370d3ad7ab54b64920a2441b83b03b5fc";
+// Werbe-Ordner auf dem Stick (Schreibweise egal: "Reguläre Werbung", "Regulaere Werbung", "Wöchentliche Werbung" …)
+const GROUPS = [
+  { key: "regulaer", label: "Reguläre Werbung", re: /regul/i },
+  // "chentlich" deckt auch verstümmelte Umlaute ab (z. B. "WÃ¶chentliche" nach falschem Entpacken)
+  { key: "woechentlich", label: "Wöchentliche Werbung", re: /chentlich|woche/i },
+];
 const SETUP_RE = /^RetailDemo-Offline-Setup-(\d+)\.(\d+)\.(\d+)\.exe$/i;
 
 /** Mögliche Stick-Laufwerke. Zum Testen per RD_USB_ROOTS (Pfade mit ; oder : getrennt) vorgebbar. */
@@ -77,7 +83,21 @@ async function inspect(dir, appVersion) {
     const s = await stat(n);
     if (s) entries.push({ name: n, size: s.size, mtime: s.mtimeMs, path: file(n) });
   }
-  const media = entries.filter(e => isMedia(e.name));
+  // Zwei Werbe-Ordner, die unabhängig voneinander ersetzt werden. Fehlt ein Ordner auf dem Stick,
+  // bleibt dieser Teil auf dem Laptop unverändert. Lose Dateien direkt in DEMO-UPDATE zählen als regulär.
+  const groups = GROUPS.map(g => ({ ...g, present: false, files: [] }));
+  const regular = groups.find(g => g.key === "regulaer");
+  const loose = entries.filter(e => isMedia(e.name)).map(e => ({ ...e, rel: e.name }));
+  if (loose.length) { regular.present = true; regular.files.push(...loose); }
+  for (const d of await fsp.readdir(dir, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    const g = groups.find(x => x.re.test(d.name));
+    if (!g) continue;
+    g.present = true;
+    g.files.push(...await subfolderMedia(dir, d.name));
+  }
+  for (const g of groups) g.files.sort((a, b) => naturalSort(a.rel, b.rel));
+  const media = groups.flatMap(g => g.files);
   const logo = entries.find(e => LOGO.test(e.name)) || null;
   const extras = entries.filter(e => [SETTINGS_FILE, DEVICES_FILE].includes(e.name.toLowerCase()));
   // Neueste Programmversion auf dem Stick, nur wenn neuer als die installierte
@@ -92,8 +112,28 @@ async function inspect(dir, appVersion) {
   // Fingerabdruck: gleicher Stick-Inhalt wird nur einmal übernommen
   const relevant = [...media, ...extras, ...(logo ? [logo] : [])];
   const fingerprint = crypto.createHash("sha256")
-    .update(relevant.map(e => `${e.name}|${e.size}|${Math.round(e.mtime)}`).sort().join("\n")).digest("hex");
-  return { dir, keyOk, media, logo, extras, setup, fingerprint };
+    .update(relevant.map(e => `${e.rel || e.name}|${e.size}|${Math.round(e.mtime)}`).sort().join("\n")).digest("hex");
+  return { dir, keyOk, groups, media, logo, extras, setup, fingerprint };
+}
+
+/** Videos/Bilder in Unterordnern (bis zu 3 Ebenen tief, versteckte/System-Ordner ausgelassen). */
+async function subfolderMedia(dir, rel = "", depth = 0) {
+  const out = [];
+  if (depth > 2) return out;
+  let list = [];
+  try { list = await fsp.readdir(path.join(dir, rel), { withFileTypes: true }); } catch { return out; }
+  for (const d of list) {
+    if (d.name.startsWith(".") || /^(\$|system volume information)/i.test(d.name)) continue;
+    const r = rel ? path.join(rel, d.name) : d.name;
+    if (d.isDirectory()) out.push(...await subfolderMedia(dir, r, depth + 1));
+    else if (rel && d.isFile() && isMedia(d.name)) {
+      try {
+        const st = await fsp.stat(path.join(dir, r));
+        out.push({ name: d.name, rel: r, size: st.size, mtime: st.mtimeMs, path: path.join(dir, r) });
+      } catch {}
+    }
+  }
+  return out;
 }
 
 /** Datei kopieren und dabei den Fortschritt (Bytes) melden. */
@@ -116,39 +156,45 @@ function copyWithProgress(src, dest, onBytes) {
  */
 async function applyContent(info, contentDir, mediaDir, onProgress) {
   const total = info.media.reduce((a, e) => a + e.size, 0) + (info.logo ? info.logo.size : 0) || 1;
-  let done = 0;
-  const tick = (n, label) => { done += n; onProgress(Math.min(done / total, 1), label); };
+  let done = 0, n = 0;
+  const tick = (bytes, label) => { done += bytes; onProgress(Math.min(done / total, 1), label); };
+  const present = info.groups.filter(g => g.present);
 
-  const staging = mediaDir + ".neu";
-  await fsp.rm(staging, { recursive: true, force: true });
-  await fsp.mkdir(staging, { recursive: true });
-  if (info.media.length) {
-    for (const [i, e] of info.media.entries()) {
-      const label = `Datei ${i + 1} von ${info.media.length}: ${e.name}`;
+  // Erst alles in Zwischenordner kopieren (Stick abgezogen -> alte Inhalte bleiben vollständig)
+  await fsp.mkdir(mediaDir, { recursive: true });
+  for (const g of present) {
+    const staging = path.join(mediaDir, g.key + ".neu");
+    await fsp.rm(staging, { recursive: true, force: true });
+    await fsp.mkdir(staging, { recursive: true });
+    for (const [i, e] of g.files.entries()) {
+      const label = `${g.label}: Datei ${++n} von ${info.media.length} – ${e.name}`;
       onProgress(done / total, label);
-      await copyWithProgress(e.path, path.join(staging, e.name), n => tick(n, label));
+      // laufende Nummer vorn verhindert Namensgleichheit aus verschiedenen Unterordnern
+      await copyWithProgress(e.path, path.join(staging, `${String(i + 1).padStart(3, "0")} ${e.name}`), b => tick(b, label));
     }
   }
   let logoTmp = null;
   if (info.logo) {
     logoTmp = path.join(contentDir, "logo.neu");
-    await copyWithProgress(info.logo.path, logoTmp, n => tick(n, "Logo"));
+    await copyWithProgress(info.logo.path, logoTmp, b => tick(b, "Logo"));
   }
   const extraData = [];
   for (const e of info.extras) extraData.push([e.name.toLowerCase(), await fsp.readFile(e.path)]);
 
   // Ab hier nur noch schnelle Operationen auf der eigenen Platte
-  if (info.media.length) {
-    const old = mediaDir + ".alt";
+  for (const g of present) {
+    const target = path.join(mediaDir, g.key), old = target + ".alt";
     await fsp.rm(old, { recursive: true, force: true });
-    if (fs.existsSync(mediaDir)) await fsp.rename(mediaDir, old);
-    await fsp.rename(staging, mediaDir);
+    if (fs.existsSync(target)) await fsp.rename(target, old);
+    await fsp.rename(path.join(mediaDir, g.key + ".neu"), target);
     await fsp.rm(old, { recursive: true, force: true });
-  } else {
-    await fsp.rm(staging, { recursive: true, force: true });
+    if (g.key === "regulaer") {
+      // Inhalte älterer Versionen lagen direkt in medien/ – gelten als reguläre Werbung
+      for (const f of await fsp.readdir(mediaDir)) if (isMedia(f)) await fsp.rm(path.join(mediaDir, f), { force: true });
+    }
   }
   if (logoTmp) {
-    for (const n of await fsp.readdir(contentDir)) if (LOGO.test(n)) await fsp.rm(path.join(contentDir, n), { force: true });
+    for (const f of await fsp.readdir(contentDir)) if (LOGO.test(f)) await fsp.rm(path.join(contentDir, f), { force: true });
     await fsp.rename(logoTmp, path.join(contentDir, info.logo.name.toLowerCase()));
   }
   for (const [name, data] of extraData) await fsp.writeFile(path.join(contentDir, name), data);
@@ -181,4 +227,4 @@ async function reportDevice(dir, local) {
   await fsp.writeFile(f, text).catch(() => {}); // schreibgeschützter Stick: egal
 }
 
-module.exports = { MARKER, KEY_FILE, findStick, inspect, applyContent, stageSetup, reportDevice, SETUP_RE, versionNum };
+module.exports = { GROUPS, MARKER, KEY_FILE, findStick, inspect, applyContent, stageSetup, reportDevice, SETUP_RE, versionNum };

@@ -240,7 +240,9 @@ aber alle Inhalte kommen per **USB-Stick** – ohne Klick.
 
 - Stick-Ordner `DEMO-UPDATE` mit `demo-schluessel.txt` (Vorlage `USB-Stick-Vorlage.zip`, nicht im Repo –
   im Programm steht nur der SHA-256 des Schlüssels in `laptop/src/offline/usb.js`).
-- Stick einstecken → alle Videos/Bilder werden ersetzt (Ladebalken), optional `logo.png`/`logo.svg`,
+- Stick einstecken → Videos/Bilder werden übernommen (Ladebalken). Zwei Ordner `Reguläre Werbung` und
+  `Wöchentliche Werbung`, jeder wird einzeln ersetzt (fehlt er auf dem Stick, bleibt er auf dem Laptop);
+  abgespielt wird alles in zufälliger Reihenfolge, jede Runde neu gemischt, optional `logo.png`/`logo.svg`,
   `einstellungen.txt` (Ladenname, Wartezeit, Herunterfahren, PIN) und `geraete.txt` (Name/Preis pro Modell).
 - Liegt `RetailDemo-Offline-Setup-x.y.z.exe` mit höherer Version im Ordner, installiert sich die Demo still neu.
 - **Themes:** Standard, Black Week, Weihnachten, Geburtstag, Sonderangebot – eigene Farben, animierte

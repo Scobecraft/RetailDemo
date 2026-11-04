@@ -107,15 +107,24 @@ class Content {
     fs.writeFileSync(this.stateFile, JSON.stringify(this.state, null, 2));
   }
 
+  /** Alle Videos/Bilder: reguläre und wöchentliche Werbung (abgespielt wird zufällig gemischt). */
   items() {
-    let names = [];
-    try { names = fs.readdirSync(this.mediaDir).filter(isMedia).sort(naturalSort); } catch {}
-    return names.map(name => ({
-      id: name,
-      type: VIDEO.test(name) ? "video" : "image",
-      duration_s: this.settings.imageS,
-      file: path.join(this.mediaDir, name),
-    }));
+    const out = [];
+    // "" = Inhalte älterer Versionen direkt in medien/ (zählen als regulär)
+    for (const [group, sub] of [["regulaer", ""], ["regulaer", "regulaer"], ["woechentlich", "woechentlich"]]) {
+      let names = [];
+      try { names = fs.readdirSync(path.join(this.mediaDir, sub)).filter(isMedia).sort(naturalSort); } catch {}
+      for (const name of names) {
+        out.push({
+          id: sub ? `${sub}/${name}` : name,
+          group,
+          type: VIDEO.test(name) ? "video" : "image",
+          duration_s: this.settings.imageS,
+          file: path.join(this.mediaDir, sub, name),
+        });
+      }
+    }
+    return out;
   }
 
   /** Logo vom USB-Stick, sonst das mitgelieferte expert-klein-Logo. */
