@@ -241,7 +241,7 @@ ipcMain.handle("info:get", () => {
     version: app.getVersion(),
     videos: items.filter(i => VIDEO.test(i.id)).length,
     images: items.filter(i => !VIDEO.test(i.id)).length,
-    hasLogo: !!content.logoFile(),
+    hasLogo: content.hasOwnLogo(),
     storeName: content.settings.storeName,
     lastUpdate: content.state.lastUpdate || 0,
     idleS: content.settings.idleS,

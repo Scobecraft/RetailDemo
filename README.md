@@ -256,6 +256,11 @@ npm run dist:offline   # -> dist-offline/RetailDemo-Offline-Setup-<version>.exe
 
 Für eine neue Version `extraMetadata.version` in `laptop/offline.builder.json` erhöhen.
 
+**Logo:** Das expert-klein-Logo ist als Vektorgrafik in `laptop/logo/` (quer, gestapelt, kompakt – jeweils
+für hellen und dunklen Hintergrund). Die Offline-Demo zeigt standardmäßig `expert-klein-quer-dunkel.svg`;
+ein `logo.png`/`logo.svg` auf dem Stick ersetzt es. Für die Online-Version dieselbe Datei auf der Webseite
+unter Einstellungen → Laden-Logo hochladen.
+
 ## APKs selbst bauen
 
 ```bash

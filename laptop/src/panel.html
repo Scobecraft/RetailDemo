@@ -28,7 +28,8 @@
   body.open #sheet { transform: none; }
   #sheet::before { content: ""; position: absolute; width: 360px; height: 360px; right: -140px; top: -160px; border-radius: 50%; background: var(--accent); filter: blur(90px); opacity: .45; }
   header { position: relative; display: flex; align-items: center; gap: 12px; padding: 18px 18px 0 22px; min-height: 64px; }
-  header img { max-height: 42px; max-width: 220px; object-fit: contain; }
+  #brand { flex: none; }
+  header img { display: block; height: 38px; width: auto; max-width: 280px; object-fit: contain; }
   header .store { font-weight: 700; font-size: 16px; }
   header .sp { flex: 1; }
   #close { border: 0; background: rgba(255,255,255,.1); color: #fff; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 18px; line-height: 1; }

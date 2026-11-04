@@ -110,7 +110,7 @@ body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-s
   background: rgba(10,12,18,.62); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(16px); opacity: 0; transform: translateX(-3vw); }
 .media.in .badge { animation: slideIn .9s var(--ease) .8s forwards; }
 @keyframes slideIn { to { opacity: 1; transform: none; } }
-.badge img { height: 40px; max-width: 160px; object-fit: contain; }
+.badge img { height: 44px; max-width: 280px; object-fit: contain; }
 .badge .dn { font-weight: 700; font-size: clamp(16px, 1.4vw, 26px); }
 .badge .sep { width: 1px; align-self: stretch; background: rgba(255,255,255,.2); }
 

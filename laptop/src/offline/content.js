@@ -7,6 +7,8 @@ const VIDEO = /\.(mp4|m4v|mov|webm)$/i;
 const IMAGE = /\.(jpe?g|png|webp|gif)$/i;
 const LOGO = /^logo\.(png|svg|jpe?g|webp)$/i;
 const SETTINGS_FILE = "einstellungen.txt";
+// helle Fassung für den dunklen Hintergrund der Präsentation
+const DEFAULT_LOGO = path.join(__dirname, "logo-standard.svg");
 const DEVICES_FILE = "geraete.txt";
 
 const DEFAULTS = {
@@ -103,12 +105,16 @@ class Content {
     }));
   }
 
+  /** Logo vom USB-Stick, sonst das mitgelieferte expert-klein-Logo. */
   logoFile() {
     try {
       const f = fs.readdirSync(this.dir).find(n => LOGO.test(n));
-      return f ? path.join(this.dir, f) : null;
-    } catch { return null; }
+      if (f) return path.join(this.dir, f);
+    } catch {}
+    return DEFAULT_LOGO;
   }
+
+  hasOwnLogo() { return this.logoFile() !== DEFAULT_LOGO; }
 
   /** Passende Zeile aus geraete.txt für diesen Laptop. */
   deviceOverride(local) {
