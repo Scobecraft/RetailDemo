@@ -61,7 +61,6 @@ function viewModel() {
     store_name: s.storeName,
     welcome_prefix: true, // "Willkommen bei Expert Klein Asbach"
     theme: currentTheme(),
-    birthday_years: s.birthdayYears || 0,
     logo: logo ? fileUrl(logo, mtime(logo)) : "",
   };
 }

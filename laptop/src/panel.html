@@ -10,6 +10,7 @@
   body[data-theme="blackweek"] { --accent: #ffd200; --accent-2: #ffe766; --hot: #ff9f00; --glow: 255, 210, 0; --on-accent: #111; }
   body[data-theme="weihnachten"] { --accent: #d4202f; --accent-2: #f2cf7a; --hot: #9e1020; --glow: 212, 32, 47; }
   body[data-theme="geburtstag"] { --accent: #ff3d8b; --accent-2: #ffd166; --hot: #8b3dff; --glow: 255, 61, 139; }
+  body[data-theme="sonderangebot"] { --accent: #e30613; --accent-2: #ffd400; --hot: #a8000b; --glow: 227, 6, 19; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none;
     font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; color: #f4f6fb; }
@@ -45,6 +46,7 @@
     background: linear-gradient(135deg, var(--accent), var(--hot)); color: var(--on-accent); }
   .price small { text-transform: uppercase; letter-spacing: .15em; font-size: 11px; font-weight: 700; opacity: .9; }
   .price strong { font-size: 26px; font-weight: 800; }
+  .price .old { font-size: 15px; font-weight: 600; opacity: .75; margin-right: 10px; }
   .row { display: flex; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.08);
     opacity: 0; transform: translateX(16px); }
   body.open .row { animation: in .45s var(--ease) forwards; }

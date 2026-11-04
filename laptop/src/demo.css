@@ -137,7 +137,9 @@ body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-s
    body[data-theme] wird von demo.js gesetzt. "standard" = Werte oben. */
 
 /* Effekt-Ebene (Schnee, Konfetti, Prozentzeichen) und Eckband */
-#fx { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+#fxBack, #fxFront { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
+#fxBack { z-index: 1; }
+#fxFront { z-index: 4; }
 #stage { z-index: 2; }
 .hint, .progress { z-index: 6; }
 .ribbon { position: fixed; top: 0; right: 0; width: 34vw; height: 34vw; max-width: 520px; max-height: 520px; overflow: hidden; pointer-events: none; z-index: 7; }
@@ -149,18 +151,6 @@ body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-s
   transform: translateX(-120%); animation: priceShine 4s ease-in-out 1s infinite; }
 .brand .claim { margin-top: 1vh; font-size: clamp(18px, 1.7vw, 32px); font-weight: 700; color: var(--accent-2); opacity: 0; }
 .brand.in .claim { animation: rise 1s var(--ease) 1.6s forwards; }
-
-/* Schnee */
-.snow { position: absolute; top: -3vh; border-radius: 50%; background: #fff; opacity: .85; filter: blur(.5px);
-  animation: fall linear infinite, sway ease-in-out infinite alternate; }
-@keyframes fall { to { transform: translateY(110vh); } }
-@keyframes sway { from { margin-left: -2vw; } to { margin-left: 2vw; } }
-/* Konfetti */
-.confetti { position: absolute; top: -4vh; width: 10px; height: 16px; border-radius: 2px; animation: fallspin linear infinite; }
-@keyframes fallspin { 0% { transform: translateY(0) rotate(0) rotateX(0); } 100% { transform: translateY(112vh) rotate(720deg) rotateX(720deg); } }
-/* Black Week: aufsteigende Prozentzeichen */
-.fx-pct { position: absolute; bottom: -10vh; font-weight: 900; color: var(--accent); opacity: .16; animation: riseup linear infinite; }
-@keyframes riseup { to { transform: translateY(-125vh) rotate(-12deg); } }
 
 /* ---------------------------------------------------------- Black Week */
 body[data-theme="blackweek"] {
@@ -187,3 +177,127 @@ body[data-theme="geburtstag"] {
   --bg: #120a24; --blue: #14b8d4; --violet: #ffd166;
 }
 body[data-theme="geburtstag"] .b3 { opacity: .3; }
+
+/* ---------------------------------------------------------- Sonderangebot */
+body[data-theme="sonderangebot"] {
+  --accent: #e30613; --accent-2: #ffd400; --hot: #a8000b; --glow: 227, 6, 19; --on-accent: #fff;
+  --bg: #140405; --blue: #ffd400; --violet: #7a0010;
+}
+body[data-theme="sonderangebot"] .b2 { opacity: .22; }
+body[data-theme="sonderangebot"] .price { background: linear-gradient(135deg, #ffd400, #ffb000); color: #b0000b; box-shadow: 0 20px 60px rgba(255, 212, 0, .35); }
+
+/* durchgestrichener alter Preis auf dem Preisschild */
+.price .old { font-size: clamp(16px, 1.5vw, 28px); font-weight: 700; opacity: .8; text-decoration-thickness: 3px; }
+
+/* ============================================================ Lichterkette (Weihnachten) */
+#garland { position: fixed; left: 0; right: 0; top: 0; height: 9vh; z-index: 5; pointer-events: none; }
+#garland svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.bulb { fill: var(--c); animation: twinkle ease-in-out infinite alternate; }
+@keyframes twinkle { from { opacity: .35; filter: none; } to { opacity: 1; filter: drop-shadow(0 0 .8px var(--c)) drop-shadow(0 0 1.6px var(--c)); } }
+body[data-theme="weihnachten"] .specs .top { top: 10vh; }
+
+/* ============================================================ Eröffnungs-Szenen der Themes */
+.tscene { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; overflow: hidden; }
+
+/* ---- Black Week: Blitze, Einschlag, Glitch, Absperrbänder, Stempel */
+.bw .flash { position: absolute; inset: 0; background: #fff; opacity: 0; z-index: 3; }
+.bw.in .flash { animation: flash 1.1s linear forwards; }
+@keyframes flash { 0%, 36% { opacity: 0; } 38% { opacity: .85; } 46% { opacity: 0; } 66% { opacity: .55; } 72%, 100% { opacity: 0; } }
+.bw-inner { position: relative; z-index: 2; }
+.bw.in .bw-inner { animation: shake .5s linear .42s, shake .4s linear .78s; }
+@keyframes shake { 0%, 100% { transform: none; } 20% { transform: translate(-14px, 8px) rotate(-1deg); } 40% { transform: translate(12px, -10px) rotate(1deg); }
+  60% { transform: translate(-8px, 6px); } 80% { transform: translate(6px, -4px); } }
+.bw-title { display: flex; flex-direction: column; line-height: .86; font-weight: 900; font-style: italic; letter-spacing: -.03em; font-size: min(19vw, 30vh); }
+.bw-title span { position: relative; display: block; opacity: 0; color: #fff; }
+.bw-title .w2 { color: var(--accent); }
+.bw.in .w1 { animation: slam .55s cubic-bezier(.2, 1.4, .4, 1) .3s forwards; }
+.bw.in .w2 { animation: slam .55s cubic-bezier(.2, 1.4, .4, 1) .66s forwards; }
+@keyframes slam { 0% { opacity: 0; transform: scale(3.2) rotate(-6deg); filter: blur(24px); } 70% { opacity: 1; transform: scale(.94); filter: blur(0); } 100% { opacity: 1; transform: none; } }
+/* Glitch: farbige Kopien springen kurz zur Seite */
+.bw-title span::before, .bw-title span::after { content: attr(data-t); position: absolute; inset: 0; opacity: 0; mix-blend-mode: screen; }
+.bw-title span::before { color: #ff2d55; }
+.bw-title span::after { color: #00e5ff; }
+.bw.in .bw-title span::before { animation: glitchA 2.6s steps(1) 1.2s infinite; }
+.bw.in .bw-title span::after { animation: glitchB 2.6s steps(1) 1.2s infinite; }
+@keyframes glitchA { 0%, 100% { opacity: 0; } 2% { opacity: .9; transform: translate(-10px, 3px); clip-path: inset(10% 0 55% 0); }
+  5% { opacity: .9; transform: translate(8px, -2px); clip-path: inset(60% 0 8% 0); } 8% { opacity: 0; } 51% { opacity: .9; transform: translate(-6px, 0); clip-path: inset(35% 0 40% 0); } 53% { opacity: 0; } }
+@keyframes glitchB { 0%, 100% { opacity: 0; } 3% { opacity: .9; transform: translate(10px, -3px); clip-path: inset(50% 0 20% 0); }
+  6% { opacity: .9; transform: translate(-8px, 2px); clip-path: inset(5% 0 70% 0); } 9% { opacity: 0; } 52% { opacity: .9; transform: translate(6px, 0); clip-path: inset(20% 0 55% 0); } 54% { opacity: 0; } }
+.bw-sub { margin-top: 3vh; font-size: clamp(20px, 2vw, 38px); font-weight: 700; color: #fff; opacity: 0; letter-spacing: .02em; }
+.bw.in .bw-sub { animation: rise .8s var(--ease) 1.3s forwards; }
+.tape { position: absolute; left: -20vw; width: 140vw; padding: 1.2vh 0; overflow: hidden; z-index: 1;
+  background: repeating-linear-gradient(-45deg, #ffd200 0 26px, #111 26px 52px); box-shadow: 0 12px 40px rgba(0,0,0,.6); opacity: 0; }
+.tape .track { display: inline-block; white-space: nowrap; font-weight: 900; font-size: clamp(16px, 1.6vw, 30px); letter-spacing: .12em;
+  color: #111; background: #ffd200; padding: .4vh 0; animation: marquee 16s linear infinite; }
+.tape.t1 { top: 7vh; transform: rotate(-6deg); }
+.tape.t2 { bottom: 5vh; transform: rotate(4deg); }
+.tape.t2 .track { animation-direction: reverse; }
+.bw.in .tape.t1 { animation: tapeL .7s var(--ease) 1s forwards; }
+.bw.in .tape.t2 { animation: tapeR .7s var(--ease) 1.15s forwards; }
+@keyframes tapeL { from { opacity: 0; margin-left: -60vw; } to { opacity: 1; margin-left: 0; } }
+@keyframes tapeR { from { opacity: 0; margin-left: 60vw; } to { opacity: 1; margin-left: 0; } }
+@keyframes marquee { to { transform: translateX(-50%); } }
+.bw-stamp { position: absolute; right: 5vw; top: 50%; margin-top: -8vw; width: 16vw; max-width: 260px; aspect-ratio: 1; z-index: 3; display: grid; place-items: center; opacity: 0; }
+.bw-stamp svg { position: absolute; inset: 0; width: 100%; height: 100%; animation: spin 9s linear infinite; }
+.bw-stamp svg text { font: 900 10px "Segoe UI", sans-serif; fill: #111; letter-spacing: 1.2px; }
+.bw-stamp::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--accent); box-shadow: 0 0 60px rgba(255,210,0,.5); }
+.bw-stamp b { position: relative; font-size: min(7vw, 110px); font-weight: 900; color: #111; }
+.bw.in .bw-stamp { animation: pop .7s cubic-bezier(.3, 1.8, .5, 1) 1.6s forwards; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Weihnachten: Stern, goldene Schreibschrift mit Glanz */
+.xmas .xm-glow { position: absolute; width: 70vw; height: 70vh; border-radius: 50%; background: radial-gradient(closest-side, rgba(242,207,122,.22), transparent); opacity: 0; }
+.xmas.in .xm-glow { animation: glowIn 2s ease-out .3s forwards; }
+@keyframes glowIn { to { opacity: 1; } }
+.xm-star { width: min(10vw, 14vh); margin-bottom: 1vh; opacity: 0; filter: drop-shadow(0 0 18px rgba(255,220,130,.9)); }
+.xm-star svg { width: 100%; fill: #ffe39a; }
+.xmas.in .xm-star { animation: starIn 1.2s cubic-bezier(.3, 1.5, .5, 1) .2s forwards, starPulse 2.2s ease-in-out 1.5s infinite; }
+@keyframes starIn { from { opacity: 0; transform: scale(0) rotate(-180deg); } to { opacity: 1; transform: none; } }
+@keyframes starPulse { 50% { transform: scale(1.12) rotate(8deg); filter: drop-shadow(0 0 34px rgba(255,220,130,1)); } }
+.xm-title { margin: 0; display: flex; flex-direction: column; line-height: 1.05; font-family: "Segoe Script", "Brush Script MT", "Lucida Handwriting", cursive;
+  font-weight: 700; font-size: min(9vw, 16vh); }
+.xm-title span span { display: inline-block; opacity: 0; background: linear-gradient(100deg, #b8862b 10%, #ffe9a8 35%, #fff8e1 50%, #ffe9a8 65%, #b8862b 90%);
+  background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; }
+.xmas.in .xm-title span span { animation: letterIn .9s var(--ease) forwards, goldShine 3.5s linear 2s infinite; }
+@keyframes letterIn { from { opacity: 0; transform: translateY(4vh) scale(.6); filter: blur(10px); } to { opacity: 1; transform: none; filter: blur(0); } }
+@keyframes goldShine { from { background-position: 150% 0; } to { background-position: -150% 0; } }
+.xm-sub { margin-top: 2vh; font-size: clamp(18px, 1.8vw, 34px); color: #f6e7c1; opacity: 0; letter-spacing: .04em; }
+.xmas.in .xm-sub { animation: rise 1s var(--ease) 2.2s forwards; }
+
+/* ---- Geburtstag: Luftballons, hüpfende Buchstaben */
+.balloons { position: absolute; inset: 0; z-index: 0; }
+.balloon { position: absolute; bottom: -32vh; width: min(7vw, 12vh); opacity: .95; animation: floatUp linear forwards, bob ease-in-out infinite alternate; }
+.balloon svg { width: 100%; display: block; filter: drop-shadow(0 10px 20px rgba(0,0,0,.35)); }
+@keyframes floatUp { to { transform: translateY(-145vh); } }
+@keyframes bob { from { margin-left: -1.5vw; rotate: -6deg; } to { margin-left: 1.5vw; rotate: 6deg; } }
+.bd-title { position: relative; z-index: 3; margin: 0; display: flex; flex-direction: column; line-height: 1.02; font-weight: 900; font-size: min(10vw, 17vh); letter-spacing: -.02em; }
+.bd-title span span { display: inline-block; color: var(--c); opacity: 0; text-shadow: 0 6px 0 rgba(0,0,0,.25), 0 0 40px rgba(255,255,255,.15); }
+.bd-title .sp { width: .3em; }
+.bday.in .bd-title span span { animation: jelly .9s cubic-bezier(.3, 1.8, .4, 1) forwards, wave 2.4s ease-in-out infinite; }
+@keyframes jelly { 0% { opacity: 0; transform: translateY(40vh) scale(.3, 1.6); } 60% { opacity: 1; transform: translateY(-3vh) scale(1.15, .85); }
+  80% { transform: translateY(1vh) scale(.95, 1.05); } 100% { opacity: 1; transform: none; } }
+@keyframes wave { 50% { translate: 0 -2.2vh; } }
+.bd-sub { position: relative; z-index: 3; margin-top: 2.5vh; font-size: clamp(20px, 2vw, 38px); font-weight: 700; color: #fff; opacity: 0; }
+.bday.in .bd-sub { animation: rise 1s var(--ease) 2.2s forwards; }
+
+/* ---- Sonderangebot: Strahlen, Knaller-Stern, Stempel */
+.sale-rays { position: absolute; width: 220vmax; height: 220vmax; left: 50%; top: 50%; margin: -110vmax 0 0 -110vmax; opacity: 0;
+  background: repeating-conic-gradient(rgba(255,212,0,.10) 0 7.5deg, transparent 7.5deg 15deg); }
+.sale.in .sale-rays { animation: glowIn 1s ease-out .2s forwards, spin 40s linear infinite; }
+.sale-burst { position: absolute; left: 36%; top: 40%; width: min(38vw, 58vh); aspect-ratio: 1; margin: calc(min(38vw, 58vh) / -2) 0 0 calc(min(38vw, 58vh) / -2);
+  display: grid; place-items: center; opacity: 0; }
+.sale-burst svg { position: absolute; inset: 0; width: 100%; height: 100%; fill: #ffd400; filter: drop-shadow(0 20px 50px rgba(0,0,0,.5)); animation: spin 18s linear infinite; }
+.sale-burst .txt { position: relative; font-weight: 900; font-size: min(4.6vw, 7vh); line-height: 1; color: #b0000b; transform: rotate(-8deg); }
+.sale.in .sale-burst { animation: burstIn .9s cubic-bezier(.3, 1.6, .5, 1) .3s forwards; }
+@keyframes burstIn { from { opacity: 0; transform: scale(0) rotate(-200deg); } to { opacity: 1; transform: none; } }
+.sale-stamp { position: absolute; left: 60%; top: 58%; z-index: 3; display: flex; flex-direction: column; padding: 1.5vh 2.5vw; border: .7vw solid #fff;
+  border-radius: 18px; color: #fff; font-weight: 900; font-size: min(7.5vw, 12vh); line-height: .95; letter-spacing: .02em; background: rgba(227,6,19,.92);
+  box-shadow: 0 0 0 .5vw #e30613, 0 30px 80px rgba(0,0,0,.6); transform: translate(-50%, -50%) rotate(-12deg); opacity: 0; }
+.sale.in .sale-stamp { animation: stamp .5s cubic-bezier(.2, 1.3, .4, 1) 1.35s forwards, stampWobble 3s ease-in-out 2.2s infinite; }
+@keyframes stamp { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(-12deg) scale(3.5); } 70% { opacity: 1; transform: translate(-50%, -50%) rotate(-12deg) scale(.92); }
+  100% { opacity: 1; transform: translate(-50%, -50%) rotate(-12deg) scale(1); } }
+@keyframes stampWobble { 50% { transform: translate(-50%, -50%) rotate(-9deg) scale(1.04); } }
+.sale.in { animation: shakeScene .45s linear 1.62s; }
+@keyframes shakeScene { 20% { translate: -12px 6px; } 40% { translate: 10px -8px; } 60% { translate: -6px 4px; } 80% { translate: 4px -2px; } 100% { translate: 0 0; } }
+.sale-sub { position: absolute; bottom: 12vh; left: 0; right: 0; font-size: clamp(20px, 2vw, 38px); font-weight: 800; color: #ffd400; opacity: 0; }
+.sale.in .sale-sub { animation: rise .8s var(--ease) 2.1s forwards; }

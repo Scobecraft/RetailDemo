@@ -11,65 +11,27 @@ const h = (html) => { const t = document.createElement("template"); t.innerHTML 
 const wait = (ms, id) => new Promise(r => setTimeout(() => r(id === runId), ms));
 
 // ---------------------------------------------------------------- Themes
-// Eckband und Satz im Intro je Theme; Farben stehen in demo.css (body[data-theme])
-const THEMES = {
-  standard: null,
-  blackweek: { ribbon: "BLACK WEEK", claim: "Black Week – die besten Angebote des Jahres!", fx: "pct" },
-  weihnachten: { ribbon: "FROHE WEIHNACHTEN", claim: "Frohe Weihnachten und schöne Feiertage!", fx: "snow" },
-  geburtstag: { ribbon: "WIR FEIERN GEBURTSTAG", claim: "Wir haben Geburtstag – feier mit uns!", fx: "confetti" },
-};
-let currentTheme = null;
-
-function themeInfo(v) {
-  const t = THEMES[v && v.theme] || null;
-  if (t && v.theme === "geburtstag" && v.birthday_years) {
-    return { ...t, ribbon: `${v.birthday_years} JAHRE`, claim: `${v.birthday_years} Jahre ${v.store_name || ""} – feier mit uns!`.replace("  ", " ") };
-  }
-  return t;
-}
+// Farben: demo.css (body[data-theme]); Partikel, Lichterkette und Eröffnungs-Szene: themes.js
+const themeInfo = v => Theme.info(v);
 
 function applyTheme(v) {
-  const name = (v && THEMES[v.theme] !== undefined) ? v.theme : "standard";
+  Theme.apply(v);
   const t = themeInfo(v);
-  const key = name + "|" + (t ? t.ribbon : "");
-  if (key === currentTheme) return;
-  currentTheme = key;
-  document.body.dataset.theme = name;
   const ribbon = document.getElementById("ribbon");
   ribbon.hidden = !t;
   ribbon.firstElementChild.textContent = t ? t.ribbon : "";
   ribbon.classList.toggle("long", !!t && t.ribbon.length > 12);
-  const fx = document.getElementById("fx");
-  fx.replaceChildren();
-  if (!t) return;
-  const rnd = (a, b) => a + Math.random() * (b - a);
-  const COLORS = ["#ff3d8b", "#ffd166", "#14b8d4", "#8b3dff", "#22c55e", "#fff"];
-  const count = { snow: 90, confetti: 70, pct: 22 }[t.fx];
-  for (let i = 0; i < count; i++) {
-    const el = document.createElement("span");
-    if (t.fx === "snow") {
-      const size = rnd(3, 9);
-      el.className = "snow";
-      el.style.cssText = `left:${rnd(0, 100)}vw;width:${size}px;height:${size}px;opacity:${rnd(.4, .95).toFixed(2)};` +
-        `animation-duration:${rnd(9, 20).toFixed(1)}s,${rnd(2.5, 5).toFixed(1)}s;animation-delay:-${rnd(0, 20).toFixed(1)}s,-${rnd(0, 5).toFixed(1)}s`;
-    } else if (t.fx === "confetti") {
-      el.className = "confetti";
-      el.style.cssText = `left:${rnd(0, 100)}vw;background:${COLORS[i % COLORS.length]};width:${rnd(7, 13).toFixed(0)}px;height:${rnd(12, 20).toFixed(0)}px;` +
-        `animation-duration:${rnd(6, 13).toFixed(1)}s;animation-delay:-${rnd(0, 13).toFixed(1)}s`;
-    } else {
-      el.className = "fx-pct";
-      el.textContent = "%";
-      el.style.cssText = `left:${rnd(0, 96)}vw;font-size:${rnd(30, 110).toFixed(0)}px;animation-duration:${rnd(14, 26).toFixed(1)}s;animation-delay:-${rnd(0, 26).toFixed(1)}s`;
-    }
-    fx.append(el);
-  }
 }
 
 // ---------------------------------------------------------------- Ablauf
 function buildSequence(v) {
   const seq = [];
   const hasBrand = !!(v.logo || v.store_name);
+  let first = true;
   const intro = () => {
+    // Theme-Szene (Black Week, Weihnachten …) eröffnet jede Runde
+    if (first && Theme.hasScene()) seq.push({ kind: "theme" });
+    first = false;
     if (hasBrand) seq.push({ kind: "brand" });
     if (v.show_specs) seq.push({ kind: "specs" });
   };
@@ -114,6 +76,12 @@ function runProgress(ms) {
 }
 
 async function play(scene, id) {
+  Theme.onScene(scene.kind);
+  if (scene.kind === "theme") {
+    show(h(Theme.scene(vm)));
+    runProgress(6500);
+    return wait(6500, id);
+  }
   if (scene.kind === "brand") {
     show(brandScene());
     runProgress(4500);
@@ -143,8 +111,9 @@ function brandScene() {
 
 function specsScene() {
   const specs = (vm.specs || []).filter(s => s.value);
-  const price = specs.find(s => isPrice(s.label));
-  const rest = specs.filter(s => s !== price).slice(0, 8);
+  const oldPrice = specs.find(s => isOldPrice(s.label));
+  const price = specs.find(s => isPrice(s.label) && s !== oldPrice);
+  const rest = specs.filter(s => s !== price && s !== oldPrice).slice(0, 8);
   const name = vm.display_name || "Dieser Laptop";
   const words = name.split(/\s+/).map((w, i) => `<span class="w"><span style="animation-delay:${0.35 + i * 0.09}s">${escapeHtml(w)}</span></span>`).join("");
   const cards = rest.map((s, i) => `
@@ -160,7 +129,7 @@ function specsScene() {
         ${vm.manufacturer ? `<div class="eyebrow">${escapeHtml(vm.manufacturer)}</div>` : ""}
         <h1>${words}</h1>
         <div class="underline"></div>
-        ${price ? `<div class="price"><small>${escapeHtml(price.label || "Preis")}</small><strong>${escapeHtml(price.value)}</strong></div>` : ""}
+        ${price ? `<div class="price"><small>${escapeHtml(price.label || "Preis")}</small>${oldPrice ? `<s class="old">statt ${escapeHtml(oldPrice.value)}</s>` : ""}<strong>${escapeHtml(price.value)}</strong></div>` : ""}
       </div>
       <div class="cards ${rest.length <= 3 ? "one" : ""}">${cards}</div>
     </section>`);
@@ -213,6 +182,7 @@ function playMedia(item, id) {
 function start(v) {
   vm = v || vm;
   applyTheme(vm);
+  Theme.resume();
   const id = ++runId;
   stage.replaceChildren();
   if (vm) run(id);
@@ -220,6 +190,7 @@ function start(v) {
 
 function stop() {
   runId++;
+  Theme.pause();
   stage.querySelectorAll("video").forEach(v => v.pause());
   stage.replaceChildren();
 }

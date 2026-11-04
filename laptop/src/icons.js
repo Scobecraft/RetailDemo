@@ -20,5 +20,7 @@
   const DEFAULT = svg('<circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/>');
   window.specIcon = label => (ICONS.find(([re]) => re.test(label || "")) || [0, DEFAULT])[1];
   window.isPrice = label => /preis|price/i.test(label || "");
+  // "Alter Preis", "Statt", "UVP": wird durchgestrichen über dem Preis gezeigt
+  window.isOldPrice = label => /\balt|statt|\buvp|vorher/i.test(label || "");
   window.escapeHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 })();
