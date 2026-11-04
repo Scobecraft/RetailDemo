@@ -347,3 +347,12 @@ body[data-theme="weihnachten"] .specs .top { top: 10vh; }
   letter-spacing: .08em; text-transform: uppercase; background: linear-gradient(90deg, var(--accent), var(--hot)); color: var(--on-accent);
   box-shadow: 0 8px 24px rgba(var(--glow), .45); opacity: 0; transform: scale(.4); }
 .fit.in .crown { animation: pop .6s cubic-bezier(.3, 1.8, .5, 1) 2.5s forwards; }
+
+/* ============================================================ KI-Hinweis (unten links, ovaler Rahmen) */
+.ai-note { position: fixed; left: 4vw; bottom: 5.5vh; z-index: 6; display: flex; align-items: center; gap: 8px;
+  padding: 8px 18px 8px 14px; border-radius: 999px; border: 1.5px solid rgba(255,255,255,.45);
+  background: rgba(10,12,18,.45); backdrop-filter: blur(10px); color: rgba(255,255,255,.88);
+  font-size: clamp(12px, .85vw, 16px); font-weight: 600; letter-spacing: .02em;
+  opacity: 0; transform: translateY(8px); transition: opacity .6s var(--ease), transform .6s var(--ease); pointer-events: none; }
+.ai-note.on { opacity: 1; transform: none; }
+.ai-note svg { width: 1.25em; height: 1.25em; color: var(--accent-2); flex: none; }

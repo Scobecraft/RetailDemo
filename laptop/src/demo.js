@@ -76,8 +76,16 @@ function runProgress(ms) {
   }));
 }
 
+const aiNote = document.getElementById("aiNote");
+/** KI-Hinweis nur bei erzeugten Szenen, nicht bei eigenen Videos/Bildern */
+function setAiNote(visible) {
+  aiNote.hidden = false;
+  aiNote.classList.toggle("on", visible);
+}
+
 async function play(scene, id) {
   Theme.onScene(scene.kind);
+  setAiNote(scene.kind !== "media");
   if (scene.kind === "theme") {
     show(h(Theme.scene(vm)));
     runProgress(6500);
@@ -227,6 +235,7 @@ function start(v) {
 
 function stop() {
   runId++;
+  setAiNote(false);
   Theme.pause();
   stage.querySelectorAll("video").forEach(v => v.pause());
   stage.replaceChildren();
