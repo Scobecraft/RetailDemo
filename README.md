@@ -247,6 +247,9 @@ aber alle Inhalte kommen per **USB-Stick** – ohne Klick.
   Eröffnungs-Szene, Partikel-Effekte (Canvas, `laptop/src/themes.js`), Eckband und Satz im Intro. Nach der
   Installation „Standard“; umstellen per `Theme = …` in `einstellungen.txt` (alle Laptops) oder im Info-Fenster
   (einzelner Laptop). „Alter Preis: …“ in `geraete.txt` wird durchgestrichen über dem Preis gezeigt.
+- **Eignung:** „Wofür eignet sich der Laptop?“ – Office & Schule, Gaming, Kreativ, Unterwegs mit 1–5 Punkten,
+  automatisch aus den Specs berechnet (`laptop/src/suitability.js`), eigene Szene nach den Specs, „Ideal für …“
+  auf der Spec-Seite und in der Lasche. Überschreiben in `geraete.txt`: `| Gaming: 4`, `| Ideal für: Kreativ`.
 - Startet mit Windows direkt im Vorführmodus, fährt den Laptop nach 9,5 Stunden herunter (einstellbar).
 - Einmalige Einrichtung pro Laptop: `Laptop-einrichten.cmd` (als Admin) – legt das eingeschränkte Konto
   „Vorfuehrung“ mit automatischer Anmeldung an, sperrt WLAN, Passwort/Sprache/Konten/Netzwerk-Einstellungen,

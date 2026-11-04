@@ -6,7 +6,7 @@
     "name": "retaildemo-offline",
     "productName": "Retail Demo Offline",
     "main": "src/offline/main.js",
-    "version": "1.0.2"
+    "version": "1.0.3"
   },
   "directories": {
     "output": "dist-offline",

@@ -301,3 +301,49 @@ body[data-theme="weihnachten"] .specs .top { top: 10vh; }
 @keyframes shakeScene { 20% { translate: -12px 6px; } 40% { translate: 10px -8px; } 60% { translate: -6px 4px; } 80% { translate: 4px -2px; } 100% { translate: 0 0; } }
 .sale-sub { position: absolute; bottom: 12vh; left: 0; right: 0; font-size: clamp(20px, 2vw, 38px); font-weight: 800; color: #ffd400; opacity: 0; }
 .sale.in .sale-sub { animation: rise .8s var(--ease) 2.1s forwards; }
+
+/* ============================================================ Eignung ("Wofür eignet sich der Laptop?") */
+.ideal { display: inline-flex; align-items: center; gap: .6vw; margin-top: 2.6vh; padding: 1vh 1.3vw 1vh 1vh; border-radius: 999px;
+  background: rgba(var(--glow), .14); border: 1px solid rgba(var(--glow), .45); color: var(--accent-2); font-weight: 800;
+  font-size: clamp(15px, 1.3vw, 24px); opacity: 0; }
+.ideal .ic { width: 2.1em; height: 2.1em; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent), var(--hot)); color: var(--on-accent); }
+.ideal .ic svg { width: 58%; height: 58%; }
+.specs.in .ideal { animation: rise .8s var(--ease) 1.0s forwards; }
+
+.fit { display: flex; flex-direction: column; justify-content: center; padding: 14vh 6vw 13vh; }
+.fit .top { position: absolute; left: 6vw; right: 6vw; top: 5vh; display: flex; align-items: center; gap: 20px; }
+.fit .top img { height: 7vh; max-width: 22vw; object-fit: contain; opacity: 0; }
+.fit .top .storename { font-weight: 700; font-size: clamp(18px, 1.7vw, 30px); opacity: 0; }
+.fit.in .top img, .fit.in .top .storename { animation: rise .9s var(--ease) .1s forwards; }
+.fit-head { margin-bottom: 5vh; }
+.fit-head .eyebrow { color: var(--accent-2); font-weight: 700; letter-spacing: .3em; text-transform: uppercase; font-size: clamp(13px, 1.2vw, 20px); opacity: 0; }
+.fit-head h2 { margin: 1vh 0 0; font-size: clamp(34px, 4vw, 76px); font-weight: 800; letter-spacing: -.02em; line-height: 1.05; opacity: 0; }
+.fit.in .fit-head .eyebrow { animation: rise .8s var(--ease) .15s forwards; }
+.fit.in .fit-head h2 { animation: rise .9s var(--ease) .3s forwards; }
+.fit-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.6vw; }
+.fit-tile { position: relative; padding: 3.2vh 1.6vw 3vh; border-radius: 24px; background: var(--card); border: 1px solid var(--card-line);
+  backdrop-filter: blur(14px); opacity: 0; transform: translateY(5vh) scale(.95); }
+.fit.in .fit-tile { animation: cardIn .9s var(--ease) forwards; }
+.fit-ic { width: clamp(48px, 4.2vw, 80px); height: clamp(48px, 4.2vw, 80px); border-radius: 18px; display: grid; place-items: center;
+  background: rgba(255,255,255,.08); color: var(--text); margin-bottom: 2.2vh; }
+.fit-ic svg { width: 56%; height: 56%; }
+.fit-name { font-size: clamp(18px, 1.7vw, 32px); font-weight: 800; }
+.fit-sub { color: var(--muted); font-size: clamp(12px, .95vw, 17px); margin-top: .5vh; min-height: 2.6em; }
+.meter { display: flex; gap: .45vw; margin-top: 2.4vh; }
+.meter i { flex: 1; height: 1.2vh; min-height: 8px; border-radius: 99px; background: rgba(255,255,255,.12); position: relative; overflow: hidden; }
+.meter i::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transform: scaleX(0); transform-origin: left; }
+.fit.in .meter i.on::after { animation: segFill .35s var(--ease) forwards; animation-delay: inherit; }
+@keyframes segFill { to { transform: scaleX(1); } }
+.verdict { margin-top: 1.6vh; font-weight: 800; font-size: clamp(16px, 1.4vw, 26px); opacity: 0; }
+.fit.in .verdict { animation: rise .6s var(--ease) forwards; }
+.fit-tile.s1 .verdict, .fit-tile.s2 .verdict { color: var(--muted); }
+.fit-tile.s4 .verdict, .fit-tile.s5 .verdict { color: var(--accent-2); }
+/* beste Kategorie: hebt sich nach dem Füllen hervor */
+.fit-tile.best { border-color: rgba(var(--glow), .7); }
+.fit.in .fit-tile.best { animation: cardIn .9s var(--ease) forwards, bestGlow 2.4s ease-in-out 2.6s infinite; }
+@keyframes bestGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(var(--glow), 0); transform: none; } 50% { box-shadow: 0 0 60px 6px rgba(var(--glow), .35); transform: translateY(-1vh) scale(1.03); } }
+.fit-tile.best .fit-ic { background: linear-gradient(135deg, var(--accent), var(--hot)); color: var(--on-accent); }
+.crown { position: absolute; top: -1.8vh; right: 1.2vw; padding: .6vh 1vw; border-radius: 999px; font-weight: 900; font-size: clamp(12px, 1vw, 18px);
+  letter-spacing: .08em; text-transform: uppercase; background: linear-gradient(90deg, var(--accent), var(--hot)); color: var(--on-accent);
+  box-shadow: 0 8px 24px rgba(var(--glow), .45); opacity: 0; transform: scale(.4); }
+.fit.in .crown { animation: pop .6s cubic-bezier(.3, 1.8, .5, 1) 2.5s forwards; }

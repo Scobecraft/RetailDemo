@@ -47,6 +47,17 @@
   .price small { text-transform: uppercase; letter-spacing: .15em; font-size: 11px; font-weight: 700; opacity: .9; }
   .price strong { font-size: 26px; font-weight: 800; }
   .price .old { font-size: 15px; font-weight: 600; opacity: .75; margin-right: 10px; }
+  .fit { margin: 2px 0 10px; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); }
+  .fit-h { color: #a3acc2; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; font-weight: 700; margin-bottom: 6px; }
+  .fit-row { display: grid; grid-template-columns: 26px 1fr auto 70px; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; }
+  .fit-row .fi { width: 22px; height: 22px; color: #a3acc2; }
+  .fit-row .fi svg { width: 100%; height: 100%; }
+  .fit-row .fl { font-weight: 600; }
+  .fit-row .dots { display: flex; gap: 4px; }
+  .fit-row .dots i { width: 14px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.14); }
+  .fit-row .dots i.on { background: var(--accent); }
+  .fit-row .fv { font-size: 12px; color: #a3acc2; text-align: right; }
+  .fit-row.best .fl, .fit-row.best .fv, .fit-row.best .fi { color: var(--accent-2); }
   .row { display: flex; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.08);
     opacity: 0; transform: translateX(16px); }
   body.open .row { animation: in .45s var(--ease) forwards; }

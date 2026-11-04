@@ -15,6 +15,7 @@ const { Sync } = require("./sync");
 const { isActiveAt } = require("./schedule");
 const { Stage, openWindow, IS_MAC } = require("./stage");
 const filter = require("./filter");
+const { rate } = require("./suitability");
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -37,11 +38,13 @@ function viewModel() {
     id: it.id, type: it.type, duration_s: it.duration_s, src: fileUrl(sync.localFile(it)),
   }));
   const logo = sync.logoFile(m);
+  const rated = rate(m.specs && m.specs.length ? m.specs : local.specs, local.specs);
   return {
     items,
     display_name: m.display_name || local.marketing_name || "",
     manufacturer: m.manufacturer || local.manufacturer || "",
-    specs: m.specs && m.specs.length ? m.specs : local.specs,
+    specs: rated.specs,
+    suitability: rated.suitability,
     show_specs: m.show_specs !== false,
     specs_every_n: m.specs_every_n || 3,
     specs_duration_s: Math.max(8, m.specs_duration_s || 12),

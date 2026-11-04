@@ -14,6 +14,7 @@ const { Stage, openWindow, asset, webPrefs } = require("../stage");
 const { Content, VIDEO, THEMES } = require("./content");
 const usb = require("./usb");
 const specs = require("../specs");
+const { rate } = require("../suitability");
 
 // Eigener Datenordner, unabhängig von der Online-Version
 app.setPath("userData", path.join(app.getPath("appData"), "Retail Demo Offline"));
@@ -50,11 +51,13 @@ function viewModel() {
   const s = content.settings;
   const ov = local && content.deviceOverride(local);
   const logo = content.logoFile();
+  const rated = rate(mergedSpecs());
   return {
     items: content.items().map(it => ({ id: it.id, type: it.type, duration_s: it.duration_s, src: fileUrl(it.file, mtime(it.file)) })),
     display_name: (ov && ov.name) || (local && local.marketing_name) || "",
     manufacturer: (local && local.manufacturer) || "",
-    specs: mergedSpecs(),
+    specs: rated.specs,
+    suitability: rated.suitability,   // "Wofür eignet sich der Laptop?"
     show_specs: true,
     specs_every_n: s.specsEvery,
     specs_duration_s: s.specsS,

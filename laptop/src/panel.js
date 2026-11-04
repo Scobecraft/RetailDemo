@@ -14,10 +14,15 @@ function render(vm) {
       <div class="ic">${specIcon(s.label)}</div>
       <div><div class="lb">${escapeHtml(s.label || "Ausstattung")}</div><div class="vl">${escapeHtml(s.value)}</div></div>
     </div>`).join("");
+  const f = vm.suitability;
+  const fit = f ? `<div class="fit"><div class="fit-h">Geeignet für</div>${f.items.map(it => `
+    <div class="fit-row ${it.key === f.best ? "best" : ""}"><span class="fi">${fitIcon(it.key)}</span><span class="fl">${escapeHtml(it.label)}</span>
+      <span class="dots">${"<i class=on></i>".repeat(it.stars)}${"<i></i>".repeat(5 - it.stars)}</span><span class="fv">${escapeHtml(it.verdict)}</span></div>`).join("")}</div>` : "";
   document.getElementById("content").innerHTML = `
     ${vm.manufacturer ? `<div class="eyebrow">${escapeHtml(vm.manufacturer)}</div>` : ""}
     <h1>${escapeHtml(vm.display_name || "Dieser Laptop")}</h1>
     ${price ? `<div class="price"><small>${escapeHtml(price.label || "Preis")}</small><span>${oldPrice ? `<s class="old">${escapeHtml(oldPrice.value)}</s>` : ""}<strong>${escapeHtml(price.value)}</strong></span></div>` : ""}
+    ${fit}
     ${rows}`;
 }
 

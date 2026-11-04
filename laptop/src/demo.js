@@ -34,6 +34,7 @@ function buildSequence(v) {
     first = false;
     if (hasBrand) seq.push({ kind: "brand" });
     if (v.show_specs) seq.push({ kind: "specs" });
+    if (v.show_specs && v.suitability) seq.push({ kind: "fit" });
   };
   intro();
   const n = Math.max(1, v.specs_every_n || 3);
@@ -87,6 +88,11 @@ async function play(scene, id) {
     runProgress(4500);
     return wait(4500, id);
   }
+  if (scene.kind === "fit") {
+    show(fitScene());
+    runProgress(9000);
+    return wait(9000, id);
+  }
   if (scene.kind === "specs") {
     const ms = vm.specs_duration_s * 1000;
     show(specsScene());
@@ -128,11 +134,42 @@ function specsScene() {
       <div>
         ${vm.manufacturer ? `<div class="eyebrow">${escapeHtml(vm.manufacturer)}</div>` : ""}
         <h1>${words}</h1>
+        ${idealChip()}
         <div class="underline"></div>
         ${price ? `<div class="price"><small>${escapeHtml(price.label || "Preis")}</small>${oldPrice ? `<s class="old">statt ${escapeHtml(oldPrice.value)}</s>` : ""}<strong>${escapeHtml(price.value)}</strong></div>` : ""}
       </div>
       <div class="cards ${rest.length <= 3 ? "one" : ""}">${cards}</div>
     </section>`);
+}
+
+/** "★ Ideal für Gaming" unter dem Gerätenamen */
+function idealChip() {
+  const f = vm.suitability;
+  const best = f && f.items.find(i => i.key === f.best);
+  return best ? `<div class="ideal"><span class="ic">${fitIcon(best.key)}</span>Ideal für ${escapeHtml(best.label)}</div>` : "";
+}
+
+/** "Wofür eignet sich dieser Laptop?" – vier Kacheln mit Balken, die beste hervorgehoben */
+function fitScene() {
+  const f = vm.suitability;
+  const top = vm.logo ? `<img src="${escapeHtml(vm.logo)}" alt="">` : vm.store_name ? `<div class="storename">${escapeHtml(vm.store_name)}</div>` : "";
+  const tiles = f.items.map((it, i) => {
+    const delay = 0.6 + i * 0.18;
+    const segs = Array.from({ length: 5 }, (_, j) =>
+      `<i class="${j < it.stars ? "on" : ""}" style="animation-delay:${(delay + 0.5 + j * 0.13).toFixed(2)}s"></i>`).join("");
+    return `<div class="fit-tile ${it.key === f.best ? "best" : ""} s${it.stars}" style="animation-delay:${delay.toFixed(2)}s">
+      ${it.key === f.best ? `<div class="crown">★ Ideal</div>` : ""}
+      <div class="fit-ic">${fitIcon(it.key)}</div>
+      <div class="fit-name">${escapeHtml(it.label)}</div>
+      <div class="fit-sub">${escapeHtml(it.sub)}</div>
+      <div class="meter">${segs}</div>
+      <div class="verdict" style="animation-delay:${(delay + 1.3).toFixed(2)}s">${escapeHtml(it.verdict)}</div>
+    </div>`;
+  }).join("");
+  return h(`<section class="scene fit">
+    <div class="top">${top}</div>
+    <div class="fit-head"><div class="eyebrow">${escapeHtml(vm.display_name || "Dieser Laptop")}</div><h2>Wofür eignet sich dieser Laptop?</h2></div>
+    <div class="fit-grid">${tiles}</div></section>`);
 }
 
 function mediaBadge() {

@@ -19,6 +19,14 @@
   ];
   const DEFAULT = svg('<circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/>');
   window.specIcon = label => (ICONS.find(([re]) => re.test(label || "")) || [0, DEFAULT])[1];
+  // Symbole für "Wofür eignet sich der Laptop?"
+  const FIT = {
+    office: svg('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18M11 12v2h2v-2"/>'),
+    gaming: svg('<path d="M6.5 8h11a4.5 4.5 0 0 1 4.3 5.8l-1 3.3a2.4 2.4 0 0 1-4 1l-2.3-2.1H9.5l-2.3 2.1a2.4 2.4 0 0 1-4-1l-1-3.3A4.5 4.5 0 0 1 6.5 8z"/><path d="M7 11v3M5.5 12.5h3M16 11.5h.01M18 13.5h.01"/>'),
+    creative: svg('<path d="M14.5 3.5l6 6-9.5 9.5H5v-6z"/><path d="M12 6l6 6M5 19l-2 2"/><circle cx="8.5" cy="15.5" r="1"/>'),
+    mobile: svg('<path d="M7 7a5 5 0 0 1 10 0"/><rect x="4.5" y="7" width="15" height="14" rx="3"/><path d="M8.5 13h7M8.5 13v3"/><path d="M10 3.5h4"/>'),
+  };
+  window.fitIcon = key => FIT[key] || DEFAULT;
   window.isPrice = label => /preis|price/i.test(label || "");
   // "Alter Preis", "Statt", "UVP": wird durchgestrichen über dem Preis gezeigt
   window.isOldPrice = label => /\balt|statt|\buvp|vorher/i.test(label || "");
