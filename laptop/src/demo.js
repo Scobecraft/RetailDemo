@@ -77,6 +77,10 @@ async function play(scene, id) {
 function brandScene() {
   const logo = vm.logo ? `<div class="ring"></div><div class="ring r2"></div><img class="logo" src="${escapeHtml(vm.logo)}" alt="">` : "";
   const name = vm.store_name ? `<div class="store ${vm.logo ? "" : "big"}">${escapeHtml(vm.store_name)}</div>` : "";
+  // Offline-Version: "Willkommen bei" über dem Ladennamen
+  if (vm.welcome_prefix && vm.store_name) {
+    return h(`<section class="scene brand prefix"><div class="wrap">${logo}<div class="welcome">Willkommen bei</div>${name}</div></section>`);
+  }
   return h(`<section class="scene brand"><div class="wrap">${logo}${name}<div class="welcome">Willkommen</div></div></section>`);
 }
 

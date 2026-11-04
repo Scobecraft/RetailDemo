@@ -2,6 +2,7 @@
 const si = require("systeminformation");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
+const { marketingName, readWindowsBios } = require("./naming");
 
 const run = (cmd, args) => new Promise(resolve =>
   execFile(cmd, args, { timeout: 20_000, maxBuffer: 16 * 1024 * 1024 }, (err, out) => resolve(err ? "" : String(out))));
@@ -112,12 +113,18 @@ async function collect() {
     settle(si.diskLayout()), settle(si.graphics()), settle(si.battery()), settle(si.osInfo()),
   ]);
 
-  const manufacturer = brandName(sys && sys.manufacturer);
-  let model = sys && !junk(sys.model) ? sys.model.trim() : "";
-  let marketing = model;
-  // Lenovo schreibt den Verkaufsnamen ("ThinkPad T14 Gen 3") in "version", das Modell ist nur eine Nummer
-  if (sys && /lenovo/i.test(sys.manufacturer) && !junk(sys.version)) marketing = sys.version.trim();
-  if (manufacturer && marketing && !marketing.toLowerCase().startsWith(manufacturer.toLowerCase())) marketing = `${manufacturer} ${marketing}`;
+  // Windows: BIOS-Felder inkl. "SystemFamily" (systeminformation liefert die nicht)
+  const bios = process.platform === "win32" ? await readWindowsBios() : {};
+  const manufacturer = brandName(bios.SystemManufacturer || (sys && sys.manufacturer));
+  const model = [bios.SystemProductName, sys && sys.model].find(v => !junk(v)) || "";
+  const marketing = marketingName({
+    manufacturer,
+    product: model,
+    version: bios.SystemVersion || (sys && sys.version),
+    family: bios.SystemFamily,
+    sku: bios.SystemSKU || (sys && sys.sku),
+    board: bios.BaseBoardProduct,
+  });
 
   const specs = [];
   if (cpu && cpu.brand) {
@@ -171,7 +178,8 @@ async function collect() {
 
   return {
     manufacturer,
-    model: model || (sys && sys.version) || "",
+    model: model.trim(),
+    sku: [bios.SystemSKU, sys && sys.sku].find(v => v && !junk(v)) || "",
     marketing_name: marketing,
     os_version: os ? String(os.distro || os.platform).replace(/^Microsoft\s+/i, "") : "",
     specs,

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Retail Demo Offline – Info</title>
+<style>
+  :root { --accent: #ee7f00; --accent-dark: #c96a00; --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb; --danger: #dc2626; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111318; --card: #1b1e25; --text: #e8eaf0; --muted: #9aa1ae; --line: #2c313b; } }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; font: 14px/1.45 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 8px; }
+  .kv { display: grid; grid-template-columns: 170px 1fr; gap: 4px 12px; font-size: 13.5px; }
+  .kv div:nth-child(odd) { color: var(--muted); }
+  .row { display: flex; gap: 8px; margin-top: 4px; }
+  .btn { border: 1px solid var(--line); background: var(--card); color: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer; font: inherit; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.danger { color: var(--danger); }
+  ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+  code { background: var(--bg); padding: 1px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <h1>Retail Demo Offline</h1>
+  <p class="sub">Info für Mitarbeiter</p>
+
+  <div class="card"><h2>Status</h2><div class="kv" id="status"></div></div>
+  <div class="card"><h2>Dieser Laptop</h2><div id="device"></div></div>
+  <div class="card">
+    <h2>Inhalte aktualisieren</h2>
+    <p class="sub" style="margin:0">USB-Stick mit dem Ordner <code>DEMO-UPDATE</code> (inkl. <code>demo-schluessel.txt</code>) einstecken –
+      der Rest passiert automatisch.</p>
+  </div>
+  <div class="row">
+    <button class="btn primary" id="start">Demo starten</button>
+    <span style="flex:1"></span>
+    <button class="btn danger" id="quit">Programm beenden</button>
+  </div>
+<script src="info.js"></script>
+</body>
+</html>

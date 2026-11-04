@@ -1,0 +1,39 @@
+{
+  "appId": "de.retaildemo.offline",
+  "productName": "Retail Demo Offline",
+  "artifactName": "RetailDemo-Offline-Setup-${version}.${ext}",
+  "extraMetadata": {
+    "name": "retaildemo-offline",
+    "productName": "Retail Demo Offline",
+    "main": "src/offline/main.js",
+    "version": "1.0.0"
+  },
+  "directories": {
+    "output": "dist-offline",
+    "buildResources": "build"
+  },
+  "files": [
+    "src/**/*",
+    "build/icon.png",
+    "package.json"
+  ],
+  "publish": null,
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "build/icon.png"
+  },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false,
+    "runAfterFinish": true,
+    "deleteAppDataOnUninstall": false,
+    "shortcutName": "Retail Demo Offline"
+  }
+}

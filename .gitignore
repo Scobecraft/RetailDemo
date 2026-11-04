@@ -12,3 +12,4 @@ android/keystore/
 release/
 laptop/node_modules/
 laptop/dist/
+laptop/dist-offline/

@@ -233,6 +233,29 @@ Das klappt nur, wenn die neue APK mit **demselben Signaturschlüssel** gebaut wu
 Ohne diesen Schlüssel bricht der Build absichtlich ab. In einer neuen Sitzung mit Claude die ZIP-Datei
 deshalb immer mitgeben.
 
+## 5. Offline-Demo für Windows-Laptops (ohne WLAN)
+
+Für Laptops, die nicht ins Netz dürfen (Garantiebeginn bei Registrierung). Gleiche Präsentation wie oben,
+aber alle Inhalte kommen per **USB-Stick** – ohne Klick.
+
+- Stick-Ordner `DEMO-UPDATE` mit `demo-schluessel.txt` (Vorlage `USB-Stick-Vorlage.zip`, nicht im Repo –
+  im Programm steht nur der SHA-256 des Schlüssels in `laptop/src/offline/usb.js`).
+- Stick einstecken → alle Videos/Bilder werden ersetzt (Ladebalken), optional `logo.png`/`logo.svg`,
+  `einstellungen.txt` (Ladenname, Wartezeit, Herunterfahren, PIN) und `geraete.txt` (Name/Preis pro Modell).
+- Liegt `RetailDemo-Offline-Setup-x.y.z.exe` mit höherer Version im Ordner, installiert sich die Demo still neu.
+- Startet mit Windows direkt im Vorführmodus, fährt den Laptop nach 9,5 Stunden herunter (einstellbar).
+- Einmalige Einrichtung pro Laptop: `Laptop-einrichten.cmd` (als Admin) – legt das eingeschränkte Konto
+  „Vorfuehrung“ mit automatischer Anmeldung an, sperrt WLAN, Passwort/Sprache/Konten/Netzwerk-Einstellungen,
+  Task-Manager, Eingabeaufforderung, PowerShell, Registry und Microsoft-Konten. Rückgängig: `Absicherung-aufheben.cmd`.
+  Skripte: `laptop/windows/`.
+
+```bash
+cd laptop
+npm run dist:offline   # -> dist-offline/RetailDemo-Offline-Setup-<version>.exe
+```
+
+Für eine neue Version `extraMetadata.version` in `laptop/offline.builder.json` erhöhen.
+
 ## APKs selbst bauen
 
 ```bash

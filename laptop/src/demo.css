@@ -53,6 +53,12 @@ body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-s
 @keyframes shine { to { background-position: -250% 0; } }
 .brand .welcome { color: var(--muted); font-size: clamp(16px, 1.5vw, 26px); letter-spacing: .35em; text-transform: uppercase; opacity: 0; }
 .brand.in .welcome { animation: rise 1s var(--ease) 1.4s forwards; }
+/* "Willkommen bei" steht über dem Namen und erscheint zuerst */
+.brand.prefix .wrap { gap: 2vh; }
+.brand.prefix.in .welcome { animation: rise .9s var(--ease) .3s forwards; }
+.brand.prefix.in .store { animation: rise 1.1s var(--ease) .8s forwards; }
+.brand.prefix.in .store.big { animation: rise 1.1s var(--ease) .8s forwards, shine 4s linear 1.9s infinite; }
+.brand.prefix .logo + .welcome { margin-top: 2vh; }
 @keyframes rise { from { opacity: 0; transform: translateY(3vh); } to { opacity: 1; transform: none; } }
 
 /* Spec-Seite */

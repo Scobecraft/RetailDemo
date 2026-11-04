@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; img-src 'self' file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Update</title>
+<link rel="stylesheet" href="../demo.css">
+<style>
+  body { cursor: default; }
+  .box { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; z-index: 2; }
+  .inner { width: min(760px, 86vw); }
+  .brand img { max-height: 12vh; max-width: 40vw; margin-bottom: 5vh; }
+  .brand .name { font-size: clamp(24px, 2.4vw, 42px); font-weight: 700; margin-bottom: 5vh; }
+  h1 { font-size: clamp(30px, 3.4vw, 60px); margin: 0 0 1.5vh; font-weight: 800; }
+  .text { color: var(--muted); font-size: clamp(15px, 1.25vw, 22px); min-height: 1.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar { height: 14px; border-radius: 7px; background: rgba(255,255,255,.1); overflow: hidden; margin: 4vh 0 1.6vh; }
+  .bar div { height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s linear; }
+  .bar.indeterminate div { width: 35%; animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(290%); } }
+  .pct { font-size: clamp(18px, 1.6vw, 28px); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hint { margin-top: 5vh; display: inline-flex; gap: 10px; align-items: center; padding: 10px 20px; border-radius: 999px;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); font-size: clamp(14px, 1.05vw, 19px); }
+  .check { width: 96px; height: 96px; border-radius: 50%; margin: 0 auto 3vh; display: grid; place-items: center;
+    background: linear-gradient(135deg, #22c55e, #16a34a); box-shadow: 0 16px 50px rgba(34,197,94,.4); animation: pop .6s cubic-bezier(.3,1.6,.5,1); }
+  .check svg { width: 52px; height: 52px; }
+  .err { background: linear-gradient(135deg, #f97316, #dc2626); box-shadow: 0 16px 50px rgba(220,38,38,.4); }
+  @keyframes pop { from { transform: scale(.4); opacity: 0; } }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="bg"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="grid"></div></div>
+  <div class="box">
+    <div class="inner">
+      <div class="brand" id="brand"></div>
+      <div class="check" id="ok" hidden><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <div class="check err" id="fail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 6.5v7M12 17.5h.01"/></svg></div>
+      <h1 id="title">Demo wird aktualisiert</h1>
+      <div class="text" id="text"></div>
+      <div class="bar" id="bar"><div id="fill"></div></div>
+      <div class="pct" id="pct"></div>
+      <div class="hint" id="hint">USB-Stick bitte nicht entfernen</div>
+    </div>
+  </div>
+<script src="../icons.js"></script>
+<script src="overlay.js"></script>
+</body>
+</html>
