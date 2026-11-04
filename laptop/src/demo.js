@@ -209,7 +209,7 @@ function playMedia(item, id) {
   lastMediaId = item.id;
   if (item.type === "image") {
     const ms = (item.duration_s || 8) * 1000;
-    const node = h(`<section class="scene media" style="--dur:${ms + 1500}ms"><img class="full" src="${escapeHtml(item.src)}" alt="">${mediaBadge()}</section>`);
+    const node = h(`<section class="scene media" style="--dur:${ms + 1500}ms"><img class="fill" src="${escapeHtml(item.src)}" alt=""><img class="full" src="${escapeHtml(item.src)}" alt="">${mediaBadge()}</section>`);
     show(node);
     runProgress(ms);
     return wait(ms, id);

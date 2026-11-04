@@ -106,9 +106,11 @@ body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-s
 
 /* Videos und Bilder */
 .media { background: #000; }
-.media video, .media img.full { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Eigene Videos/Bilder immer vollständig zeigen (nichts abschneiden), Rand bei Bildern mit unscharfer Kopie füllen */
+.media video, .media img.full { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.media img.fill { position: absolute; inset: -6%; width: 112%; height: 112%; object-fit: cover; filter: blur(40px) brightness(.45) saturate(1.2); }
 .media.in img.full { animation: kenburns var(--dur, 8s) linear forwards; }
-@keyframes kenburns { from { transform: scale(1.02) translate(0, 0); } to { transform: scale(1.12) translate(-1.5%, -1%); } }
+@keyframes kenburns { from { transform: scale(1); } to { transform: scale(1.03); } }
 .badge { position: absolute; left: 4vw; bottom: 7vh; display: flex; align-items: center; gap: 16px; padding: 12px 22px 12px 14px; border-radius: 999px;
   background: rgba(10,12,18,.62); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(16px); opacity: 0; transform: translateX(-3vw); }
 .media.in .badge { animation: slideIn .9s var(--ease) .8s forwards; }
