@@ -11,7 +11,7 @@ const fs = require("fs");
 const { spawn, execFile } = require("child_process");
 const { pathToFileURL } = require("url");
 const { Stage, openWindow, asset, webPrefs } = require("../stage");
-const { Content, VIDEO } = require("./content");
+const { Content, VIDEO, THEMES } = require("./content");
 const usb = require("./usb");
 const specs = require("../specs");
 
@@ -43,6 +43,9 @@ function mergedSpecs() {
   return out;
 }
 
+/** Aktives Theme: nach der Installation "standard", danach per Stick oder Info-Fenster. */
+const currentTheme = () => (THEMES.includes(content.state.theme) ? content.state.theme : "standard");
+
 function viewModel() {
   const s = content.settings;
   const ov = local && content.deviceOverride(local);
@@ -57,6 +60,8 @@ function viewModel() {
     specs_duration_s: s.specsS,
     store_name: s.storeName,
     welcome_prefix: true, // "Willkommen bei Expert Klein Asbach"
+    theme: currentTheme(),
+    birthday_years: s.birthdayYears || 0,
     logo: logo ? fileUrl(logo, mtime(logo)) : "",
   };
 }
@@ -75,7 +80,7 @@ function showOverlay(state) {
     overlayWin.webContents.once("did-finish-load", () => overlayWin.showOverlayState && overlayWin.webContents.send("overlay", overlayWin.showOverlayState));
   }
   const vm = viewModel();
-  overlayWin.showOverlayState = { logo: vm.logo, store_name: vm.store_name, ...state };
+  overlayWin.showOverlayState = { logo: vm.logo, store_name: vm.store_name, theme: vm.theme, ...state };
   if (!overlayWin.webContents.isLoading()) overlayWin.webContents.send("overlay", overlayWin.showOverlayState);
   if (!overlayWin.isVisible()) { overlayWin.show(); overlayWin.focus(); }
 }
@@ -125,6 +130,8 @@ async function runStickUpdate(dir) {
         showOverlay({ kind: "busy", title: "Demo wird aktualisiert", text, progress: p, hint: "USB-Stick bitte nicht entfernen" });
       });
       content.reload();
+      // "Theme = …" in einstellungen.txt gilt ab jetzt für diesen Laptop
+      if (content.settings.theme) content.saveState({ theme: content.settings.theme });
       content.saveState({ lastFingerprint: info.fingerprint, lastUpdate: Date.now() });
       stage.pushViewModel();
     }
@@ -203,7 +210,7 @@ function withPin(then) {
 
 function openInfo() {
   if (infoWin) return infoWin.focus();
-  infoWin = openWindow("offline/info.html", { width: 560, height: 700, title: "Retail Demo Offline – Info", alwaysOnTop: true });
+  infoWin = openWindow("offline/info.html", { width: 560, height: 860, title: "Retail Demo Offline – Info", alwaysOnTop: true });
   infoWin.on("closed", () => { infoWin = null; stage.lastIdle = 0; });
 }
 
@@ -250,7 +257,13 @@ ipcMain.handle("info:get", () => {
     displayName: vm.display_name,
     override: !!(local && content.deviceOverride(local)),
     specs: vm.specs,
+    theme: currentTheme(),
   };
+});
+ipcMain.on("info:setTheme", (_e, theme) => {
+  if (!THEMES.includes(theme)) return;
+  content.saveState({ theme });
+  stage.pushViewModel();
 });
 ipcMain.on("info:startDemo", () => { if (infoWin) infoWin.close(); setTimeout(() => stage.showDemo(), 300); });
 ipcMain.on("info:quit", () => quit());

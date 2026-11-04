@@ -9,6 +9,9 @@
   --card: rgba(255, 255, 255, .06);
   --card-line: rgba(255, 255, 255, .12);
   --ease: cubic-bezier(.2, .8, .2, 1);
+  --hot: #ff5e3a;          /* zweite Farbe für Preisschild und Symbole */
+  --glow: 255, 138, 0;     /* Leuchtfarbe als RGB */
+  --on-accent: #fff;       /* Schrift auf Akzentflächen */
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); cursor: none; user-select: none; }
@@ -78,7 +81,7 @@ body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-s
 .specs.in .underline { animation: grow 1.2s var(--ease) .9s forwards; }
 @keyframes grow { to { width: 46%; } }
 .price { position: relative; display: inline-flex; flex-direction: column; margin-top: 5vh; padding: 2.2vh 2.4vw; border-radius: 22px; overflow: hidden;
-  background: linear-gradient(135deg, var(--accent), #ff5e3a); box-shadow: 0 20px 60px rgba(255,120,0,.35); opacity: 0; transform: scale(.85) rotate(-2deg); }
+  background: linear-gradient(135deg, var(--accent), var(--hot)); color: var(--on-accent); box-shadow: 0 20px 60px rgba(var(--glow), .35); opacity: 0; transform: scale(.85) rotate(-2deg); }
 .specs.in .price { animation: pop .9s cubic-bezier(.3,1.6,.5,1) 1.3s forwards; }
 @keyframes pop { to { opacity: 1; transform: rotate(-2deg); } }
 .price small { font-size: clamp(13px, 1vw, 18px); text-transform: uppercase; letter-spacing: .2em; font-weight: 700; opacity: .85; }
@@ -93,8 +96,8 @@ body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-s
 .specs.in .card { animation: cardIn .9s var(--ease) forwards, cardFloat 7s ease-in-out infinite; }
 @keyframes cardIn { to { opacity: 1; transform: none; } }
 @keyframes cardFloat { 50% { translate: 0 -.6vh; } }
-.card .ic { flex: none; width: clamp(42px, 3.6vw, 66px); height: clamp(42px, 3.6vw, 66px); border-radius: 16px; display: grid; place-items: center; color: #fff;
-  background: linear-gradient(135deg, rgba(255,138,0,.9), rgba(255,94,58,.9)); box-shadow: 0 8px 24px rgba(255,120,0,.3); }
+.card .ic { flex: none; width: clamp(42px, 3.6vw, 66px); height: clamp(42px, 3.6vw, 66px); border-radius: 16px; display: grid; place-items: center; color: var(--on-accent);
+  background: linear-gradient(135deg, var(--accent), var(--hot)); box-shadow: 0 8px 24px rgba(var(--glow), .3); }
 .card .ic svg { width: 58%; height: 58%; }
 .card .tx { min-width: 0; }
 .card .lb { color: var(--muted); text-transform: uppercase; letter-spacing: .14em; font-size: clamp(11px, .85vw, 15px); font-weight: 600; }
@@ -119,7 +122,7 @@ body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-s
   background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.16); backdrop-filter: blur(14px); font-size: clamp(14px, 1.05vw, 19px); color: #e8ebf4;
   animation: breathe 3s ease-in-out infinite; }
 .hint strong { color: #fff; }
-@keyframes breathe { 50% { box-shadow: 0 0 0 10px rgba(255,138,0,.12), 0 0 40px rgba(255,138,0,.25); } }
+@keyframes breathe { 50% { box-shadow: 0 0 0 10px rgba(var(--glow), .12), 0 0 40px rgba(var(--glow), .25); } }
 .mouse { width: 22px; height: 34px; border: 2px solid #fff; border-radius: 12px; position: relative; flex: none; }
 .wheel { position: absolute; left: 50%; top: 6px; width: 3px; height: 7px; margin-left: -1.5px; border-radius: 2px; background: var(--accent-2); animation: wheel 1.6s ease-in-out infinite; }
 @keyframes wheel { 0% { opacity: 0; transform: translateY(-3px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(10px); } }
@@ -129,3 +132,58 @@ body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-s
 @media (prefers-reduced-motion: reduce) {
   .blob, .grid, .sweep { animation: none; }
 }
+
+/* ============================================================ Themes
+   body[data-theme] wird von demo.js gesetzt. "standard" = Werte oben. */
+
+/* Effekt-Ebene (Schnee, Konfetti, Prozentzeichen) und Eckband */
+#fx { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+#stage { z-index: 2; }
+.hint, .progress { z-index: 6; }
+.ribbon { position: fixed; top: 0; right: 0; width: 34vw; height: 34vw; max-width: 520px; max-height: 520px; overflow: hidden; pointer-events: none; z-index: 7; }
+.ribbon span { position: absolute; top: 30%; right: -30%; width: 120%; transform: rotate(45deg); text-align: center; padding: 1.1vh 0;
+  font-weight: 900; letter-spacing: .14em; font-size: clamp(14px, 1.35vw, 26px); color: var(--on-accent); white-space: nowrap; overflow: hidden;
+  background: linear-gradient(90deg, var(--accent), var(--hot)); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.ribbon.long span { font-size: clamp(12px, 1.05vw, 20px); letter-spacing: .1em; }
+.ribbon span::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 35%, rgba(255,255,255,.5) 50%, transparent 65%);
+  transform: translateX(-120%); animation: priceShine 4s ease-in-out 1s infinite; }
+.brand .claim { margin-top: 1vh; font-size: clamp(18px, 1.7vw, 32px); font-weight: 700; color: var(--accent-2); opacity: 0; }
+.brand.in .claim { animation: rise 1s var(--ease) 1.6s forwards; }
+
+/* Schnee */
+.snow { position: absolute; top: -3vh; border-radius: 50%; background: #fff; opacity: .85; filter: blur(.5px);
+  animation: fall linear infinite, sway ease-in-out infinite alternate; }
+@keyframes fall { to { transform: translateY(110vh); } }
+@keyframes sway { from { margin-left: -2vw; } to { margin-left: 2vw; } }
+/* Konfetti */
+.confetti { position: absolute; top: -4vh; width: 10px; height: 16px; border-radius: 2px; animation: fallspin linear infinite; }
+@keyframes fallspin { 0% { transform: translateY(0) rotate(0) rotateX(0); } 100% { transform: translateY(112vh) rotate(720deg) rotateX(720deg); } }
+/* Black Week: aufsteigende Prozentzeichen */
+.fx-pct { position: absolute; bottom: -10vh; font-weight: 900; color: var(--accent); opacity: .16; animation: riseup linear infinite; }
+@keyframes riseup { to { transform: translateY(-125vh) rotate(-12deg); } }
+
+/* ---------------------------------------------------------- Black Week */
+body[data-theme="blackweek"] {
+  --accent: #ffd200; --accent-2: #ffe766; --hot: #ff9f00; --glow: 255, 210, 0; --on-accent: #111;
+  --bg: #050505; --blue: #3a3a3a; --violet: #e10600;
+}
+body[data-theme="blackweek"] .b1 { opacity: .32; }
+body[data-theme="blackweek"] .b2 { opacity: .45; }
+body[data-theme="blackweek"] .b3 { opacity: .22; }
+body[data-theme="blackweek"] .price strong { font-size: clamp(42px, 5vw, 100px); }
+body[data-theme="blackweek"] .specs h1 { text-transform: uppercase; letter-spacing: -.01em; }
+
+/* ---------------------------------------------------------- Weihnachten */
+body[data-theme="weihnachten"] {
+  --accent: #d4202f; --accent-2: #f2cf7a; --hot: #9e1020; --glow: 212, 32, 47; --on-accent: #fff;
+  --bg: #06140e; --blue: #0f6b3c; --violet: #c79a3b;
+}
+body[data-theme="weihnachten"] .b3 { opacity: .25; }
+body[data-theme="weihnachten"] .specs .eyebrow, body[data-theme="weihnachten"] .card .lb { color: #f2cf7a; }
+
+/* ---------------------------------------------------------- Geburtstag */
+body[data-theme="geburtstag"] {
+  --accent: #ff3d8b; --accent-2: #ffd166; --hot: #8b3dff; --glow: 255, 61, 139; --on-accent: #fff;
+  --bg: #120a24; --blue: #14b8d4; --violet: #ffd166;
+}
+body[data-theme="geburtstag"] .b3 { opacity: .3; }

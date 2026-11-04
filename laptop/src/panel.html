@@ -5,20 +5,24 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; img-src 'self' file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
 <title>Specs</title>
 <style>
-  :root { --accent: #ff8a00; --accent-2: #ffb347; --ease: cubic-bezier(.2, .8, .2, 1); }
+  :root { --accent: #ff8a00; --accent-2: #ffb347; --hot: #ff5e3a; --glow: 255, 138, 0; --on-accent: #fff; --ease: cubic-bezier(.2, .8, .2, 1); }
+  /* Themes (Farben wie in demo.css) */
+  body[data-theme="blackweek"] { --accent: #ffd200; --accent-2: #ffe766; --hot: #ff9f00; --glow: 255, 210, 0; --on-accent: #111; }
+  body[data-theme="weihnachten"] { --accent: #d4202f; --accent-2: #f2cf7a; --hot: #9e1020; --glow: 212, 32, 47; }
+  body[data-theme="geburtstag"] { --accent: #ff3d8b; --accent-2: #ffd166; --hot: #8b3dff; --glow: 255, 61, 139; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none;
     font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; color: #f4f6fb; }
 
   /* Zugeklappt: Lasche am rechten Rand */
-  #tab { position: absolute; right: 0; top: 0; width: 52px; height: 168px; border: 0; padding: 0; cursor: pointer; color: #fff;
-    border-radius: 16px 0 0 16px; background: linear-gradient(160deg, #ff9a1f, #ff5e3a); box-shadow: -4px 6px 20px rgba(0,0,0,.25);
+  #tab { position: absolute; right: 0; top: 0; width: 52px; height: 168px; border: 0; padding: 0; cursor: pointer; color: var(--on-accent);
+    border-radius: 16px 0 0 16px; background: linear-gradient(160deg, var(--accent), var(--hot)); box-shadow: -4px 6px 20px rgba(0,0,0,.25);
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; transition: transform .25s var(--ease), opacity .2s; }
   #tab:hover { transform: translateX(-4px); }
   #tab svg { width: 24px; height: 24px; }
   #tab span { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: 700; letter-spacing: .18em; font-size: 13px; text-transform: uppercase; }
-  #tab::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 0 rgba(255,138,0,.6); animation: ping 3s ease-out infinite; }
-  @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(255,138,0,.55); } 70%, 100% { box-shadow: 0 0 0 14px rgba(255,138,0,0); } }
+  #tab::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 0 rgba(var(--glow), .6); animation: ping 3s ease-out infinite; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(var(--glow), .55); } 70%, 100% { box-shadow: 0 0 0 14px rgba(var(--glow), 0); } }
   body.open #tab { opacity: 0; pointer-events: none; }
 
   /* Aufgeklappt: Datenblatt */
@@ -38,14 +42,14 @@
   .eyebrow { color: var(--accent-2); text-transform: uppercase; letter-spacing: .2em; font-size: 12px; font-weight: 700; }
   h1 { margin: 4px 0 16px; font-size: 28px; line-height: 1.1; font-weight: 800; }
   .price { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 16px; border-radius: 14px; margin-bottom: 14px;
-    background: linear-gradient(135deg, var(--accent), #ff5e3a); }
+    background: linear-gradient(135deg, var(--accent), var(--hot)); color: var(--on-accent); }
   .price small { text-transform: uppercase; letter-spacing: .15em; font-size: 11px; font-weight: 700; opacity: .9; }
   .price strong { font-size: 26px; font-weight: 800; }
   .row { display: flex; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.08);
     opacity: 0; transform: translateX(16px); }
   body.open .row { animation: in .45s var(--ease) forwards; }
   @keyframes in { to { opacity: 1; transform: none; } }
-  .row .ic { flex: none; width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: rgba(255,138,0,.16); color: var(--accent-2); }
+  .row .ic { flex: none; width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: rgba(var(--glow), .16); color: var(--accent-2); }
   .row .ic svg { width: 21px; height: 21px; }
   .row .lb { color: #a3acc2; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
   .row .vl { font-size: 15px; font-weight: 600; margin-top: 1px; }

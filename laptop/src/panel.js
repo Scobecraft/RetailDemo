@@ -2,6 +2,7 @@
 // Spec-Lasche: zugeklappt nur ein schmaler Reiter am Bildschirmrand, aufgeklappt das Datenblatt.
 
 function render(vm) {
+  document.body.dataset.theme = vm.theme || "standard";
   document.getElementById("brand").innerHTML = vm.logo
     ? `<img src="${escapeHtml(vm.logo)}" alt="">`
     : vm.store_name ? `<span class="store">${escapeHtml(vm.store_name)}</span>` : "";

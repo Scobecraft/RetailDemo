@@ -10,6 +10,61 @@ let runId = 0;
 const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 const wait = (ms, id) => new Promise(r => setTimeout(() => r(id === runId), ms));
 
+// ---------------------------------------------------------------- Themes
+// Eckband und Satz im Intro je Theme; Farben stehen in demo.css (body[data-theme])
+const THEMES = {
+  standard: null,
+  blackweek: { ribbon: "BLACK WEEK", claim: "Black Week – die besten Angebote des Jahres!", fx: "pct" },
+  weihnachten: { ribbon: "FROHE WEIHNACHTEN", claim: "Frohe Weihnachten und schöne Feiertage!", fx: "snow" },
+  geburtstag: { ribbon: "WIR FEIERN GEBURTSTAG", claim: "Wir haben Geburtstag – feier mit uns!", fx: "confetti" },
+};
+let currentTheme = null;
+
+function themeInfo(v) {
+  const t = THEMES[v && v.theme] || null;
+  if (t && v.theme === "geburtstag" && v.birthday_years) {
+    return { ...t, ribbon: `${v.birthday_years} JAHRE`, claim: `${v.birthday_years} Jahre ${v.store_name || ""} – feier mit uns!`.replace("  ", " ") };
+  }
+  return t;
+}
+
+function applyTheme(v) {
+  const name = (v && THEMES[v.theme] !== undefined) ? v.theme : "standard";
+  const t = themeInfo(v);
+  const key = name + "|" + (t ? t.ribbon : "");
+  if (key === currentTheme) return;
+  currentTheme = key;
+  document.body.dataset.theme = name;
+  const ribbon = document.getElementById("ribbon");
+  ribbon.hidden = !t;
+  ribbon.firstElementChild.textContent = t ? t.ribbon : "";
+  ribbon.classList.toggle("long", !!t && t.ribbon.length > 12);
+  const fx = document.getElementById("fx");
+  fx.replaceChildren();
+  if (!t) return;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const COLORS = ["#ff3d8b", "#ffd166", "#14b8d4", "#8b3dff", "#22c55e", "#fff"];
+  const count = { snow: 90, confetti: 70, pct: 22 }[t.fx];
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement("span");
+    if (t.fx === "snow") {
+      const size = rnd(3, 9);
+      el.className = "snow";
+      el.style.cssText = `left:${rnd(0, 100)}vw;width:${size}px;height:${size}px;opacity:${rnd(.4, .95).toFixed(2)};` +
+        `animation-duration:${rnd(9, 20).toFixed(1)}s,${rnd(2.5, 5).toFixed(1)}s;animation-delay:-${rnd(0, 20).toFixed(1)}s,-${rnd(0, 5).toFixed(1)}s`;
+    } else if (t.fx === "confetti") {
+      el.className = "confetti";
+      el.style.cssText = `left:${rnd(0, 100)}vw;background:${COLORS[i % COLORS.length]};width:${rnd(7, 13).toFixed(0)}px;height:${rnd(12, 20).toFixed(0)}px;` +
+        `animation-duration:${rnd(6, 13).toFixed(1)}s;animation-delay:-${rnd(0, 13).toFixed(1)}s`;
+    } else {
+      el.className = "fx-pct";
+      el.textContent = "%";
+      el.style.cssText = `left:${rnd(0, 96)}vw;font-size:${rnd(30, 110).toFixed(0)}px;animation-duration:${rnd(14, 26).toFixed(1)}s;animation-delay:-${rnd(0, 26).toFixed(1)}s`;
+    }
+    fx.append(el);
+  }
+}
+
 // ---------------------------------------------------------------- Ablauf
 function buildSequence(v) {
   const seq = [];
@@ -79,9 +134,11 @@ function brandScene() {
   const name = vm.store_name ? `<div class="store ${vm.logo ? "" : "big"}">${escapeHtml(vm.store_name)}</div>` : "";
   // Offline-Version: "Willkommen bei" über dem Ladennamen
   if (vm.welcome_prefix && vm.store_name) {
-    return h(`<section class="scene brand prefix"><div class="wrap">${logo}<div class="welcome">Willkommen bei</div>${name}</div></section>`);
+    const claim = themeInfo(vm) ? `<div class="claim">${escapeHtml(themeInfo(vm).claim)}</div>` : "";
+    return h(`<section class="scene brand prefix"><div class="wrap">${logo}<div class="welcome">Willkommen bei</div>${name}${claim}</div></section>`);
   }
-  return h(`<section class="scene brand"><div class="wrap">${logo}${name}<div class="welcome">Willkommen</div></div></section>`);
+  const claim = themeInfo(vm) ? `<div class="claim">${escapeHtml(themeInfo(vm).claim)}</div>` : "";
+  return h(`<section class="scene brand"><div class="wrap">${logo}${name}<div class="welcome">Willkommen</div>${claim}</div></section>`);
 }
 
 function specsScene() {
@@ -155,6 +212,7 @@ function playMedia(item, id) {
 // ---------------------------------------------------------------- Steuerung
 function start(v) {
   vm = v || vm;
+  applyTheme(vm);
   const id = ++runId;
   stage.replaceChildren();
   if (vm) run(id);
@@ -168,7 +226,7 @@ function stop() {
 
 rd.on("demo:start", start);
 rd.on("demo:stop", stop);
-rd.on("vm", v => { vm = v; }); // greift ab dem nächsten Durchlauf
+rd.on("vm", v => { vm = v; applyTheme(v); }); // Inhalte greifen ab dem nächsten Durchlauf
 
 // Jede Eingabe beendet die Demo (der Hauptprozess entscheidet)
 let moved = 0, lastX = null, lastY = null;

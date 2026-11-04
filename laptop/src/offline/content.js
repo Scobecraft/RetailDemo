@@ -31,6 +31,17 @@ const num = v => parseFloat(String(v).replace(",", "."));
  *   Demo startet nach (Sekunden) = 60
  *   Herunterfahren nach (Stunden) = 9,5
  */
+const THEMES = ["standard", "blackweek", "weihnachten", "geburtstag"];
+/** "Black Week" / "Weihnachten" / "Geburtstag" / "Standard" -> interner Name (unbekannt = undefined) */
+function themeName(v) {
+  const s = v.toLowerCase();
+  if (/black|bw/.test(s)) return "blackweek";
+  if (/weihnacht|xmas|christ|advent/.test(s)) return "weihnachten";
+  if (/geburt|birthday|jubil/.test(s)) return "geburtstag";
+  if (/standard|normal|aus/.test(s)) return "standard";
+  return undefined;
+}
+
 function parseSettings(text) {
   const s = { ...DEFAULTS };
   for (const raw of String(text || "").split(/\r?\n/)) {
@@ -39,7 +50,9 @@ function parseSettings(text) {
     const m = /^(.+?)\s*[=:]\s*(.*)$/.exec(line);
     if (!m) continue;
     const key = m[1].toLowerCase(), val = m[2].trim();
-    if (/laden|name/.test(key)) s.storeName = val;
+    if (/theme|thema|design/.test(key)) s.theme = themeName(val);
+    else if (/geburtstag|jubil/.test(key) && num(val) > 0) s.birthdayYears = Math.round(num(val));
+    else if (/laden|name/.test(key)) s.storeName = val;
     else if (/herunter|ausschalten|shutdown/.test(key) && num(val) >= 0) s.shutdownH = num(val);
     else if (/demo startet|leerlauf|warte/.test(key) && num(val) >= 5) s.idleS = Math.round(num(val));
     else if (/pin/.test(key) && /^\d{4,8}$/.test(val)) s.pin = val;
@@ -123,4 +136,4 @@ class Content {
   }
 }
 
-module.exports = { Content, parseSettings, parseDevices, isMedia, VIDEO, IMAGE, LOGO, SETTINGS_FILE, DEVICES_FILE, DEFAULTS, naturalSort };
+module.exports = { Content, THEMES, themeName, parseSettings, parseDevices, isMedia, VIDEO, IMAGE, LOGO, SETTINGS_FILE, DEVICES_FILE, DEFAULTS, naturalSort };

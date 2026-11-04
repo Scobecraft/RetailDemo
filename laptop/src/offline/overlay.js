@@ -4,6 +4,7 @@
 const $ = id => document.getElementById(id);
 
 rd.on("overlay", s => {
+  document.body.dataset.theme = s.theme || "standard";
   $("brand").innerHTML = s.logo ? `<img src="${escapeHtml(s.logo)}" alt="">` : s.store_name ? `<div class="name">${escapeHtml(s.store_name)}</div>` : "";
   $("title").textContent = s.title || "";
   $("text").textContent = s.text || "";

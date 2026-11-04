@@ -23,6 +23,7 @@
   .btn.danger { color: var(--danger); }
   ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
   code { background: var(--bg); padding: 1px 6px; border-radius: 4px; }
+  select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: inherit; min-width: 220px; }
 </style>
 </head>
 <body>
@@ -31,6 +32,16 @@
 
   <div class="card"><h2>Status</h2><div class="kv" id="status"></div></div>
   <div class="card"><h2>Dieser Laptop</h2><div id="device"></div></div>
+  <div class="card">
+    <h2>Theme</h2>
+    <select id="theme">
+      <option value="standard">Standard</option>
+      <option value="blackweek">Black Week</option>
+      <option value="weihnachten">Weihnachten</option>
+      <option value="geburtstag">Geburtstag</option>
+    </select>
+    <p class="sub" style="margin:8px 0 0">Gilt sofort für diesen Laptop. Für alle Laptops: <code>Theme = …</code> in der einstellungen.txt auf dem Stick.</p>
+  </div>
   <div class="card">
     <h2>Inhalte aktualisieren</h2>
     <p class="sub" style="margin:0">USB-Stick mit dem Ordner <code>DEMO-UPDATE</code> (inkl. <code>demo-schluessel.txt</code>) einstecken –

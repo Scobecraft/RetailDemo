@@ -243,6 +243,9 @@ aber alle Inhalte kommen per **USB-Stick** – ohne Klick.
 - Stick einstecken → alle Videos/Bilder werden ersetzt (Ladebalken), optional `logo.png`/`logo.svg`,
   `einstellungen.txt` (Ladenname, Wartezeit, Herunterfahren, PIN) und `geraete.txt` (Name/Preis pro Modell).
 - Liegt `RetailDemo-Offline-Setup-x.y.z.exe` mit höherer Version im Ordner, installiert sich die Demo still neu.
+- **Themes:** Standard, Black Week, Weihnachten, Geburtstag (Farben, Schnee/Konfetti/Prozentzeichen, Eckband,
+  Satz im Intro). Nach der Installation „Standard“; umstellen per `Theme = …` in `einstellungen.txt` (alle Laptops)
+  oder im Info-Fenster (einzelner Laptop). Optional `Geburtstag Jahre = 25`.
 - Startet mit Windows direkt im Vorführmodus, fährt den Laptop nach 9,5 Stunden herunter (einstellbar).
 - Einmalige Einrichtung pro Laptop: `Laptop-einrichten.cmd` (als Admin) – legt das eingeschränkte Konto
   „Vorfuehrung“ mit automatischer Anmeldung an, sperrt WLAN, Passwort/Sprache/Konten/Netzwerk-Einstellungen,

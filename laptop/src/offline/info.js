@@ -6,6 +6,7 @@ const time = ms => ms ? new Date(ms).toLocaleString("de-DE", { dateStyle: "short
 
 async function load() {
   const i = await rd.invoke("info:get");
+  if (document.activeElement !== $("#theme")) $("#theme").value = i.theme;
   $("#status").innerHTML = kv([
     ["Programmversion", i.version],
     ["Videos / Bilder", `${i.videos} / ${i.images}`],
@@ -23,6 +24,7 @@ async function load() {
   ])}</div><ul>${(i.specs || []).map(s => `<li>${esc(s.label)}: ${esc(s.value)}</li>`).join("")}</ul>`;
 }
 
+$("#theme").addEventListener("change", e => rd.send("info:setTheme", e.target.value));
 $("#start").addEventListener("click", () => rd.send("info:startDemo"));
 $("#quit").addEventListener("click", () => { if (confirm("Demo-Programm beenden? Es startet beim nächsten Einschalten wieder.")) rd.send("info:quit"); });
 load();

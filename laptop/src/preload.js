@@ -1,7 +1,7 @@
 // Brücke zwischen den Oberflächen (HTML) und dem Hauptprozess – nur freigegebene Kanäle.
 const { contextBridge, ipcRenderer } = require("electron");
 
-const SEND = ["demo:input", "demo:startNow", "panel:toggle", "setup:startDemo", "setup:quit", "info:startDemo", "info:quit"];
+const SEND = ["demo:input", "demo:startNow", "panel:toggle", "setup:startDemo", "setup:quit", "info:startDemo", "info:quit", "info:setTheme"];
 const INVOKE = ["vm", "pin:check", "setup:get", "setup:save", "setup:sync", "filter:install", "filter:uninstall", "info:get"];
 const LISTEN = ["vm", "demo:start", "demo:stop", "panel:open", "state", "overlay"];
 
