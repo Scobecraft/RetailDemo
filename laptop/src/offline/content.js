@@ -91,8 +91,11 @@ class Content {
     this.mediaDir = path.join(dir, "medien");
     this.stateFile = path.join(dir, "status.json");
     fs.mkdirSync(this.mediaDir, { recursive: true });
+    // Status lesen; ist die Datei beschädigt (z. B. Strom weg beim Schreiben), die Sicherung nehmen
     this.state = {};
-    try { this.state = JSON.parse(fs.readFileSync(this.stateFile, "utf8")); } catch {}
+    for (const f of [this.stateFile, this.stateFile + ".bak"]) {
+      try { this.state = JSON.parse(fs.readFileSync(f, "utf8")); break; } catch {}
+    }
     this.reload();
   }
 
@@ -102,9 +105,14 @@ class Content {
     this.devices = parseDevices(read(DEVICES_FILE));
   }
 
+  /** Sicher speichern: erst Zwischendatei schreiben und auf die Platte zwingen, dann umbenennen. */
   saveState(values) {
     Object.assign(this.state, values);
-    fs.writeFileSync(this.stateFile, JSON.stringify(this.state, null, 2));
+    const tmp = this.stateFile + ".tmp";
+    const fd = fs.openSync(tmp, "w");
+    try { fs.writeSync(fd, JSON.stringify(this.state, null, 2)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    try { fs.copyFileSync(this.stateFile, this.stateFile + ".bak"); } catch {}
+    fs.renameSync(tmp, this.stateFile);
   }
 
   /** Alle Videos/Bilder: reguläre und wöchentliche Werbung (abgespielt wird zufällig gemischt). */

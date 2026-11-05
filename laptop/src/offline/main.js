@@ -133,8 +133,11 @@ async function runStickUpdate(dir) {
         showOverlay({ kind: "busy", title: "Demo wird aktualisiert", text, progress: p, hint: "USB-Stick bitte nicht entfernen" });
       });
       content.reload();
-      // "Theme = …" in einstellungen.txt gilt ab jetzt für diesen Laptop
-      if (content.settings.theme) content.saveState({ theme: content.settings.theme });
+      // "Theme = …" in einstellungen.txt nur übernehmen, wenn sich die Zeile auf dem Stick geändert hat –
+      // sonst würde ein Stick mit "Theme = Standard" die Auswahl im Info-Fenster jedes Mal zurücksetzen
+      const stickTheme = content.settings.theme;
+      if (stickTheme && stickTheme !== (content.state.stickTheme || "standard")) content.saveState({ theme: stickTheme });
+      if (stickTheme) content.saveState({ stickTheme });
       content.saveState({ lastFingerprint: info.fingerprint, lastUpdate: Date.now() });
       stage.pushViewModel();
     }
