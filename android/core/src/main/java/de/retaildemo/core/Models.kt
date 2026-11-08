@@ -106,6 +106,9 @@ data class ServerSettings(
     @SerialName("web_filter") val webFilter: String = "off",
     /** Zusätzlich gesperrte Webseiten, eine Domain pro Zeile. */
     @SerialName("blocked_domains") val blockedDomains: String = "",
+    /** Handys: Bloatware entfernen (0/1) und Ausnahmen (ein Paketname pro Zeile). */
+    @SerialName("remove_bloatware") val removeBloatware: Int = 0,
+    @SerialName("bloatware_keep") val bloatwareKeep: String = "",
     val schedule: Schedule = Schedule(),
     /** Laden-Logo für die Laptop-Demo (nur lesen; ändern über [ApiClient.uploadLogo]). */
     val logo: LogoInfo? = null,
@@ -143,7 +146,11 @@ data class Manifest(
     val schedule: Schedule = Schedule(),
     @SerialName("cleanup_interval_h") val cleanupIntervalH: Int = 2,
     @SerialName("heartbeat_interval_s") val heartbeatIntervalS: Int = 300,
-    @SerialName("app_update") val appUpdate: AppRelease? = null
+    @SerialName("app_update") val appUpdate: AppRelease? = null,
+    /** Apps löschen, die nicht vom Hersteller stammen (siehe Webseite → Einstellungen). */
+    @SerialName("remove_bloatware") val removeBloatware: Boolean = false,
+    /** Paketnamen, die trotzdem bleiben sollen. */
+    @SerialName("bloatware_keep") val bloatwareKeep: List<String> = emptyList(),
 )
 
 @Serializable

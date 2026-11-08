@@ -63,6 +63,8 @@ DEFAULT_SETTINGS = {
     "cleanup_interval_h": 2,
     # Laptops: Kunden lesen/tippen länger, daher eigene Wartezeit bis zur Rückkehr der Demo
     "laptop_idle_timeout_s": 60,
+    # Handys: Apps, die nicht vom Hersteller stammen (Bloatware, von Kunden installiert), löschen (0/1)
+    "remove_bloatware": 0,
 }
 # Text-Einstellungen
 TEXT_SETTINGS = {
@@ -71,6 +73,8 @@ TEXT_SETTINGS = {
     "web_filter": "off",
     # zusätzlich gesperrte Webseiten, eine Domain pro Zeile
     "blocked_domains": "",
+    # Apps, die beim Bloatware-Entfernen bleiben sollen: ein Paketname pro Zeile
+    "bloatware_keep": "",
 }
 WEB_FILTER_MODES = {"off", "family", "strict"}
 DOMAIN_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
@@ -99,7 +103,25 @@ def clean_domains(text: str) -> list[str]:
                 break
     return out
 # Einstellungen, bei denen 0 "aus" bedeutet
-ZERO_ALLOWED = {"cleanup_interval_h"}
+ZERO_ALLOWED = {"cleanup_interval_h", "remove_bloatware"}
+BOOL_SETTINGS = {"remove_bloatware"}
+PACKAGE_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$")
+
+
+def clean_packages(text: str) -> list[str]:
+    """Paketnamen säubern (z. B. 'com.whatsapp'); auch aus Play-Store-Links (…?id=com.whatsapp)."""
+    out, seen = [], set()
+    for line in (text or "").replace(",", "\n").splitlines():
+        p = line.split("#", 1)[0].strip()
+        if "id=" in p:
+            p = p.split("id=", 1)[1].split("&")[0]
+        p = p.lower()
+        if p and p not in seen and PACKAGE_RE.match(p):
+            seen.add(p)
+            out.append(p)
+            if len(out) >= 300:
+                break
+    return out
 WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 DEFAULT_SCHEDULE = {
     "enabled": False,
@@ -389,6 +411,10 @@ def build_manifest(c, device_row) -> dict:
         "cleanup_interval_h": s["cleanup_interval_h"],
         "heartbeat_interval_s": HEARTBEAT_INTERVAL_S,
     }
+    if s["remove_bloatware"]:
+        # nur wenn eingeschaltet, damit sich der Hash der übrigen Handy-Manifeste nicht ändert
+        manifest["remove_bloatware"] = True
+        manifest["bloatware_keep"] = clean_packages(s["bloatware_keep"])
     if is_laptop(device_row):
         # Nur für Laptops: Handy-Manifeste (und damit deren Hash) bleiben unverändert
         logo = s["logo"]
@@ -807,14 +833,17 @@ def write_settings(body: dict):
     with db() as c:
         for k, v in body.items():
             if k in DEFAULT_SETTINGS:
-                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)",
-                          (k, str(max(0 if k in ZERO_ALLOWED else 1, int(v)))))
+                value = (1 if v else 0) if k in BOOL_SETTINGS else max(0 if k in ZERO_ALLOWED else 1, int(v))
+                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, str(value)))
             elif k == "web_filter" and isinstance(v, str):
                 if v not in WEB_FILTER_MODES:
                     raise HTTPException(400, "Unbekannte Filterstufe")
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, v))
             elif k == "blocked_domains" and isinstance(v, str):
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, v))
+            elif k == "bloatware_keep" and isinstance(v, str):
+                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)",
+                          (k, "\n".join(clean_packages(v[:1_000_000]))))
             elif k in TEXT_SETTINGS and isinstance(v, str):
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (k, v.strip()[:80]))
             elif k == "schedule" and isinstance(v, dict):

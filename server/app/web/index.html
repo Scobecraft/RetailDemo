@@ -353,6 +353,7 @@
       <div class="settings">
         <div class="panel" id="storeSettings"></div>
         <div class="panel" id="behaviourSettings"></div>
+        <div class="panel" id="bloatSettings"></div>
         <div class="panel" id="scheduleSettings"></div>
         <div class="panel" id="filterSettings"></div>
         <div class="panel" id="appUpdateSettings"></div>
@@ -878,6 +879,18 @@ function renderSettings() {
     el("p", { class: "sub" }, "Für Handys und Laptops, soweit nicht anders angegeben."),
     ...fields.flatMap(f => f.nodes),
     el("button", { class: "btn primary block", onclick: () => saveSettings(Object.fromEntries(fields.map(f => [f.key, f.input.value === "" ? s[f.key] : +f.input.value]))) }, "Speichern"));
+
+  // Bloatware
+  const bloatOn = el("input", { type: "checkbox", checked: !!s.remove_bloatware, style: "accent-color:var(--accent);width:16px;height:16px" });
+  const keep = el("textarea", { rows: 4, placeholder: "com.whatsapp\nhttps://play.google.com/store/apps/details?id=com.instagram.android" });
+  keep.value = s.bloatware_keep || "";
+  $("#bloatSettings").replaceChildren(
+    el("h3", {}, "Bloatware entfernen (Handys)"),
+    el("p", { class: "sub" }, "Löscht auf den Handys alle Apps, die nicht vom Hersteller (bzw. von Google) stammen – z. B. vorinstallierte Werbe-Apps oder von Kunden installierte Apps. Die Demo-App bleibt natürlich. Läuft beim Aufräumen und nur, während die Demo spielt; die Bestätigungsdialoge bestätigt die Demo-App selbst."),
+    el("label", { style: "display:flex;gap:10px;align-items:center;color:var(--text);cursor:pointer" }, bloatOn, "Bloatware automatisch entfernen"),
+    el("label", {}, "Diese Apps trotzdem behalten (Paketname oder Play-Store-Link, eine pro Zeile)"), keep,
+    el("p", { class: "muted", style: "font-size:13px;margin:4px 0 0" }, "Vom System fest eingebaute Apps (z. B. Facebook-Dienste bei manchen Herstellern) kann eine App nicht löschen – nur Apps, die sich auch von Hand deinstallieren lassen."),
+    el("button", { class: "btn primary block", onclick: () => saveSettings({ remove_bloatware: bloatOn.checked ? 1 : 0, bloatware_keep: keep.value }, bloatOn.checked ? "Gespeichert – Handys räumen nach dem nächsten Abgleich auf" : "Gespeichert") }, "Speichern"));
 
   // Betriebszeiten
   const sched = JSON.parse(JSON.stringify(s.schedule));

@@ -23,9 +23,14 @@ class DemoApp : Application() {
         private set
     lateinit var updater: AppUpdater
         private set
+    lateinit var bloatware: BloatwareRemover
+        private set
 
     /** Bis zu diesem Zeitpunkt (elapsedRealtime) läuft ein App-Update – Demo nicht dazwischenschieben. */
     @Volatile var updateInProgressUntil = 0L
+
+    /** Bis zu diesem Zeitpunkt (elapsedRealtime) wird Bloatware entfernt – Demo nicht dazwischenschieben. */
+    @Volatile var bloatRemovalUntil = 0L
 
     /** true, solange die Demo-Wiedergabe im Vordergrund läuft. */
     @Volatile var demoVisible = false
@@ -75,6 +80,8 @@ class DemoApp : Application() {
         cleanup = CleanupManager(this)
         cleanup.start(scope)
         updater = AppUpdater(this)
+        bloatware = BloatwareRemover(this)
+        bloatware.start(scope)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(a: Activity) { resumedActivities++ }

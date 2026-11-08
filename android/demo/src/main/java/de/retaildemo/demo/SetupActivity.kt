@@ -127,6 +127,10 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> U
     val storage = remember(refresh) { app.cleanup.hasStorageAccess() }
     val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
     val cleanupState by app.cleanup.state.collectAsState()
+    val bloatState by app.bloatware.state.collectAsState()
+    val bloatEnabled = app.sync.manifest.collectAsState().value?.removeBloatware == true
+    val bloatCandidates = remember(refresh, bloatState) { app.bloatware.candidates() }
+    var confirmBloat by remember { mutableStateOf(false) }
     var confirmCleanup by remember { mutableStateOf(false) }
     val scheduleActive by app.schedule.active.collectAsState()
 
@@ -357,6 +361,42 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> U
                 ) { Text("Jetzt synchronisieren") }
             }
         }
+
+        Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Bloatware", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (bloatEnabled) "Apps, die nicht vom Hersteller stammen, werden automatisch gelöscht, während die Demo läuft."
+                    else "Automatisches Löschen ist aus (einschalten auf der Webseite unter Einstellungen → Bloatware entfernen).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    if (bloatCandidates.isEmpty()) "Keine Bloatware gefunden"
+                    else "Würde entfernt: " + bloatCandidates.joinToString { it.second },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (bloatState.isNotBlank()) Text(bloatState, style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(enabled = bloatCandidates.isNotEmpty() && a11y, onClick = { confirmBloat = true }) { Text("Jetzt entfernen") }
+                if (!a11y) Text(
+                    "⚠️ Funktioniert nur mit eingeschalteter Bedienungshilfe (siehe oben).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+
+        if (confirmBloat) AlertDialog(
+            onDismissRequest = { confirmBloat = false },
+            title = { Text("Bloatware entfernen?") },
+            text = { Text("Diese Apps werden gelöscht: " + bloatCandidates.joinToString { it.second }) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmBloat = false
+                    scope.launch { message = app.bloatware.runNow(); refresh++ }
+                }) { Text("Entfernen", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmBloat = false }) { Text("Abbrechen") } },
+        )
 
         if (confirmCleanup) AlertDialog(
             onDismissRequest = { confirmCleanup = false },

@@ -212,6 +212,21 @@ Damit die Auslastung des **Proxmox-Containers** (und nicht nur die Docker-Sicht)
 `docker-compose.yml` drei Dateien aus `/proc` lesend ein – nach dem Update einmal
 `docker compose up -d --build` ausführen.
 
+## Bloatware entfernen (Handys)
+
+Webseite → Einstellungen → **Bloatware entfernen** einschalten. Die Demo-App löscht dann alle Apps, die
+nicht vom Hersteller oder von Google stammen – vorinstallierte Werbe-Apps und von Kunden installierte Apps.
+Die Demo-App (und die Admin-App) bleiben. Apps, die bleiben sollen, trägst du darunter ein (Paketname wie
+`com.whatsapp` oder einfach den Play-Store-Link).
+
+- Läuft nur, während die Demo spielt (alle 10 Minuten wird nachgesehen), nie während ein Kunde das Gerät benutzt.
+- Android fragt bei jeder App „Deinstallieren?“ – die Demo-App bestätigt das über die Bedienungshilfe selbst
+  (muss also eingeschaltet sein). Tastatur und Startbildschirm werden nie gelöscht.
+- In den Demo-Einstellungen (3 Finger) siehst du unter **Bloatware**, welche Apps entfernt würden, und kannst
+  es mit **Jetzt entfernen** sofort starten.
+- Fest ins System eingebaute Apps lassen sich von keiner App löschen (nur per ADB oder Root) – nur Apps, die
+  man auch von Hand deinstallieren kann.
+
 ## Apps aktualisieren (ohne neu einzurichten)
 
 **Am einfachsten über den Server:** Webseite → Einstellungen → **App-Updates** → neue `RetailDemo-Demo-….apk`

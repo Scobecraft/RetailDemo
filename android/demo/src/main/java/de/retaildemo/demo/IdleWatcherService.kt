@@ -60,7 +60,14 @@ class IdleWatcherService : AccessibilityService() {
         if (pkg == packageName) return
 
         // Deinstallieren-Dialog so früh wie möglich erkennen – auch schon beim Aufbau des Inhalts
-        if (pkg.contains("packageinstaller")) checkUninstallDialog(event)
+        if (pkg.contains("packageinstaller")) {
+            // Schutz der Demo-App bleibt auch beim Bloatware-Entfernen aktiv
+            checkUninstallDialog(event)
+            if (demoApp.bloatware.pending != null) {
+                confirmBloatwareSoon()
+                return
+            }
+        }
 
         // Inhaltsänderungen (Animationen, Uhr, …) sind keine Bedienung durch einen Kunden
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
@@ -103,6 +110,53 @@ class IdleWatcherService : AccessibilityService() {
             return
         }
         handler.postDelayed({ handleClockWindow(null, attempt + 1) }, if (attempt == 0) 300L else 700L)
+    }
+
+    private var bloatConfirmScheduled = false
+
+    /** Deinstallieren-Dialog für die gerade zu entfernende Bloatware-App bestätigen (mehrere Versuche, bis ca. 5 s). */
+    private fun confirmBloatwareSoon() {
+        if (bloatConfirmScheduled) return
+        bloatConfirmScheduled = true
+        fun attempt(n: Int) {
+            val target = demoApp.bloatware.pending
+            if (target == null || confirmBloatware(target.second) || n >= 12) {
+                bloatConfirmScheduled = false
+                return
+            }
+            handler.postDelayed({ attempt(n + 1) }, 400)
+        }
+        handler.postDelayed({ attempt(0) }, 300)
+    }
+
+    private val confirmPattern = Regex("(?i)^(ok|deinstallieren|uninstall|löschen|entfernen|delete|remove|désinstaller|disinstalla|desinstalar)$")
+
+    private fun confirmBloatware(label: String): Boolean {
+        var root = rootInActiveWindow ?: return false
+        repeat(10) { root = root.parent ?: return@repeat }
+        if (root.packageName?.contains("packageinstaller") != true) return false
+        val texts = textsOf(root)
+        // Sicherheitshalber: Dialog muss die richtige App nennen und darf nie diese Demo-App betreffen
+        if (texts.none { it.contains(label, ignoreCase = true) } || texts.any { appLabelPattern.containsMatchIn(it) }) return false
+        val button = root.findAccessibilityNodeInfosByViewId("android:id/button1").firstOrNull()
+            ?: findNode(root) { n -> n.isClickable && (n.text ?: n.contentDescription)?.toString()?.trim()?.let(confirmPattern::matches) == true }
+            ?: return false
+        Log.i("DemoBloatware", "Bestätige Entfernen von $label")
+        return button.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+    }
+
+    private fun findNode(
+        root: android.view.accessibility.AccessibilityNodeInfo,
+        match: (android.view.accessibility.AccessibilityNodeInfo) -> Boolean,
+    ): android.view.accessibility.AccessibilityNodeInfo? {
+        var visited = 0
+        fun find(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int): android.view.accessibility.AccessibilityNodeInfo? {
+            if (node == null || depth > 10 || visited++ > 80) return null
+            if (match(node)) return node
+            for (i in 0 until node.childCount) find(node.getChild(i), depth + 1)?.let { return it }
+            return null
+        }
+        return find(root, 0)
     }
 
     private fun showBlockedToast(text: String) {
@@ -203,7 +257,8 @@ class IdleWatcherService : AccessibilityService() {
         // Während eines freigegebenen Deinstallierens (nach PIN) die Demo nicht dazwischenschieben
         if (app.isUiVisible || !app.prefs.isConfigured || app.prefs.isPaused ||
             SystemClock.elapsedRealtime() < app.uninstallUnlockedUntil ||
-            SystemClock.elapsedRealtime() < app.updateInProgressUntil
+            SystemClock.elapsedRealtime() < app.updateInProgressUntil ||
+            SystemClock.elapsedRealtime() < app.bloatRemovalUntil
         ) {
             lastInteraction = SystemClock.elapsedRealtime()
             return
