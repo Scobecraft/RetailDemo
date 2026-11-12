@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Druckmonitor – Einstellungen</title>
+<style>
+  :root { --bg: #0e0f12; --panel: #16181d; --panel2: #1c1f25; --line: #2a2e36; --text: #e9eaee; --muted: #8b909b;
+    --orange: #ff7a00; --orange-soft: rgba(255,122,0,.14); --green: #3ecf8e; --red: #ff5d5d; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", "Inter", system-ui, sans-serif; }
+  body { background: radial-gradient(900px 500px at 0% 0%, rgba(255,122,0,.08), transparent 60%), var(--bg); padding: 28px 16px 40px; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 20px; padding: 18px 24px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; position: relative; }
+  header::after { content: ""; position: absolute; left: 24px; right: 24px; bottom: -1px; height: 3px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--orange), transparent 70%); }
+  header img { height: 44px; }
+  header h1 { font-size: 22px; font-weight: 600; }
+  header p { color: var(--muted); font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  section.full { grid-column: 1 / -1; }
+  h2 { font-size: 13px; letter-spacing: 2.5px; color: var(--orange); font-weight: 700; margin-bottom: 14px; }
+  label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 6px; }
+  label:first-of-type { margin-top: 0; }
+  input[type=text], select { width: 100%; padding: 11px 13px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel2);
+    color: var(--text); font: inherit; outline: none; }
+  input[type=text]:focus, select:focus { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
+  input.big { font-size: 22px; font-weight: 600; letter-spacing: .5px; font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 10px; align-items: stretch; }
+  .row > :first-child { flex: 1; }
+  button { padding: 10px 16px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel2); color: var(--text);
+    font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  button:hover { border-color: var(--orange); }
+  button:disabled { opacity: .5; cursor: progress; }
+  button.primary { background: var(--orange); border-color: var(--orange); color: #111; font-size: 18px; padding: 14px 34px; }
+  button.primary:hover { filter: brightness(1.08); }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .hint code { color: var(--text); background: var(--panel2); padding: 1px 6px; border-radius: 4px; }
+  .result { margin-top: 12px; font-size: 14px; display: none; }
+  .result.ok, .result.err, .result.info { display: block; }
+  .result.ok { color: var(--green); } .result.err { color: var(--red); } .result.info { color: var(--muted); }
+  .preview { margin-top: 12px; width: 100%; border-radius: 10px; border: 1px solid var(--line); display: none; background: #000; }
+  .hits { margin-top: 10px; display: grid; gap: 6px; }
+  .hit { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 9px; background: var(--panel2);
+    border: 1px solid var(--line); cursor: pointer; text-align: left; font-weight: 400; }
+  .hit b { font-variant-numeric: tabular-nums; }
+  .hit .tag { margin-left: auto; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--orange-soft); color: var(--orange); font-weight: 700; }
+  .hit .tag.grey { background: #262a31; color: var(--muted); }
+  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 22px; text-align: center; cursor: pointer; transition: .2s; }
+  .drop:hover, .drop.over { border-color: var(--orange); background: var(--orange-soft); }
+  .drop b { display: block; font-size: 17px; margin-bottom: 4px; word-break: break-all; }
+  .drop span { color: var(--muted); font-size: 13px; }
+  .bar { margin-top: 10px; height: 4px; background: var(--panel2); border-radius: 4px; overflow: hidden; display: none; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--orange); transition: width .2s; }
+  .swatches { display: flex; gap: 8px; align-items: center; }
+  .sw.on { border-color: var(--orange); color: var(--orange); }
+  .meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .meta span { background: var(--panel2); border: 1px solid var(--line); border-radius: 99px; padding: 3px 10px; font-size: 13px; color: var(--muted); }
+  .meta span b { color: var(--text); font-weight: 600; }
+  .swatches input[type=color] { width: 44px; height: 38px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); padding: 3px; }
+  input[type=range] { width: 100%; accent-color: var(--orange); }
+  .check { display: flex; gap: 10px; align-items: center; color: var(--text); font-size: 14px; margin-top: 14px; }
+  .check input { accent-color: var(--orange); width: 18px; height: 18px; }
+  .start { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
+  .start .hint { margin: 0; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 14px; }
+  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,122,0,.25); border-top-color: var(--orange);
+    border-radius: 50%; animation: r 1s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes r { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="logo.png" alt="expert Klein">
+    <div><h1>Druckmonitor</h1><p>Live-Kamera und 3D-Modell im Vollbild</p></div>
+  </header>
+
+  <div class="grid">
+    <section>
+      <h2>DRUCKER</h2>
+      <label for="ip">IP-Adresse des Druckers</label>
+      <div class="row">
+        <input type="text" id="ip" class="big" placeholder="z. B. 192.168.1.50" autocomplete="off" spellcheck="false">
+        <button id="scan" title="Lokales Netzwerk nach dem Drucker durchsuchen">Drucker suchen</button>
+      </div>
+      <label class="check" style="margin-top:10px"><input type="checkbox" id="autoip"> IP automatisch finden und nachführen (empfohlen)</label>
+      <div class="result" id="scanRes"></div>
+      <div class="hits" id="hits"></div>
+
+      <label for="preset">Kamera-Typ</label>
+      <select id="preset"></select>
+      <div id="customBox" style="display:none">
+        <label for="tpl">Eigene Adresse (<code>{ip}</code> wird durch die IP ersetzt)</label>
+        <input type="text" id="tpl" spellcheck="false">
+      </div>
+      <div class="hint" id="urlHint"></div>
+
+      <div class="row" style="margin-top:14px">
+        <button id="test">Verbindung testen</button>
+        <div></div>
+      </div>
+      <div class="result" id="testRes"></div>
+      <img class="preview" id="preview" alt="">
+    </section>
+
+    <section>
+      <h2>3D-MODELL</h2>
+      <div class="drop" id="drop">
+        <b id="modelName">Kein Modell ausgewählt</b>
+        <span>Klicken oder Datei hierher ziehen · STL, 3MF, OBJ, GLB, G-Code<br>Tipp: Die aus Flash Studio exportierte G-Code- bzw. 3MF-Datei liefert zusätzlich Druckzeit und Filamentmenge</span>
+      </div>
+      <input type="file" id="file" accept=".stl,.3mf,.obj,.glb,.gltf,.gcode,.gco,.g,.gx" hidden>
+      <div class="bar" id="bar"><i></i></div>
+      <div class="result" id="modelRes"></div>
+      <div class="meta" id="meta"></div>
+      <label class="check"><input type="checkbox" id="automodel"> Datei des aktuellen Drucks automatisch suchen und laden</label>
+      <div class="hint">Der Drucker meldet den Dateinamen des laufenden Drucks. Die App sucht diese Datei in den Flash-Studio-Ordnern,
+        im Temp-Ordner, in Downloads, Desktop und Dokumente – bevorzugt die geslicte Version mit Druckzeit und Filamentmenge.</div>
+
+      <label>Modellfarbe</label>
+      <div class="swatches">
+        <input type="color" id="color" value="#ff7a00">
+        <button class="sw" data-c="auto" title="Farbe des Filaments aus der Flash-Studio-Datei">Wie Filament</button>
+        <button class="sw" data-c="#ff7a00">Orange</button>
+        <button class="sw" data-c="#e8e8e8">Weiß</button>
+        <button class="sw" data-c="#3a7bd5">Blau</button>
+      </div>
+      <label for="speed">Drehgeschwindigkeit</label>
+      <input type="range" id="speed" min="0" max="1.5" step="0.05">
+    </section>
+
+    <section class="full">
+      <h2>DRUCKERDATEN</h2>
+      <div class="twocol">
+        <div>
+          <label for="pkind">Live-Daten (Temperaturen, Fortschritt, Restzeit …)</label>
+          <select id="pkind">
+            <option value="flashforge">Flashforge – direkt vom Drucker abfragen</option>
+            <option value="none">Aus – nur Angaben aus der Flash-Studio-Datei</option>
+          </select>
+        </div>
+        <div></div>
+        <div id="ffBox1">
+          <label for="ffserial">Seriennummer <span style="opacity:.7">(optional, für mehr Daten)</span></label>
+          <input type="text" id="ffserial" placeholder="z. B. SNMOMC9900000" spellcheck="false" autocomplete="off">
+        </div>
+        <div id="ffBox2">
+          <label for="ffcode">Prüfcode / Check Code <span style="opacity:.7">(optional)</span></label>
+          <input type="text" id="ffcode" placeholder="z. B. 12345678" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+      <div class="hint" id="ffHint">Ohne Seriennummer/Prüfcode zeigt die App Temperaturen, Fortschritt, Schicht und Status.
+        Mit beiden Angaben zusätzlich Restzeit, Geschwindigkeit, Lüfter und Filamentverbrauch vom Drucker.
+        Beides steht am Druckerdisplay in den Einstellungen (Netzwerk bzw. Info). Je nach Firmware muss dort der „Nur-LAN-Modus“ aktiv sein.</div>
+      <div class="row" style="margin-top:12px" id="ffBox3"><button id="ptest">Druckerdaten testen</button><div></div></div>
+      <div class="result" id="ptestRes"></div>
+    </section>
+
+    <section class="full">
+      <h2>ANZEIGE</h2>
+      <div class="twocol">
+        <div>
+          <label for="monitor">Monitor</label>
+          <select id="monitor"></select>
+        </div>
+        <div>
+          <label for="title">Überschrift</label>
+          <input type="text" id="title">
+        </div>
+        <div>
+          <label for="subtitle">Unterzeile</label>
+          <input type="text" id="subtitle">
+        </div>
+        <div>
+          <label for="ticker">Lauftext unten</label>
+          <input type="text" id="ticker">
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="fullscreen"> Im Vollbild starten</label>
+      <details>
+        <summary>Erweitert: Webseite statt Videostream</summary>
+        <label class="check"><input type="checkbox" id="pageMode"> Kamera-Adresse als Webseite einbetten (nur nötig, wenn der Drucker keinen direkten Videostream hat)</label>
+        <label for="reload">Webseite neu laden alle … Sekunden</label>
+        <input type="text" id="reload" style="max-width:120px">
+      </details>
+    </section>
+    <section class="full">
+      <h2>WEBSEITE (RETAIL-DEMO-SERVER)</h2>
+      <div class="twocol">
+        <div>
+          <label for="srvurl">Adresse des Servers</label>
+          <input type="text" id="srvurl" placeholder="z. B. demo.scobecraft.pro" spellcheck="false" autocomplete="off">
+        </div>
+        <div>
+          <label for="srvtoken">Geräte-Token <span style="opacity:.7">(DEVICE_TOKEN, wie bei den Demo-Handys)</span></label>
+          <input type="password" id="srvtoken" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+      <div class="hint">Ist beides eingetragen, schickt der Druckmonitor Kamerabild, Druckerdaten und Modell an den Server.
+        Dort erscheint alles auf der Verwaltungs-Webseite im Reiter „3D-Drucker“. Leer lassen = nichts senden.</div>
+      <div class="result" id="pushRes"></div>
+    </section>
+  </div>
+
+  <div class="start">
+    <div class="hint">Im Vollbild: <code>Esc</code> zurück zu diesen Einstellungen · <code>F11</code> Vollbild an/aus · <code>R</code> Kamera neu verbinden</div>
+    <button class="primary" id="go">Starten ▶</button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const PRESETS = [
+  { id: 'mjpg8080', name: 'MJPEG-Stream, Port 8080 (Flashforge Adventurer 5M / AD5X, Creality K1 …)', tpl: 'http://{ip}:8080/?action=stream' },
+  { id: 'webcam',   name: 'OctoPrint / Mainsail / Fluidd (Klipper, Crowsnest)', tpl: 'http://{ip}/webcam/?action=stream' },
+  { id: 'fluidd4408', name: 'Creality-Weboberfläche Port 4408 (Fluidd)', tpl: 'http://{ip}:4408/webcam/?action=stream' },
+  { id: 'snapshot8080', name: 'Einzelbild, Port 8080 (?action=snapshot)', tpl: 'http://{ip}:8080/?action=snapshot' },
+  { id: 'custom',   name: 'Eigene Adresse …', tpl: '' },
+];
+let cfg;
+
+function tpl() {
+  const p = PRESETS.find(p => p.id === $('preset').value);
+  return p && p.id !== 'custom' ? p.tpl : $('tpl').value.trim();
+}
+function host() { return $('ip').value.trim().replace(/^https?:\/\//, '').replace(/[\/?#].*$/, ''); }
+function streamURL() { return tpl().replaceAll('{ip}', host() || '{ip}'); }
+function updateHint() {
+  $('customBox').style.display = $('preset').value === 'custom' ? '' : 'none';
+  $('urlHint').innerHTML = 'Adresse: <code></code>';
+  $('urlHint').querySelector('code').textContent = streamURL();
+}
+function show(el, cls, html) { el.className = 'result ' + cls; el.innerHTML = html; }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function init() {
+  cfg = await (await fetch('api/config', { cache: 'no-store' })).json();
+  for (const p of PRESETS) $('preset').add(new Option(p.name, p.id));
+  $('ip').value = cfg.ip || '';
+  $('preset').value = PRESETS.some(p => p.id === cfg.preset) ? cfg.preset : 'custom';
+  $('tpl').value = cfg.urlTemplate || '';
+  $('speed').value = cfg.rotSpeed ?? 0.35;
+  $('title').value = cfg.title || '';
+  $('subtitle').value = cfg.subtitle || '';
+  $('ticker').value = cfg.ticker || '';
+  $('fullscreen').checked = cfg.fullscreen !== false;
+  $('pageMode').checked = cfg.mode === 'page';
+  $('reload').value = cfg.reloadSec || 60;
+  $('modelName').textContent = cfg.modelName || 'Kein Modell ausgewählt';
+  $('pkind').value = cfg.printerKind || 'flashforge';
+  $('autoip').checked = cfg.autoIp !== false;
+  $('automodel').checked = cfg.autoModel !== false;
+  $('ffserial').value = cfg.ffSerial || '';
+  $('ffcode').value = cfg.ffCheckCode || '';
+  $('srvurl').value = cfg.serverUrl || '';
+  $('srvtoken').value = cfg.serverToken || '';
+  pushStatusLoop();
+  setColor(cfg.modelColor || '#ff7a00');
+  updateKind();
+  updateHint();
+  try { showMeta((await (await fetch('api/printer')).json()).file); } catch (e) {}
+  if ($('autoip').checked) discover(false); // beim Öffnen gleich den Drucker suchen
+
+  const mons = await (await fetch('api/monitors')).json();
+  if (!mons.length) $('monitor').add(new Option('Aktueller Bildschirm', 0));
+  for (const m of mons) $('monitor').add(new Option(`Monitor ${m.index + 1}${m.primary ? ' (Hauptbildschirm)' : ''} – ${m.width} × ${m.height}`, m.index));
+  $('monitor').value = Math.min(cfg.monitor || 0, Math.max(0, mons.length - 1));
+  $('ip').focus();
+  $('ip').select();
+}
+
+$('preset').onchange = updateHint;
+$('tpl').oninput = updateHint;
+$('ip').oninput = updateHint;
+$('ip').onkeydown = e => { if (e.key === 'Enter') start(); };
+
+// ---------- Drucker automatisch finden ----------
+const srcText = { zuletzt: 'zuletzt verwendete IP', netzwerk: 'Flashforge-Netzwerksuche', flashstudio: 'aus Flash Studio', scan: 'Netzwerkscan' };
+function printerLabel(p) {
+  return [p.model || p.name || 'Drucker', p.model && p.name && p.name !== p.model ? p.name : '', p.serial].filter(Boolean).map(esc).join(' · ');
+}
+function takePrinter(p, quiet) {
+  $('ip').value = p.ip; updateHint();
+  if (p.serial && !$('ffserial').value.trim()) $('ffserial').value = p.serial;
+  show($('scanRes'), 'ok', `✓ Gefunden: <b>${printerLabel(p)}</b> – ${esc(p.ip)} <span style="color:var(--muted)">(${esc(srcText[p.source] || p.source)})</span>`);
+  if (!quiet) test();
+}
+async function discover(full) {
+  const b = $('scan'); b.disabled = true;
+  $('hits').innerHTML = '';
+  show($('scanRes'), 'info', '<span class="spin"></span>' + (full ? 'Suche Drucker im Netzwerk … (bis zu 20 Sekunden)' : 'Suche Drucker …'));
+  try {
+    const q = new URLSearchParams({ serial: $('ffserial').value.trim(), template: tpl() });
+    if (full) q.set('full', '1');
+    const r = await (await fetch('api/discover?' + q)).json();
+    if (!r.found?.length) {
+      b.disabled = false;
+      if (full) return oldScan();
+      show($('scanRes'), 'err', 'Kein Drucker gefunden. Ist er eingeschaltet und im selben Netzwerk? Notfalls IP von Hand eintragen.');
+      return;
+    }
+    if (r.chosen) takePrinter(r.chosen, !full);
+    if (full && r.found.length > 1) {
+      for (const p of r.found) {
+        const el = document.createElement('button');
+        el.className = 'hit';
+        el.innerHTML = `<b>${esc(p.ip)}</b><span style="color:var(--muted)">${printerLabel(p)}</span><span class="tag">${esc(srcText[p.source] || p.source)}</span>`;
+        el.onclick = () => { $('hits').innerHTML = ''; takePrinter(p); };
+        $('hits').appendChild(el);
+      }
+    }
+  } catch (e) { show($('scanRes'), 'err', 'Suche fehlgeschlagen: ' + esc(e.message)); }
+  b.disabled = false;
+}
+$('scan').onclick = () => discover(true);
+
+// Fallback: Netzwerk nach dem Kamera-Port durchsuchen (für Nicht-Flashforge-Drucker)
+async function oldScan() {
+  const b = $('scan'); b.disabled = true;
+  $('hits').innerHTML = '';
+  show($('scanRes'), 'info', '<span class="spin"></span>Durchsuche das Netzwerk … (ca. 5–15 Sekunden)');
+  try {
+    const r = await (await fetch('api/scan?template=' + encodeURIComponent(tpl()))).json();
+    const cams = r.hits.filter(h => h.camera);
+    if (!r.hits.length) {
+      show($('scanRes'), 'err', `Kein Gerät mit offenem Port ${r.port} gefunden (${(r.networks || []).join(', ') || 'kein Netzwerk'}). Ist der Drucker an und im selben Netzwerk? Stimmt der Kamera-Typ?`);
+    } else {
+      show($('scanRes'), cams.length ? 'ok' : 'info', cams.length
+        ? `${cams.length} Kamera${cams.length > 1 ? 's' : ''} gefunden – zum Übernehmen anklicken:`
+        : `Keine Kamera erkannt, aber Geräte mit offenem Port ${r.port}. Evtl. anderen Kamera-Typ wählen.`);
+      for (const h of r.hits) {
+        const el = document.createElement('button');
+        el.className = 'hit';
+        el.innerHTML = `<b>${esc(h.ip)}</b><span style="color:var(--muted)">${esc(h.name || '')}</span>` +
+          `<span class="tag ${h.camera ? '' : 'grey'}">${h.camera ? (h.kind === 'page' ? 'Webseite' : 'Kamera') : 'Port offen'}</span>`;
+        el.onclick = () => { $('ip').value = h.ip; updateHint(); $('hits').innerHTML = ''; show($('scanRes'), 'ok', 'IP übernommen: ' + esc(h.ip)); test(); };
+        $('hits').appendChild(el);
+      }
+      if (cams.length === 1 && !host()) { $('ip').value = cams[0].ip; updateHint(); }
+    }
+  } catch (e) { show($('scanRes'), 'err', 'Suche fehlgeschlagen: ' + esc(e.message)); }
+  b.disabled = false;
+}
+
+// ---------- Verbindung testen ----------
+async function test() {
+  const b = $('test'); b.disabled = true;
+  $('preview').style.display = 'none';
+  if (!host()) { show($('testRes'), 'err', 'Bitte zuerst die IP-Adresse eingeben.'); b.disabled = false; return false; }
+  show($('testRes'), 'info', '<span class="spin"></span>Teste ' + esc(streamURL()) + ' …');
+  let ok = false;
+  try {
+    const r = await (await fetch('api/test?url=' + encodeURIComponent(streamURL()))).json();
+    ok = r.ok;
+    if (!r.ok) show($('testRes'), 'err', '✕ ' + esc(r.error || 'Keine Verbindung'));
+    else if (r.kind === 'page') show($('testRes'), 'info', '⚠ Unter dieser Adresse liegt eine Webseite, kein direkter Videostream. Besser einen anderen Kamera-Typ wählen – sonst wird die Seite eingebettet und regelmäßig neu geladen.');
+    else show($('testRes'), 'ok', '✓ Kamera gefunden (' + (r.kind === 'mjpeg' ? 'Videostream' : 'Einzelbilder') + ')');
+    if (r.preview) { $('preview').src = r.preview; $('preview').style.display = 'block'; }
+  } catch (e) { show($('testRes'), 'err', esc(e.message)); }
+  b.disabled = false;
+  return ok;
+}
+$('test').onclick = test;
+
+// ---------- Modell ----------
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+$('file').onchange = () => $('file').files[0] && upload($('file').files[0]);
+addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+addEventListener('dragleave', e => { if (!e.relatedTarget) drop.classList.remove('over'); });
+addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); e.dataTransfer.files[0] && upload(e.dataTransfer.files[0]); });
+
+function upload(file) {
+  return new Promise(done => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'api/model?name=' + encodeURIComponent(file.name));
+    $('bar').style.display = 'block';
+    xhr.upload.onprogress = e => { $('bar').firstChild.style.width = (e.loaded / e.total * 100) + '%'; };
+    xhr.onload = () => {
+      $('bar').style.display = 'none';
+      if (xhr.status === 200) {
+        $('modelName').textContent = file.name; show($('modelRes'), 'ok', '✓ Modell übernommen');
+        try { showMeta(JSON.parse(xhr.responseText).meta); } catch (e) {}
+      }
+      else show($('modelRes'), 'err', esc(xhr.responseText));
+      done();
+    };
+    xhr.onerror = () => { $('bar').style.display = 'none'; show($('modelRes'), 'err', 'Hochladen fehlgeschlagen'); done(); };
+    xhr.send(file);
+  });
+}
+
+// ---------- Farbe ----------
+let colorAuto = false;
+function setColor(c) {
+  colorAuto = c === 'auto';
+  if (!colorAuto) $('color').value = c;
+  for (const b of document.querySelectorAll('.sw')) b.classList.toggle('on', colorAuto ? b.dataset.c === 'auto' : b.dataset.c === c);
+}
+for (const b of document.querySelectorAll('.sw')) b.onclick = () => setColor(b.dataset.c);
+$('color').oninput = () => setColor($('color').value);
+
+// ---------- Angaben aus der Datei ----------
+const fmtDur = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}:${String(m).padStart(2, '0')} h` : `${m} min`; };
+const de = (v, d = 0) => v.toLocaleString('de-DE', { maximumFractionDigits: d });
+function showMeta(m) {
+  const el = $('meta'); el.innerHTML = '';
+  if (!m) return;
+  const items = [
+    m.timeSec && ['Druckzeit', fmtDur(m.timeSec)],
+    m.filamentM && ['Filament', de(m.filamentM, 1) + ' m'],
+    m.filamentG && ['Gewicht', de(m.filamentG, 1) + ' g'],
+    m.filamentType && ['Material', m.filamentType],
+    m.layerHeight && ['Schicht', de(m.layerHeight, 2) + ' mm'],
+    m.infill && ['Füllung', m.infill],
+    m.nozzleTemp && ['Düse', de(m.nozzleTemp) + ' °C'],
+    m.bedTemp && ['Bett', de(m.bedTemp) + ' °C'],
+  ].filter(Boolean);
+  for (const [k, v] of items) { const s = document.createElement('span'); s.innerHTML = `${esc(k)} <b>${esc(v)}</b>`; el.appendChild(s); }
+  if (m.filamentColor) { const s = document.createElement('span'); s.innerHTML = `Farbe <b style="color:${esc(m.filamentColor)}">●</b>`; el.appendChild(s); }
+}
+
+// ---------- Druckerdaten ----------
+function updateKind() {
+  const on = $('pkind').value === 'flashforge';
+  for (const id of ['ffBox1', 'ffBox2', 'ffBox3', 'ffHint']) $(id).style.display = on ? '' : 'none';
+}
+$('pkind').onchange = updateKind;
+$('ptest').onclick = async () => {
+  const b = $('ptest'); b.disabled = true;
+  if (!host()) { show($('ptestRes'), 'err', 'Bitte zuerst die IP-Adresse eingeben.'); b.disabled = false; return; }
+  show($('ptestRes'), 'info', '<span class="spin"></span>Frage Drucker ab …');
+  const q = new URLSearchParams({ ip: host(), serial: $('ffserial').value.trim(), code: $('ffcode').value.trim() });
+  try {
+    const r = await (await fetch('api/printer/test?' + q)).json();
+    if (!r.ok) show($('ptestRes'), 'err', '✕ ' + esc(r.error));
+    else {
+      const i = r.info;
+      show($('ptestRes'), 'ok', `✓ ${esc(i.machine || 'Drucker')} ${i.firmware ? '(' + esc(i.firmware) + ')' : ''} – ${esc(i.status)} · Düse ${de(i.nozzle)} °C · Bett ${de(i.bed)} °C` +
+        (i.source === 'http' ? ' · volle Daten über Seriennummer/Prüfcode' : ' · Basisdaten (ohne Seriennummer/Prüfcode)'));
+    }
+  } catch (e) { show($('ptestRes'), 'err', esc(e.message)); }
+  b.disabled = false;
+};
+
+// ---------- Übertragung an den Server ----------
+async function pushStatusLoop() {
+  for (;;) {
+    try {
+      const p = await (await fetch('api/push/status', { cache: 'no-store' })).json();
+      const el = $('pushRes');
+      if (p.state === 'ok') show(el, 'ok', '✓ Verbunden – die Daten erscheinen auf der Webseite' + (p.watching ? ' (gerade schaut jemand zu)' : ''));
+      else if (p.state === 'error') show(el, 'err', 'Übertragung: ' + esc(p.message));
+      else show(el, 'info', (cfg.serverUrl ? 'Wird nach „Starten“ übernommen.' : 'Nicht eingerichtet.'));
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 2000));
+  }
+}
+
+// ---------- Start ----------
+async function start() {
+  if (!host() && !$('autoip').checked) { show($('testRes'), 'err', 'Bitte die IP-Adresse des Druckers eingeben oder „Drucker suchen“ klicken.'); $('ip').focus(); return; }
+  $('go').disabled = true;
+  const c = {
+    ...cfg,
+    ip: host(), preset: $('preset').value, urlTemplate: tpl(),
+    mode: $('pageMode').checked ? 'page' : 'auto', reloadSec: parseInt($('reload').value) || 60,
+    monitor: +$('monitor').value, title: $('title').value, subtitle: $('subtitle').value, ticker: $('ticker').value,
+    modelColor: colorAuto ? 'auto' : $('color').value, rotSpeed: +$('speed').value, fullscreen: $('fullscreen').checked,
+    printerKind: $('pkind').value, ffSerial: $('ffserial').value.trim(), ffCheckCode: $('ffcode').value.trim(),
+    autoIp: $('autoip').checked, autoModel: $('automodel').checked,
+    serverUrl: $('srvurl').value.trim(), serverToken: $('srvtoken').value.trim(),
+  };
+  delete c.modelName; delete c.modelFile; // gehören dem Server
+  const r = await fetch('api/start', { method: 'POST', body: JSON.stringify(c) });
+  if (!r.ok) { $('go').disabled = false; show($('scanRes'), 'err', esc(await r.text())); return; }
+  if (c.fullscreen) await fetch(`api/window?fullscreen=1&monitor=${c.monitor}`);
+  location.href = 'monitor';
+}
+$('go').onclick = start;
+
+init();
+</script>
+</body>
+</html>

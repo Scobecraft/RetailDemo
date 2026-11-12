@@ -1,6 +1,9 @@
 services:
   demo-server:
-    build: .
+    build:
+      # Repo-Wurzel, damit auch die Oberfläche aus druckmonitor/web ins Image kommt
+      context: ..
+      dockerfile: server/Dockerfile
     container_name: retail-demo-server
     restart: unless-stopped
     ports:

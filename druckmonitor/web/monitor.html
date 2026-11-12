@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Druckmonitor</title>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }
+</script>
+<style>
+  :root {
+    --bg: #0e0f12; --panel: #16181d; --line: #262a31; --text: #e9eaee; --muted: #8b909b;
+    --orange: #ff7a00; --orange-soft: rgba(255,122,0,.16); --red: #ff4d4d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; color: var(--text);
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif; }
+  body.idle { cursor: none; }
+
+  /* Bühne 1920x1080, wird auf jede Bildschirmgröße skaliert */
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; overflow: hidden;
+    background:
+      radial-gradient(1200px 600px at 0% 0%, rgba(255,122,0,.07), transparent 60%),
+      radial-gradient(900px 500px at 100% 100%, rgba(255,122,0,.05), transparent 60%),
+      var(--bg); }
+  #stage::before { content: ""; position: absolute; inset: -20%; pointer-events: none;
+    background: radial-gradient(600px 400px at 50% 50%, rgba(255,122,0,.08), transparent 70%);
+    animation: drift 24s ease-in-out infinite alternate; }
+  @keyframes drift { 0% { transform: translate(-30%,-20%);} 50% { transform: translate(25%,10%);} 100% { transform: translate(-10%,25%);} }
+
+  header { position: absolute; left: 24px; top: 16px; width: 1872px; height: 80px; display: flex; align-items: center;
+    gap: 24px; padding: 0 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    animation: slideDown .9s cubic-bezier(.2,.8,.2,1) both; }
+  header::after { content: ""; position: absolute; left: 28px; right: 28px; bottom: -1px; height: 3px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--orange), rgba(255,122,0,.15) 55%, var(--orange) 60%, rgba(255,122,0,0) 75%);
+    background-size: 250% 100%; animation: shine 5s linear infinite; }
+  @keyframes shine { from { background-position: 100% 0;} to { background-position: -150% 0;} }
+  .logo img { height: 52px; display: block; }
+  .divider { width: 1px; height: 40px; background: var(--line); }
+  .title { font-size: 26px; font-weight: 600; }
+  .title small { display: block; font-size: 15px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+  .spacer { flex: 1; }
+  .live { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-radius: 999px;
+    background: var(--orange-soft); color: var(--orange); font-weight: 700; font-size: 16px; letter-spacing: 2px;
+    transition: background .4s, color .4s; }
+  .live i { width: 10px; height: 10px; border-radius: 50%; background: currentColor; animation: pulse 1.6s ease-in-out infinite; }
+  .live.off { background: rgba(255,77,77,.14); color: var(--red); }
+  .live.wait { background: rgba(139,144,155,.14); color: var(--muted); }
+  @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255,122,0,.6);} 50% { opacity: .5; box-shadow: 0 0 0 6px rgba(255,122,0,0);} }
+  .clock { text-align: right; font-variant-numeric: tabular-nums; }
+  .clock .t { font-size: 28px; font-weight: 600; }
+  .clock .d { font-size: 14px; color: var(--muted); }
+
+  .frame { position: absolute; top: 120px; height: 888px; border-radius: 6px; background: #050506;
+    outline: 2px solid var(--line); outline-offset: 4px; overflow: hidden; }
+  .frame.print { left: 24px; width: 1184px; outline-color: rgba(255,122,0,.35); animation: rise .9s .25s cubic-bezier(.2,.8,.2,1) both; }
+  .frame.model { left: 1232px; width: 664px; animation: rise .9s .45s cubic-bezier(.2,.8,.2,1) both;
+    background: radial-gradient(500px 600px at 50% 40%, #1b1e24, #0b0c0f 75%); }
+  .corner { position: absolute; width: 28px; height: 28px; border: 4px solid var(--orange); pointer-events: none;
+    animation: corner 3s ease-in-out infinite, rise .9s .25s both; }
+  .corner.tl { border-right: 0; border-bottom: 0; border-top-left-radius: 8px; }
+  .corner.br { border-left: 0; border-top: 0; border-bottom-right-radius: 8px; }
+  @keyframes corner { 50% { filter: drop-shadow(0 0 6px var(--orange)); } }
+  @keyframes slideDown { from { opacity: 0; transform: translateY(-30px);} to { opacity: 1; transform: none;} }
+  @keyframes rise { from { opacity: 0; transform: translateY(40px) scale(.98);} to { opacity: 1; transform: none;} }
+  @keyframes fade { from { opacity: 0;} to { opacity: 1;} }
+
+  @property --a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+  .glow { position: absolute; left: 14px; top: 110px; width: 1204px; height: 908px; border-radius: 12px; padding: 3px;
+    pointer-events: none;
+    background: conic-gradient(from var(--a), transparent 0 60%, var(--orange) 80%, #ffb366 85%, transparent 92%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+    filter: drop-shadow(0 0 8px rgba(255,122,0,.7)); animation: spin 6s linear infinite, fade 1s .9s both; }
+  @keyframes spin { to { --a: 360deg; } }
+
+  /* Kamera */
+  #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transition: filter .6s; }
+  .stale #cam { filter: grayscale(.7) brightness(.45); }
+  .pages iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+  .pages iframe.back { visibility: hidden; }
+  #camMsg { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; text-align: center; padding: 40px; }
+  .stale #camMsg, .nocam #camMsg { display: flex; }
+  #camMsg b { font-size: 30px; font-weight: 600; }
+  #camMsg span { font-size: 18px; color: var(--muted); max-width: 800px; }
+  .spinner { width: 54px; height: 54px; border-radius: 50%; border: 4px solid rgba(255,122,0,.2); border-top-color: var(--orange);
+    animation: rot 1s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .badge { position: absolute; left: 18px; bottom: 16px; padding: 6px 12px; border-radius: 8px; font-size: 14px; color: var(--muted);
+    background: rgba(14,15,18,.72); backdrop-filter: blur(6px); font-variant-numeric: tabular-nums; }
+
+  /* Modell (oberer Teil der rechten Spalte) */
+  .mview { position: absolute; left: 0; top: 0; width: 664px; height: 430px; }
+  #three { position: absolute; inset: 0; width: 664px; height: 430px; }
+  .mhead { position: absolute; left: 22px; top: 18px; font-size: 13px; letter-spacing: 3px; color: var(--orange); font-weight: 700; }
+  .minfo { position: absolute; left: 22px; right: 22px; bottom: 10px; display: flex; align-items: baseline; gap: 14px; }
+  .minfo .n { font-size: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .minfo .s { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; margin-left: auto; }
+  #modelMsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+    padding: 40px; color: var(--muted); font-size: 20px; }
+
+  /* Druckdaten (unterer Teil der rechten Spalte) */
+  .pinfo { position: absolute; left: 0; top: 430px; width: 664px; height: 458px; padding: 16px 22px 20px;
+    border-top: 1px solid var(--line); background: linear-gradient(180deg, rgba(22,24,29,.85), rgba(14,15,18,.95));
+    display: flex; flex-direction: column; gap: 14px; font-variant-numeric: tabular-nums; }
+  .prow { display: flex; align-items: center; gap: 12px; min-height: 30px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 14px;
+    font-weight: 700; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap;
+    background: rgba(139,144,155,.14); color: var(--muted); }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .chip.printing, .chip.heating { background: var(--orange-soft); color: var(--orange); }
+  .chip.printing i, .chip.heating i { animation: pulse 1.6s ease-in-out infinite; }
+  .chip.done { background: rgba(62,207,142,.14); color: #3ecf8e; }
+  .chip.paused { background: rgba(255,200,60,.14); color: #ffc83c; }
+  .chip.error, .chip.offline { background: rgba(255,77,77,.14); color: var(--red); }
+  .pfile { color: var(--muted); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .psrc { margin-left: auto; color: #4a505b; font-size: 12px; white-space: nowrap; }
+  .pbig { display: flex; align-items: flex-end; gap: 16px; }
+  .pct { font-size: 64px; font-weight: 700; line-height: .9; letter-spacing: -1px; }
+  .pct small { font-size: 30px; font-weight: 600; color: var(--muted); margin-left: 2px; }
+  .players { margin-left: auto; text-align: right; color: var(--muted); font-size: 15px; line-height: 1.35; }
+  .players b { color: var(--text); font-size: 22px; font-weight: 600; }
+  .bar { position: relative; height: 12px; border-radius: 99px; background: #23262d; overflow: hidden; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 99px; transition: width 1s ease;
+    background: linear-gradient(90deg, #ff5a00, var(--orange) 60%, #ffb15c); box-shadow: 0 0 14px rgba(255,122,0,.6); }
+  .bar i::after { content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); background-size: 40% 100%;
+    background-repeat: no-repeat; animation: barshine 2.4s linear infinite; }
+  @keyframes barshine { from { background-position: -60% 0; } to { background-position: 160% 0; } }
+  .times { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .times div { color: var(--muted); font-size: 13px; letter-spacing: .5px; }
+  .times b { display: block; color: var(--text); font-size: 24px; font-weight: 600; margin-top: 2px; letter-spacing: 0; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; flex: 1; }
+  .tile { background: rgba(255,255,255,.03); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px;
+    display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+  .tile .l { color: var(--muted); font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; white-space: nowrap; }
+  .tile .v { font-size: 24px; font-weight: 600; margin-top: 3px; white-space: nowrap; }
+  .tile .v small { font-size: 15px; color: var(--muted); font-weight: 400; }
+  .tile .v .muted { font-size: 20px; }
+  .tile .x { font-size: 13px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile.hot .v { color: var(--orange); }
+  .muted { color: var(--muted); }
+
+  /* Fortschritt im Kamerabild */
+  .camprog { position: absolute; right: 18px; top: 16px; padding: 7px 14px; border-radius: 10px; font-size: 18px; font-weight: 600;
+    background: rgba(14,15,18,.72); backdrop-filter: blur(6px); font-variant-numeric: tabular-nums; display: none; }
+  .camprog span { color: var(--muted); font-weight: 400; font-size: 15px; }
+  .camline { position: absolute; left: 0; bottom: 0; height: 4px; width: 0; background: var(--orange);
+    box-shadow: 0 0 10px var(--orange); transition: width 1s ease; }
+  .drop .frame.model { outline-color: var(--orange); }
+  .drop #modelMsg { display: flex !important; background: rgba(255,122,0,.12); color: var(--text); }
+
+  footer { position: absolute; left: 24px; top: 1028px; width: 1872px; height: 36px; display: flex; align-items: center; gap: 14px;
+    font-size: 15px; color: var(--muted); animation: fade 1s .7s both; }
+  footer .tag { color: var(--bg); background: var(--orange); padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 13px; letter-spacing: 1px; }
+  footer .sep { color: var(--line); }
+  .ticker { flex: 1; overflow: hidden; white-space: nowrap; -webkit-mask: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+  .ticker span { display: inline-block; padding-left: 100%; animation: ticker 35s linear infinite; }
+  @keyframes ticker { to { transform: translateX(-100%); } }
+
+  #hint { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 10px 18px; border-radius: 10px;
+    background: rgba(22,24,29,.94); border: 1px solid var(--line); color: var(--muted); font-size: 14px; z-index: 10;
+    transition: opacity .6s; }
+  #hint kbd { color: var(--text); background: #262a31; border-radius: 4px; padding: 1px 6px; font-family: inherit; }
+  body.idle #hint { opacity: 0; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <header>
+    <div class="logo"><img src="logo.png" alt="expert Klein"></div>
+    <div class="divider"></div>
+    <div class="title"><span id="title">3D-Druck Live</span><small id="subtitle">Aktueller Druckauftrag</small></div>
+    <div class="spacer"></div>
+    <div class="live wait" id="live"><i></i><span>VERBINDE</span></div>
+    <div class="divider"></div>
+    <div class="clock"><div class="t" id="t">--:--</div><div class="d" id="d"></div></div>
+  </header>
+
+  <div class="glow"></div>
+  <div class="frame print nocam" id="camFrame">
+    <canvas id="cam"></canvas>
+    <div class="pages" id="pages"></div>
+    <div id="camMsg"><div class="spinner"></div><b id="camMsgTitle">Verbinde mit dem Drucker …</b><span id="camMsgText"></span></div>
+    <div class="badge" id="badge">–</div>
+    <div class="camprog" id="camprog"></div>
+    <div class="camline" id="camline"></div>
+  </div>
+  <div class="corner tl" style="left:16px;top:112px"></div>
+  <div class="corner br" style="left:1184px;top:984px"></div>
+
+  <div class="frame model" id="modelFrame">
+    <div class="mview">
+      <canvas id="three"></canvas>
+      <div class="mhead">AKTUELLES MODELL</div>
+      <div class="minfo" id="minfo" style="display:none"><div class="n" id="mname"></div><div class="s" id="msize"></div></div>
+      <div id="modelMsg">Kein 3D-Modell ausgewählt.<br>Datei einfach hierher ziehen.</div>
+    </div>
+    <div class="pinfo">
+      <div class="prow"><span class="chip" id="pchip"><i></i><span>–</span></span><span class="pfile" id="pfile"></span><span class="psrc" id="psrc"></span></div>
+      <div class="pbig"><div class="pct" id="ppct">–</div>
+        <div class="players"><span>Schicht</span><br><b id="player">–</b></div></div>
+      <div class="bar"><i id="pbar"></i></div>
+      <div class="times">
+        <div>VERSTRICHEN<b id="telapsed">–</b></div>
+        <div>VERBLEIBEND<b id="tleft">–</b></div>
+        <div>FERTIG UM<b id="teta">–</b></div>
+      </div>
+      <div class="tiles">
+        <div class="tile" id="tnoz"><div class="l">Düse</div><div class="v">–</div><div class="x"></div></div>
+        <div class="tile" id="tbed"><div class="l">Druckbett</div><div class="v">–</div><div class="x"></div></div>
+        <div class="tile" id="tspd"><div class="l">Geschwindigkeit</div><div class="v">–</div><div class="x"></div></div>
+        <div class="tile" id="tfil"><div class="l">Filament</div><div class="v">–</div><div class="x"></div></div>
+        <div class="tile" id="tlay"><div class="l">Schichthöhe</div><div class="v">–</div><div class="x"></div></div>
+        <div class="tile" id="tfan"><div class="l">Lüfter</div><div class="v">–</div><div class="x"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="corner tl" style="left:1224px;top:112px"></div>
+  <div class="corner br" style="left:1876px;top:984px"></div>
+
+  <footer>
+    <span class="tag">3D</span><span>Druckkamera</span><span class="sep">|</span>
+    <div class="ticker"><span id="ticker"></span></div>
+    <span>expert Klein</span>
+  </footer>
+</div>
+<div id="hint"><kbd>Esc</kbd> Einstellungen &nbsp; <kbd>F11</kbd> Vollbild &nbsp; <kbd>R</kbd> Kamera neu verbinden &nbsp; Modell-Datei hierher ziehen = Modell wechseln</div>
+
+<script type="module">
+import { ModelViewer } from './viewer.js';
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const cfg = await (await fetch('api/config', { cache: 'no-store' })).json();
+
+$('title').textContent = cfg.title || '';
+$('subtitle').textContent = cfg.subtitle || '';
+$('ticker').textContent = cfg.ticker || '';
+document.title = 'Druckmonitor – ' + (cfg.ip || '');
+
+// ---------- Skalierung ----------
+const stage = $('stage');
+let viewer;
+function fit() {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  stage.style.transform = `translate(${(innerWidth - 1920 * s) / 2}px, ${(innerHeight - 1080 * s) / 2}px) scale(${s})`;
+  viewer?.setPixelScale(s);
+}
+addEventListener('resize', fit);
+
+// ---------- Uhr ----------
+function tick() {
+  const n = new Date();
+  $('t').textContent = n.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  $('d').textContent = n.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+}
+tick(); setInterval(tick, 1000);
+
+// ---------- Kamera ----------
+const camFrame = $('camFrame'), canvas = $('cam');
+let lastFrameAt = 0, lastServerOk = Date.now(), pageMode = cfg.mode === 'page', camWorker;
+
+// Kamerabild läuft in einem eigenen Thread (Worker) und zeichnet direkt ins Canvas.
+// So kann die 3D-Ansicht das Kamerabild nicht ausbremsen.
+function frameLoop() {
+  const off = canvas.transferControlToOffscreen();
+  camWorker = new Worker('camworker.js');
+  camWorker.onmessage = e => {
+    lastServerOk = Date.now();
+    if (e.data.type === 'frame') lastFrameAt = Date.now();
+  };
+  camWorker.postMessage({ canvas: off }, [off]);
+}
+
+function setLive(cls, text) {
+  const l = $('live'); l.className = 'live ' + cls; l.querySelector('span').textContent = text;
+}
+
+async function statusLoop() {
+  for (let n = 0; ; n++) {
+    if (n % 5 === 0) { // IP kann sich durch die automatische Suche ändern
+      try {
+        const c = await (await fetch('api/config', { cache: 'no-store' })).json();
+        if (c.ip !== cfg.ip) { cfg.ip = c.ip; document.title = 'Druckmonitor – ' + c.ip; if (pageMode) reloadPage(); }
+      } catch (e) {}
+    }
+    try {
+      const st = await (await fetch('api/status', { cache: 'no-store' })).json();
+      lastServerOk = Date.now();
+      if (st.kind === 'page' && !pageMode) startPageMode();
+      if (!pageMode) {
+        const fresh = lastFrameAt && Date.now() - lastFrameAt < 4000;
+        camFrame.classList.toggle('nocam', !lastFrameAt);
+        camFrame.classList.toggle('stale', !!lastFrameAt && !fresh);
+        if (fresh) {
+          setLive('', 'LIVE');
+          $('badge').textContent = [cfg.ip, st.fps >= 1 ? st.fps.toFixed(0) + ' fps' : '', st.kind === 'snapshot' ? 'Einzelbilder' : '',
+            st.reconnects ? `${st.reconnects}× automatisch neu verbunden` : ''].filter(Boolean).join(' · ');
+        } else {
+          setLive(st.state === 'error' ? 'off' : 'wait', st.state === 'error' ? 'OFFLINE' : 'VERBINDE');
+          $('camMsgTitle').textContent = lastFrameAt ? 'Kamera hängt – verbinde automatisch neu …' : 'Verbinde mit dem Drucker …';
+          $('camMsgText').textContent = (st.error ? st.error + ' · ' : '') + (st.url || '');
+          $('badge').textContent = cfg.ip || '–';
+        }
+      } else {
+        setLive(st.state === 'error' ? 'off' : '', st.state === 'error' ? 'OFFLINE' : 'LIVE');
+        if (st.state === 'error' && !pageDown) pageDown = true;
+        else if (st.state === 'page' && pageDown) { pageDown = false; reloadPage(); } // wieder erreichbar -> sofort neu laden
+      }
+    } catch (e) {}
+    await sleep(1000);
+  }
+}
+
+// Notbremse: falls die Oberfläche selbst hängen sollte, komplett neu laden
+setInterval(() => { if (Date.now() - lastServerOk > 30000) location.reload(); }, 5000);
+
+// ---------- Modus "Webseite einbetten" ----------
+// Zwei iframes: die neue Seite lädt unsichtbar im Hintergrund und wird erst
+// eingeblendet, wenn sie fertig ist – so gibt es kein schwarzes Bild beim Neuladen.
+let pageDown = false, pageTimer;
+function startPageMode() {
+  pageMode = true;
+  camWorker?.terminate();
+  camFrame.classList.remove('nocam', 'stale');
+  canvas.style.display = 'none';
+  $('badge').textContent = `${cfg.ip} · Webseite · neu laden alle ${cfg.reloadSec} s`;
+  reloadPage();
+}
+function reloadPage() {
+  clearTimeout(pageTimer);
+  const pages = $('pages');
+  const f = document.createElement('iframe');
+  f.className = 'back';
+  f.src = cfg.ip ? cfg.urlTemplate.replaceAll('{ip}', cfg.ip) : 'about:blank';
+  const swap = () => {
+    for (const old of [...pages.children]) if (old !== f) old.remove();
+    f.classList.remove('back');
+  };
+  f.onload = () => setTimeout(swap, 2500);
+  setTimeout(swap, 20000); // spätestens nach 20 s umschalten
+  pages.appendChild(f);
+  pageTimer = setTimeout(reloadPage, Math.max(10, cfg.reloadSec || 60) * 1000);
+}
+
+if (pageMode) startPageMode(); else frameLoop();
+statusLoop();
+
+// ---------- 3D-Modell ----------
+let pdata = null;
+try { pdata = await (await fetch('api/printer', { cache: 'no-store' })).json(); } catch (e) {}
+const modelColor = cfg.modelColor === 'auto' ? (pdata?.file?.filamentColor || '#ff7a00') : (cfg.modelColor || '#ff7a00');
+viewer = new ModelViewer($('three'), { color: modelColor, speed: cfg.rotSpeed ?? 0.35, width: 664, height: 430 });
+fit();
+async function loadModel() {
+  try {
+    const info = await viewer.load();
+    if (!info) { $('minfo').style.display = 'none'; $('modelMsg').style.display = 'flex'; return; }
+    $('modelMsg').style.display = 'none';
+    $('minfo').style.display = '';
+    $('mname').textContent = info.name.replace(/\.(gcode\.3mf|stl|3mf|obj|glb|gltf|gcode|gco|gx|g)$/i, '');
+    const f = v => v.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+    $('msize').textContent = `${f(info.size[0])} × ${f(info.size[1])} × ${f(info.size[2])} mm`;
+  } catch (e) {
+    console.error(e);
+    $('minfo').style.display = 'none';
+    $('modelMsg').style.display = 'flex';
+    $('modelMsg').textContent = 'Modell konnte nicht angezeigt werden: ' + e.message;
+  }
+}
+loadModel();
+
+// ---------- Druckdaten ----------
+const fmtDur = s => {
+  if (s == null || s < 0 || !isFinite(s)) return '–';
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h ? `${h}:${String(m).padStart(2, '0')} h` : `${m} min`;
+};
+const fmtN = (v, d = 0) => v.toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
+function tile(id, value, extra, hot) {
+  const t = $(id);
+  t.querySelector('.v').innerHTML = value ?? '<span class="muted">–</span>';
+  t.querySelector('.x').textContent = extra || '';
+  t.classList.toggle('hot', !!hot);
+}
+function temp(cur, target) {
+  if (!cur && !target) return null;
+  return `${fmtN(cur)}<small> / ${fmtN(target)} °C</small>`;
+}
+
+function renderPrinter(d) {
+  const L = d.live || {}, F = d.file || {};
+  const hasLive = d.kind === 'flashforge' && L.online;
+  const active = ['printing', 'paused', 'heating'].includes(L.state);
+
+  // Status
+  const chip = $('pchip');
+  chip.className = 'chip ' + (d.kind === 'flashforge' ? (L.state || 'offline') : 'idle');
+  chip.querySelector('span').textContent = d.kind === 'flashforge' ? (L.status || 'Verbinde …') : 'Keine Live-Daten';
+  $('pfile').textContent = L.fileName || '';
+  $('psrc').textContent = hasLive ? (L.machine || '') : (L.error || '');
+
+  // Fortschritt: Schicht bevorzugt (passt zur Höhe am Modell), sonst Prozentwert
+  let prog = null;
+  if (hasLive && (active || L.state === 'done')) {
+    prog = L.state === 'done' ? 1 : (L.progress >= 0 ? L.progress : null);
+  }
+  const layers = L.layers || F.layers || 0;
+  $('ppct').innerHTML = prog == null ? '<span class="muted">–</span>' : `${Math.floor(prog * 100)}<small>%</small>`;
+  $('pbar').style.width = (prog == null ? 0 : prog * 100) + '%';
+  $('player').textContent = hasLive && L.layers ? `${L.layer} / ${L.layers}` : (layers ? `– / ${layers}` : '–');
+  // 3D-Modell: vor der ersten Schicht komplett zeigen, danach gedruckten Teil hervorheben
+  let modelProg = null;
+  if (hasLive && active) {
+    const lp = L.layers > 0 ? L.layer / L.layers : prog;
+    if (lp > 0.001) modelProg = lp;
+  } else if (hasLive && L.state === 'done') modelProg = 1;
+  viewer.setProgress(modelProg);
+
+  // Zeiten (Reihenfolge: Drucker > Slicer-Datei > eigene Hochrechnung)
+  const printing = hasLive && active;
+  let elapsed = hasLive && L.elapsedSec >= 0 ? L.elapsedSec : null;
+  let left = null, approx = false;
+  if (printing && L.remainingSec >= 0 && !L.remainingEst) left = L.remainingSec;
+  else if (printing && F.timeSec > 0 && prog != null) left = F.timeSec * (1 - prog);
+  else if (printing && L.remainingSec >= 0) { left = L.remainingSec; approx = true; }
+  const pending = printing && left == null;
+  $('telapsed').textContent = fmtDur(elapsed);
+  $('tleft').previousSibling.textContent = printing ? 'VERBLEIBEND' : 'DRUCKZEIT (GESCHÄTZT)';
+  $('tleft').innerHTML = printing
+    ? (pending ? '<span class="muted" style="font-size:17px">wird berechnet …</span>' : (approx ? '<small class="muted">ca. </small>' : '') + fmtDur(left))
+    : (F.timeSec ? fmtDur(F.timeSec) : '–');
+  $('teta').innerHTML = left != null && printing
+    ? (approx ? '<small class="muted">ca. </small>' : '') + new Date(Date.now() + left * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr'
+    : (L.state === 'done' ? 'fertig ✓' : (pending ? '<span class="muted" style="font-size:17px">wird berechnet …</span>' : '–'));
+
+  // Kacheln. Fehlt ein Wert, steht darunter, woher er käme.
+  const needCode = hasLive && L.source === 'tcp' ? 'Prüfcode eintragen' : '';
+  const needFile = 'aus Slicer-Datei';
+  tile('tnoz', hasLive ? temp(L.nozzle, L.nozzleTarget) : (F.nozzleTemp ? `${fmtN(F.nozzleTemp)}<small> °C</small>` : null),
+    hasLive ? (F.nozzleSize ? `Düse ${fmtN(F.nozzleSize, 1)} mm` : '') : (F.nozzleTemp ? 'Sollwert aus Datei' : ''), hasLive && L.nozzleTarget > 0);
+  tile('tbed', hasLive ? temp(L.bed, L.bedTarget) : (F.bedTemp ? `${fmtN(F.bedTemp)}<small> °C</small>` : null),
+    hasLive ? (L.chamber > 0 ? `Bauraum ${fmtN(L.chamber)} °C` : '') : (F.bedTemp ? 'Sollwert aus Datei' : ''), hasLive && L.bedTarget > 0);
+  if (hasLive && L.speedPct >= 0) {
+    tile('tspd', `${fmtN(L.speedPct)}<small> %</small>`, L.speedMms > 0 && L.speedMms !== L.speedPct ? `${fmtN(L.speedMms)} mm/s` : (F.speedMms ? `Außenwand ${fmtN(F.speedMms)} mm/s` : ''));
+  } else if (F.speedMms) {
+    tile('tspd', `${fmtN(F.speedMms)}<small> mm/s</small>`, 'Außenwand laut Slicer');
+  } else tile('tspd', null, needCode || needFile);
+  const fm = hasLive && L.filamentM > 0 ? L.filamentM : F.filamentM, fg = hasLive && L.filamentG > 0 ? L.filamentG : F.filamentG;
+  const ftype = (hasLive && L.filamentType) || F.filamentType || '';
+  tile('tfil', fm > 0 ? `${fmtN(fm, 1)}<small> m</small>` : (fg > 0 ? `${fmtN(fg)}<small> g</small>` : (ftype || null)),
+    fm > 0 || fg > 0 ? [fm > 0 && fg > 0 ? `${fmtN(fg)} g` : '', ftype].filter(Boolean).join(' · ') : (needCode ? `${needCode} oder ${needFile}` : needFile));
+  tile('tlay', F.layerHeight ? `${fmtN(F.layerHeight, 2)}<small> mm</small>` : null,
+    F.layerHeight ? [F.infill ? `Füllung ${F.infill}` : '', F.walls ? `${F.walls} Wände` : ''].filter(Boolean).join(' · ') : needFile);
+  if (hasLive && L.fanPct >= 0) {
+    $('tfan').querySelector('.l').textContent = 'Lüfter';
+    tile('tfan', `${fmtN(L.fanPct)}<small> %</small>`, F.supports ? `Stützen: ${F.supports}` : '');
+  } else if (F.supports) {
+    $('tfan').querySelector('.l').textContent = 'Stützstrukturen';
+    tile('tfan', F.supports === 'ja' ? 'Ja' : 'Nein', F.infill && !F.layerHeight ? `Füllung ${F.infill}` : '');
+  } else {
+    $('tfan').querySelector('.l').textContent = 'Lüfter';
+    tile('tfan', null, needCode || needFile);
+  }
+
+  // Kurzinfo im Kamerabild
+  const cp = $('camprog');
+  if (prog != null && active) {
+    cp.style.display = 'block';
+    cp.innerHTML = `${Math.floor(prog * 100)} %` + (left != null ? ` <span>· noch ${approx ? 'ca. ' : ''}${fmtDur(left)}</span>` : '');
+  } else cp.style.display = 'none';
+  $('camline').style.width = (prog != null && active ? prog * 100 : 0) + '%';
+}
+
+let modelRev = null;
+async function printerLoop() {
+  for (;;) {
+    try {
+      pdata = await (await fetch('api/printer', { cache: 'no-store' })).json();
+      // Modell wurde gewechselt (z. B. Druckdatei automatisch gefunden) -> neu laden
+      if (modelRev !== null && pdata.modelRev !== modelRev) {
+        if (cfg.modelColor === 'auto') viewer.setColor(pdata.file?.filamentColor || '#ff7a00');
+        await loadModel();
+      }
+      modelRev = pdata.modelRev;
+      document.querySelector('.mhead').textContent = pdata.modelSource ? 'AKTUELLES MODELL · AUTOMATISCH GELADEN' : 'AKTUELLES MODELL';
+      renderPrinter(pdata);
+    } catch (e) {}
+    await sleep(2000);
+  }
+}
+printerLoop();
+
+// Modell per Drag & Drop wechseln
+addEventListener('dragover', e => { if (cfg.remote) return; e.preventDefault(); document.body.classList.add('drop'); });
+addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('drop'); });
+addEventListener('drop', async e => {
+  e.preventDefault();
+  if (cfg.remote) { document.body.classList.remove('drop'); return; }
+  document.body.classList.remove('drop');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  $('modelMsg').style.display = 'flex'; $('modelMsg').textContent = 'Lade ' + file.name + ' …';
+  const r = await fetch('api/model?name=' + encodeURIComponent(file.name), { method: 'POST', body: file });
+  if (!r.ok) { $('modelMsg').textContent = await r.text(); return; }
+  loadModel();
+});
+
+// ---------- Tastatur & Maus ----------
+addEventListener('keydown', async e => {
+  if (cfg.remote) return; // Ansicht auf der Retail-Demo-Webseite: nur anzeigen
+  if (e.key === 'Escape') {
+    await fetch('api/window?fullscreen=0');
+    location.href = './';
+  } else if (e.key === 'F11') {
+    e.preventDefault();
+    window.__fs = !window.__fs;
+    fetch(`api/window?fullscreen=${window.__fs ? 1 : 0}&monitor=${cfg.monitor || 0}`);
+  } else if (e.key === 'r' || e.key === 'R') {
+    const { modelName, modelFile, ...c } = cfg;
+    await fetch('api/start', { method: 'POST', body: JSON.stringify(c) });
+    if (pageMode) reloadPage();
+  }
+});
+window.__fs = !!cfg.fullscreen;
+let idleT;
+function wake() { document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => document.body.classList.add('idle'), 3000); }
+addEventListener('mousemove', wake); wake();
+</script>
+</body>
+</html>

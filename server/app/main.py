@@ -28,6 +28,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .apkinfo import read_apk_info
+from .druck import make_router as make_druck_router
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 MEDIA_DIR = DATA_DIR / "media"
@@ -1440,3 +1441,7 @@ def admin_overview(history: bool = True):
         "app_release": release,
         "rolled_out": bool(release) and _rollout() == release["version_code"],
     }
+
+
+# ------------------------------------------------------------------ 3D-Drucker (Druckmonitor-App)
+app.include_router(make_druck_router(DATA_DIR, require_device, require_admin))

@@ -1,0 +1,4 @@
+rsrc_*.syso
+*.exe
+/druckmonitor
+dist/

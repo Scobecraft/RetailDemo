@@ -212,6 +212,26 @@ Damit die Auslastung des **Proxmox-Containers** (und nicht nur die Docker-Sicht)
 `docker-compose.yml` drei Dateien aus `/proc` lesend ein – nach dem Update einmal
 `docker compose up -d --build` ausführen.
 
+## 3D-Drucker (Druckmonitor)
+
+Der Reiter **3D-Drucker** auf der Webseite zeigt die Live-Ansicht der **Druckmonitor-App** (Ordner
+`druckmonitor/`, Windows-App am PC beim Drucker): Kamerabild, Druckfortschritt, Temperaturen und das
+drehende 3D-Modell. Die App schickt die Daten an den Server – der Server muss den Drucker nicht erreichen.
+
+Einrichten: In der Druckmonitor-App unter **Webseite (Retail-Demo-Server)** die Server-Adresse
+(z. B. `demo.scobecraft.pro`) und das Geräte-Token (`DEVICE_TOKEN` aus der `.env`, wie bei den Handys)
+eintragen und **Starten** drücken. Das Kamerabild läuft flüssig (ca. 5 Bilder/s), solange jemand den Reiter
+offen hat, sonst schickt die App nur alle 30 s ein Bild. Seriennummer, Prüfcode und Drucker-IP verlassen
+den PC nicht.
+
+Windows-App bauen (unter Linux/macOS mit Go 1.24):
+
+```bash
+cd druckmonitor
+go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w" -o Druckmonitor.exe .
+```
+
 ## Bloatware entfernen (Handys)
 
 Webseite → Einstellungen → **Bloatware entfernen** einschalten. Die Demo-App löscht dann alle Apps, die

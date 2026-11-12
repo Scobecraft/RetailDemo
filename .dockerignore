@@ -1,0 +1,6 @@
+# Docker-Build des Servers (Kontext = Repo-Wurzel): nur das Nötige, vor allem NICHT server/data
+*
+!server/requirements.txt
+!server/app
+!druckmonitor/web
+**/__pycache__
