@@ -8,7 +8,10 @@ Co. aus druckmonitor/web) und beantwortet deren /api/*-Abfragen mit den zuletzt 
 """
 import asyncio
 import collections
+import hashlib
 import json
+import re
+import shutil
 import mimetypes
 import os
 import time
@@ -67,10 +70,69 @@ class DruckState:
         return time.time() - self.state_at < OFFLINE_AFTER_S
 
 
-def make_router(data_dir: Path, require_device: Callable, require_viewer: Callable) -> APIRouter:
+# ---------------------------------------------------------------- Programm-Updates (Installer)
+
+def _version_tuple(v: str) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", v or "")[:4]) or (0,)
+
+
+def read_installer_version(path: Path) -> Optional[str]:
+    """Version aus dem Windows-Versions-Eintrag des Installers (ProductName muss "Druckmonitor" sein)."""
+    data = path.read_bytes()
+
+    def value(key: str) -> Optional[str]:
+        k = (key + "\0").encode("utf-16-le")
+        i = data.find(k)
+        if i < 0:
+            return None
+        i += len(k)
+        i += (-i) % 4  # Werte beginnen 32-Bit-ausgerichtet
+        end = data.find(b"\0\0", i)
+        while end > 0 and (end - i) % 2:  # UTF-16: Ende auf gerader Position suchen
+            end = data.find(b"\0\0", end + 1)
+        return data[i:end].decode("utf-16-le", "ignore").strip() if end > 0 else None
+
+    if value("ProductName") != "Druckmonitor":
+        return None
+    v = value("ProductVersion")
+    return v if v and re.fullmatch(r"\d+(\.\d+){1,3}", v) else None
+
+
+def make_router(data_dir: Path, require_device: Callable, require_viewer: Callable):
     st = DruckState(data_dir)
     web = _web_dir()
     r = APIRouter()
+    release_file = st.dir / "Druckmonitor-Setup.exe"
+    release_json = st.dir / "release.json"
+
+    def release() -> Optional[dict]:
+        try:
+            rel = json.loads(release_json.read_text())
+            return rel if release_file.exists() else None
+        except Exception:
+            return None
+
+    def update_for(app_version: str) -> Optional[dict]:
+        rel = release()
+        if not rel or _version_tuple(rel["version"]) <= _version_tuple(app_version or "0"):
+            return None
+        return {**rel, "url": "/api/druck/update/file"}
+
+    def register_release(tmp: Path) -> dict:
+        """Hochgeladenen Installer übernehmen (vom Upload in Stücken aufgerufen)."""
+        version = read_installer_version(tmp)
+        if not version:
+            tmp.unlink(missing_ok=True)
+            raise HTTPException(400, "Das ist kein Druckmonitor-Installer (Druckmonitor-Setup-….exe).")
+        sha = hashlib.sha256()
+        with open(tmp, "rb") as f:
+            while chunk := f.read(1024 * 1024):
+                sha.update(chunk)
+        rel = {"version": version, "size": tmp.stat().st_size, "sha256": sha.hexdigest(),
+               "uploaded_at": time.time(), "install_request": None}
+        shutil.move(str(tmp), release_file)
+        release_json.write_text(json.dumps(rel))
+        return rel
 
     # ------------------------------------------------ Desktop-App -> Server (Geräte-Token)
 
@@ -89,7 +151,43 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
             st.pc_info = data["pcInfo"]
         st.state, st.state_at = data, time.time()
         _record_history(st)
-        return {"ok": True, "watching": time.time() - st.last_view < WATCHING_S, "needInfo": st.pc_info is None}
+        return {"ok": True, "watching": time.time() - st.last_view < WATCHING_S, "needInfo": st.pc_info is None,
+                "update": update_for(str(data.get("appVersion") or ""))}
+
+    # ------------------------------------------------ Programm-Updates
+
+    @r.get("/api/druck/update", dependencies=[Depends(require_device)])
+    def device_update(version: str = ""):
+        rel = release()
+        return {"release": {**rel, "url": "/api/druck/update/file"} if rel else None,
+                "newer": bool(update_for(version))}
+
+    @r.get("/api/druck/update/file", dependencies=[Depends(require_device)])
+    def device_update_file():
+        if not release():
+            raise HTTPException(404, "Kein Update vorhanden")
+        return FileResponse(release_file, media_type="application/vnd.microsoft.portable-executable",
+                            filename="Druckmonitor-Setup.exe")
+
+    @r.get("/api/admin/druck/release", dependencies=[Depends(require_viewer)])
+    def admin_release():
+        return {"release": release(), "pc_version": st.state.get("appVersion") or None,
+                "pc_online": st.online, "pc_host": (st.pc_info or {}).get("host")}
+
+    @r.post("/api/admin/druck/release/install-now", dependencies=[Depends(require_viewer)])
+    def admin_install_now():
+        rel = release()
+        if not rel:
+            raise HTTPException(404, "Erst einen Installer hochladen")
+        rel["install_request"] = int(time.time() * 1000)
+        release_json.write_text(json.dumps(rel))
+        return rel
+
+    @r.delete("/api/admin/druck/release", dependencies=[Depends(require_viewer)])
+    def admin_delete_release():
+        release_file.unlink(missing_ok=True)
+        release_json.unlink(missing_ok=True)
+        return {"ok": True}
 
     @r.post("/api/druck/frame", dependencies=[Depends(require_device)])
     async def push_frame(request: Request):
@@ -238,7 +336,7 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
             mime = "text/javascript"
         return FileResponse(target, media_type=mime, headers={"Cache-Control": "no-cache"})
 
-    return r
+    return r, register_release
 
 
 def _num(v, lo: float = -0.5):

@@ -69,7 +69,8 @@ func killChildrenOnExit() {
 		}
 		// JOBOBJECT_EXTENDED_LIMIT_INFORMATION (64 Bit): LimitFlags liegt bei Offset 16
 		var info [144]byte
-		binary.LittleEndian.PutUint32(info[16:], 0x2000) // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+		// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK (Installer bei Updates)
+		binary.LittleEndian.PutUint32(info[16:], 0x2000|0x800)
 		r, _, _ := pSetInformationJob.Call(job, 9, uintptr(unsafe.Pointer(&info[0])), uintptr(len(info)))
 		if r == 0 {
 			return

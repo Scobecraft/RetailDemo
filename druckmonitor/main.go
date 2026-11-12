@@ -49,6 +49,8 @@ type Config struct {
 	// Daten an den Retail-Demo-Server senden (Reiter "3D-Drucker" auf der Webseite)
 	ServerURL   string `json:"serverUrl"`
 	ServerToken string `json:"serverToken"` // Geräte-Token des Servers (DEVICE_TOKEN)
+	// zuletzt ausgeführte "Jetzt aktualisieren"-Anforderung der Webseite
+	HandledUpdate int64 `json:"handledUpdate"`
 }
 
 func defaultConfig() Config {
@@ -112,6 +114,8 @@ type App struct {
 	modelSource string // "" = von Hand gewählt, sonst Fundort der automatischen Suche
 
 	pusher          Pusher
+	updater         Updater
+	autostarted     bool // mit --autostart gestartet: gleich Vollbildansicht
 	pushCount       int  // nur von pushLoop benutzt
 	serverNeedsInfo bool // Server hat noch keine Hardware-Angaben
 
@@ -171,6 +175,18 @@ func main() {
 	go app.watchIP()
 	go app.autoModelLoop()
 	go app.pushLoop()
+	// --autostart (Windows-Start, nach einem Update): gespeicherte Einstellungen übernehmen und
+	// direkt die Vollbildansicht zeigen
+	for _, arg := range os.Args[1:] {
+		if _, err := os.Stat(filepath.Join(dir, "config.json")); arg == "--autostart" && err == nil { // schon eingerichtet
+			if _, _, err := app.apply(context.Background(), app.config()); err != nil {
+				log.Println("Autostart:", err)
+				break
+			}
+			app.autostarted = true
+			base += "monitor"
+		}
+	}
 	runShell(app, base)
 }
 
@@ -209,6 +225,39 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// apply übernimmt die Einstellungen, sucht ggf. den Drucker und startet Kamera und Druckerdaten.
+func (a *App) apply(ctx context.Context, c Config) (Config, string, error) {
+	c.IP = cleanHost(c.IP)
+	if c.ReloadSec < 10 {
+		c.ReloadSec = 10
+	}
+	found := ""
+	if c.AutoIP {
+		dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		res := discoverPrinters(dctx, c, true)
+		cancel()
+		if res.Chosen != nil {
+			c.IP, found = res.Chosen.IP, res.Chosen.Source
+		} else if c.IP == "" {
+			return c, "", errors.New("Kein Drucker gefunden. Ist er eingeschaltet und im selben Netzwerk?")
+		}
+	}
+	a.mu.Lock()
+	a.cfg = c
+	a.running = true
+	a.mu.Unlock()
+	if err := a.saveConfig(c); err != nil {
+		log.Println("Konfiguration speichern:", err)
+	}
+	if c.Mode == "page" {
+		a.stream.Stop()
+	} else {
+		a.stream.Start(c.StreamURL())
+	}
+	a.printer.Start(c)
+	return c, found, nil
+}
+
 func (a *App) routes() http.Handler {
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(webFS, "web")
@@ -242,36 +291,12 @@ func (a *App) routes() http.Handler {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		c.IP = cleanHost(c.IP)
-		if c.ReloadSec < 10 {
-			c.ReloadSec = 10
-		}
 		a.mu.Unlock()
-		found := ""
-		if c.AutoIP {
-			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-			res := discoverPrinters(ctx, c, true)
-			cancel()
-			if res.Chosen != nil {
-				c.IP, found = res.Chosen.IP, res.Chosen.Source
-			} else if c.IP == "" {
-				http.Error(w, "Kein Drucker gefunden. Ist er eingeschaltet und im selben Netzwerk?", http.StatusNotFound)
-				return
-			}
+		c, found, err := a.apply(r.Context(), c)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
 		}
-		a.mu.Lock()
-		a.cfg = c
-		a.running = true
-		a.mu.Unlock()
-		if err := a.saveConfig(c); err != nil {
-			log.Println("Konfiguration speichern:", err)
-		}
-		if c.Mode == "page" {
-			a.stream.Stop()
-		} else {
-			a.stream.Start(c.StreamURL())
-		}
-		a.printer.Start(c)
 		writeJSON(w, map[string]any{"ok": true, "url": c.StreamURL(), "ip": c.IP, "found": found})
 	})
 
@@ -348,6 +373,24 @@ func (a *App) routes() http.Handler {
 	// Druckerdaten (live) + Angaben aus der Slicer-Datei
 	mux.HandleFunc("/api/printer", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.printerState())
+	})
+
+	// Programm-Updates (Einstellungsseite)
+	mux.HandleFunc("/api/update", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("do") {
+		case "check":
+			_ = a.checkUpdate()
+		case "install":
+			a.updater.mu.Lock()
+			info := a.updater.avail
+			a.updater.mu.Unlock()
+			if info == nil {
+				http.Error(w, "Kein Update verfügbar", http.StatusNotFound)
+				return
+			}
+			go a.installUpdate(info)
+		}
+		writeJSON(w, a.updater.Status())
 	})
 
 	// Übertragung an den Retail-Demo-Server (Einstellungsseite)

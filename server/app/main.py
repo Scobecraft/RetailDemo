@@ -562,7 +562,7 @@ class UploadInit(BaseModel):
     filename: str
     size: int
     mime: str = ""
-    kind: str = "media"  # "media" oder "apk" (App-Update der Demo-App)
+    kind: str = "media"  # "media", "apk" (App-Update der Demo-App) oder "druck" (Druckmonitor-Installer)
 
 
 class UploadComplete(BaseModel):
@@ -581,6 +581,9 @@ def upload_init(body: UploadInit):
     if body.kind == "apk":
         if not body.filename.lower().endswith(".apk"):
             raise HTTPException(400, "Bitte eine .apk-Datei auswählen")
+    elif body.kind == "druck":
+        if not body.filename.lower().endswith(".exe"):
+            raise HTTPException(400, "Bitte den Installer Druckmonitor-Setup-….exe auswählen")
     else:
         _media_type(body.mime, body.filename)
     upload_id = uuid.uuid4().hex
@@ -615,6 +618,10 @@ def upload_complete(upload_id: str, body: UploadComplete):
         raise HTTPException(400, "Datei unvollständig")
     if info.get("kind") == "apk":
         release = _register_app_release(part)
+        meta.unlink(missing_ok=True)
+        return release
+    if info.get("kind") == "druck":
+        release = register_druck_release(part)
         meta.unlink(missing_ok=True)
         return release
     item = _register_media(part, info["filename"], info["mime"], body.title)
@@ -1449,4 +1456,5 @@ def admin_overview(history: bool = True):
 
 
 # ------------------------------------------------------------------ 3D-Drucker (Druckmonitor-App)
-app.include_router(make_druck_router(DATA_DIR, require_device, require_admin))
+druck_router, register_druck_release = make_druck_router(DATA_DIR, require_device, require_admin)
+app.include_router(druck_router)

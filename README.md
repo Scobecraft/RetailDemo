@@ -1,3 +1,20 @@
+**Installation am PC:** `Druckmonitor-Setup-x.y.z.exe` ausführen. Installiert wird ohne Administratorrechte
+nach `%LOCALAPPDATA%\Programs\Druckmonitor`, mit Startmenü- und (optional) Desktop-Verknüpfung und
+(optional) Autostart beim Windows-Start direkt in der Vollbildansicht. Deinstallieren über Windows-Einstellungen →
+Apps; die Einstellungen in `%APPDATA%\Druckmonitor` bleiben dabei erhalten.
+
+**Updates:** Neue Version bauen (Nummer in `druckmonitor/VERSION` erhöhen):
+
+```bash
+cd druckmonitor && ./build-windows.sh
+```
+
+Den Installer `druckmonitor/dist/Druckmonitor-Setup-x.y.z.exe` auf der Webseite unter Einstellungen →
+**App-Updates (Druckmonitor am PC)** hochladen. Dann entweder in der App unter **Programm** →
+„Jetzt aktualisieren“ drücken oder auf der Webseite **„Jetzt auf dem PC aktualisieren“** – der PC lädt den
+Installer, prüft ihn (SHA-256), installiert still und startet den Druckmonitor in der Vollbildansicht neu.
+`build-windows.sh` braucht Go 1.24 und NSIS (`apt install nsis`).
+
 # Retail Demo – Demo-Software für Ausstellungsgeräte
 
 Vier Teile:

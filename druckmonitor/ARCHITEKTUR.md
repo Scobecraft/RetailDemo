@@ -45,6 +45,22 @@ NVIDIA-Werte über `nvidia-smi -l 2`, Hardware einmalig per WMI. Hilfsprozesse h
 Seriennummer, Prüfcode, Drucker-IP und Kamera-Adresse werden **nicht** übertragen. Alle Seiten verwenden
 relative Pfade (`api/…`, `vendor/…`), damit sie sowohl unter `/` (App) als auch unter `/druck/` (Server) laufen.
 
+## Installation und Updates
+
+- `installer/druckmonitor.nsi` (NSIS, 64 Bit): Installation pro Benutzer ohne Adminrechte nach
+  `%LOCALAPPDATA%\Programs\Druckmonitor`, Uninstall-Eintrag unter HKCU, Startmenü/Desktop, optional Autostart
+  (`HKCU\…\Run`: `Druckmonitor.exe --autostart`). Stilles Update: `Setup.exe /S /UPDATE` (beendet die App,
+  ersetzt die EXE, ändert Verknüpfungen/Autostart nicht, startet mit `--autostart` neu).
+- `build-windows.sh`: Version aus `VERSION` → EXE-Ressourcen, `-X main.version=…`, Installer mit Windows-
+  Versionsangaben (der Server liest daraus `ProductName`/`ProductVersion`).
+- `updater*.go`: Der Server meldet in der Antwort auf `POST /api/druck/state` ein neueres Update
+  (`update: {version, size, sha256, url, install_request}`); `GET /api/druck/update` zum Suchen,
+  `GET /api/druck/update/file` zum Laden. `install_request` (Webseite „Jetzt auf dem PC aktualisieren“) wird
+  einmal ausgeführt (`handledUpdate` in config.json). Updates nur für die installierte Version
+  (`Deinstallieren.exe` neben der EXE). Der Installer wird mit `CREATE_BREAKAWAY_FROM_JOB` gestartet, damit
+  er das Job-Objekt der App überlebt.
+- `--autostart`: gespeicherte Einstellungen übernehmen und direkt die Vollbildansicht zeigen.
+
 ## Kommunikation mit dem Drucker
 
 Quelle der Protokolldetails: Community-Doku <https://github.com/Parallel-7/flashforge-api-docs>

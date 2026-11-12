@@ -189,6 +189,21 @@
       </details>
     </section>
     <section class="full">
+      <h2>PROGRAMM</h2>
+      <div class="row">
+        <div class="hint" id="verInfo" style="margin:0;font-size:15px">Version …</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="updCheck">Nach Updates suchen</button>
+          <button class="primary" id="updInstall" style="display:none">Jetzt aktualisieren</button>
+        </div>
+      </div>
+      <div class="bar" id="updBar"><i></i></div>
+      <div class="result" id="updRes"></div>
+      <div class="hint">Neue Versionen werden auf der Retail-Demo-Webseite unter Einstellungen → App-Updates hochgeladen.
+        Die App installiert sie dann auf Knopfdruck (oder sofort, wenn dort „Jetzt auf dem PC aktualisieren“ gedrückt wird) und startet neu.</div>
+    </section>
+
+    <section class="full">
       <h2>WEBSEITE (RETAIL-DEMO-SERVER)</h2>
       <div class="twocol">
         <div>
@@ -259,6 +274,7 @@ async function init() {
   $('srvurl').value = cfg.serverUrl || '';
   $('srvtoken').value = cfg.serverToken || '';
   pushStatusLoop();
+  updateLoop();
   setColor(cfg.modelColor || '#ff7a00');
   updateKind();
   updateHint();
@@ -445,6 +461,39 @@ $('ptest').onclick = async () => {
     }
   } catch (e) { show($('ptestRes'), 'err', esc(e.message)); }
   b.disabled = false;
+};
+
+// ---------- Programm-Updates ----------
+function showUpdate(u) {
+  $('verInfo').innerHTML = 'Installierte Version: <b></b>';
+  $('verInfo').querySelector('b').textContent = u.version;
+  const el = $('updRes'), a = u.available;
+  $('updInstall').style.display = a && u.supported && !['downloading', 'installing'].includes(u.state) ? '' : 'none';
+  $('updBar').style.display = u.state === 'downloading' ? 'block' : 'none';
+  $('updBar').querySelector('i').style.width = Math.round((u.progress || 0) * 100) + '%';
+  if (u.state === 'downloading') show(el, 'info', 'Lade Version ' + esc(a?.version || '') + ' herunter … ' + Math.round((u.progress || 0) * 100) + ' %');
+  else if (u.state === 'installing') show(el, 'info', 'Installiere – die App startet gleich neu …');
+  else if (u.state === 'error') show(el, 'err', esc(u.message));
+  else if (a) show(el, 'ok', 'Neue Version ' + esc(a.version) + ' verfügbar' + (u.supported ? '' : ' – bitte den Installer von der Webseite verwenden (diese EXE ist nicht installiert)'));
+  else if (u.state === 'current') show(el, 'ok', '✓ Das ist die neueste Version');
+  else if (u.state === 'checking') show(el, 'info', 'Suche …');
+  else show(el, 'info', 'Updates kommen über den Retail-Demo-Server (Abschnitt „Webseite“).');
+}
+async function updateLoop() {
+  for (;;) {
+    try { showUpdate(await (await fetch('api/update', { cache: 'no-store' })).json()); } catch (e) {}
+    await new Promise(r => setTimeout(r, 2000));
+  }
+}
+$('updCheck').onclick = async () => {
+  $('updCheck').disabled = true;
+  try { showUpdate(await (await fetch('api/update?do=check', { cache: 'no-store' })).json()); } catch (e) {}
+  $('updCheck').disabled = false;
+};
+$('updInstall').onclick = async () => {
+  $('updInstall').disabled = true;
+  try { showUpdate(await (await fetch('api/update?do=install', { cache: 'no-store' })).json()); } catch (e) {}
+  $('updInstall').disabled = false;
 };
 
 // ---------- Übertragung an den Server ----------

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	webview2 "github.com/jchv/go-webview2"
@@ -97,6 +98,12 @@ func runShell(app *App, base string) {
 	pSetThreadExecutionState.Call(0x80000000 | 0x1 | 0x2)
 
 	w.Navigate(base)
+	if app.autostarted && app.config().Fullscreen {
+		go func() {
+			time.Sleep(800 * time.Millisecond)
+			app.win.SetFullscreen(true, app.config().Monitor)
+		}()
+	}
 	w.Run()
 	app.stream.Stop()
 	os.Exit(0)

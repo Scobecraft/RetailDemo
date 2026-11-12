@@ -174,10 +174,11 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 			"title": c.Title, "subtitle": c.Subtitle, "ticker": c.Ticker, "rotSpeed": c.RotSpeed,
 			"modelColor": c.ModelColor, "printerKind": c.PrinterKind, "modelName": c.ModelName,
 		},
-		"printer": a.printerState(),
-		"status":  st,
-		"pc":      pc,
-		"pcInfo":  pcInfo,
+		"printer":    a.printerState(),
+		"status":     st,
+		"pc":         pc,
+		"pcInfo":     pcInfo,
+		"appVersion": version,
 	})
 	resp, err := post("/api/druck/state", "application/json", bytes.NewReader(body), int64(len(body)))
 	if err != nil {
@@ -191,11 +192,16 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		return false, fmt.Errorf("Server antwortet mit %d (Server aktualisiert?)", resp.StatusCode)
 	}
 	var r struct {
-		Watching bool `json:"watching"`
-		NeedInfo bool `json:"needInfo"`
+		Watching bool        `json:"watching"`
+		NeedInfo bool        `json:"needInfo"`
+		Update   *UpdateInfo `json:"update"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&r)
 	a.serverNeedsInfo = r.NeedInfo && pcInfo == nil
+	if r.Update != nil && !versionLess(version, r.Update.Version) {
+		r.Update = nil
+	}
+	a.onServerUpdate(r.Update)
 	return r.Watching, nil
 }
 

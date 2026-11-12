@@ -479,6 +479,7 @@
         <div class="panel" id="scheduleSettings"></div>
         <div class="panel" id="filterSettings"></div>
         <div class="panel" id="appUpdateSettings"></div>
+        <div class="panel" id="druckUpdateSettings"></div>
       </div>
     </div>
   </main>
@@ -625,7 +626,7 @@ document.querySelectorAll("nav button").forEach(b => b.addEventListener("click",
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("active", x === b));
   document.querySelectorAll("[data-page]").forEach(p => p.hidden = p.dataset.page !== b.dataset.tab);
   if (b.dataset.tab === "devices") loadDevices();
-  if (b.dataset.tab === "settings") { renderSettings(); renderAppUpdate(); }
+  if (b.dataset.tab === "settings") { renderSettings(); renderAppUpdate(); renderDruckUpdate(); }
   if (b.dataset.tab === "overview") loadOverview();
   showDruck(b.dataset.tab === "druck");
 }));
@@ -1283,6 +1284,60 @@ function rolloutBox(rel) {
       : el("button", { class: "btn", onclick: async () => { await api("/api/admin/app-release/rollout", { method: "POST" }); toast("Wird im Hintergrund verteilt"); renderAppUpdate(); } }, "Im Hintergrund verteilen"),
     pending > 0 || !rel.phones ? installNow : null);
   return el("div", { class: "rollout" }, info, el("div", { style: "height:10px" }), buttons);
+}
+
+// Druckmonitor (PC-App beim 3D-Drucker): Installer hochladen und Update am PC auslösen
+async function renderDruckUpdate() {
+  const box = $("#druckUpdateSettings");
+  const d = await api("/api/admin/druck/release").catch(() => ({}));
+  const rel = d.release;
+  const input = el("input", { type: "file", accept: ".exe", hidden: true });
+  const bar = el("div"), status = el("span", { class: "meta" });
+  const progress = el("div", { class: "progress", hidden: true }, bar);
+  input.addEventListener("change", async () => {
+    const f = input.files[0]; input.value = "";
+    if (!f) return;
+    progress.hidden = false; status.textContent = "Lade hoch …";
+    try {
+      const { id } = await api("/api/admin/uploads", json("POST", { filename: f.name, size: f.size, kind: "druck" }));
+      let off = 0;
+      while (off < f.size) {
+        const r = await api(`/api/admin/uploads/${id}?offset=${off}`, { method: "PUT", body: f.slice(off, off + CHUNK), headers: { "Content-Type": "application/octet-stream" } });
+        off = r.received; bar.style.width = Math.round(off / f.size * 100) + "%";
+      }
+      const res = await api(`/api/admin/uploads/${id}/complete`, json("POST", {}));
+      toast(`Druckmonitor ${res.version} bereitgestellt`); renderDruckUpdate();
+    } catch (err) { status.textContent = "Fehler: " + err.message; }
+  });
+  const pcLine = d.pc_version
+    ? `Am PC${d.pc_host ? " „" + d.pc_host + "“" : ""} läuft Version ${d.pc_version}${d.pc_online ? "" : " (gerade offline)"}`
+    : "Der PC hat noch keine Version gemeldet (ältere App oder noch nicht verbunden).";
+  const newer = rel && d.pc_version && cmpVer(rel.version, d.pc_version) > 0;
+  const actions = rel ? el("div", { class: "rollout" },
+    el("div", {}, el("strong", {}, newer ? `Update ${d.pc_version} → ${rel.version} bereit` : d.pc_version && cmpVer(rel.version, d.pc_version) <= 0 ? "✅ Der PC ist aktuell" : "Bereit"),
+      el("div", { class: "meta" }, pcLine + (rel.install_request ? ` · Update angefordert um ${new Date(rel.install_request).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}` : ""))),
+    el("div", { style: "height:10px" }),
+    el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" },
+      el("button", { class: "btn primary", disabled: !newer, onclick: async () => {
+        if (!await confirmDlg("Druckmonitor jetzt aktualisieren?", `Der PC lädt Version ${rel.version}, installiert sie und startet den Druckmonitor neu (dauert ca. 1 Minute, die Anzeige ist kurz weg).`, "Jetzt aktualisieren")) return;
+        await api("/api/admin/druck/release/install-now", { method: "POST" });
+        toast("Update angefordert – der PC aktualisiert in wenigen Sekunden"); renderDruckUpdate();
+      } }, "Jetzt auf dem PC aktualisieren"))) : null;
+  box.replaceChildren(
+    el("h3", {}, "App-Updates (Druckmonitor am PC)"),
+    el("p", { class: "sub", style: "margin:0 0 12px" }, "Neuen Installer (Druckmonitor-Setup-….exe) hier hochladen. In der Druckmonitor-App steht das Update dann unter „Programm“ bereit – oder hier direkt auf dem PC installieren."),
+    el("div", { class: "release" },
+      rel ? el("div", {}, el("div", { class: "ver" }, `Version ${rel.version}`),
+              el("div", { class: "meta" }, `${size(rel.size)} · hochgeladen ${new Date(rel.uploaded_at * 1000).toLocaleString("de-DE")}`))
+          : el("div", { class: "meta" }, "Noch kein Installer hochgeladen. " + pcLine),
+      el("div", { class: "spacer" }),
+      el("button", { class: rel ? "btn" : "btn primary", onclick: () => input.click() }, "Installer hochladen"), input),
+    progress, status, actions);
+}
+function cmpVer(a, b) {
+  const pa = String(a).match(/\d+/g) || [], pb = String(b).match(/\d+/g) || [];
+  for (let i = 0; i < 4; i++) { const d = (+pa[i] || 0) - (+pb[i] || 0); if (d) return d; }
+  return 0;
 }
 
 async function renderAppUpdate() {
