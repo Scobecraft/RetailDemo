@@ -136,6 +136,26 @@ class ApiClient(baseUrl: String, private val token: String) {
 
     suspend fun appUpdate(): AppRelease = JSON.decodeFromString(call("GET", "/api/device/app-update"))
 
+    /** Läuft gerade ein 3D-Druck? watch = true: Einblendung beginnt gleich (Druckmonitor schickt dann flüssig Bilder). */
+    suspend fun druckStatus(watch: Boolean = false): DruckStatus =
+        JSON.decodeFromString(call("GET", "/api/device/druck/status" + if (watch) "?watch=1" else ""))
+
+    /** Nächstes Kamerabild des 3D-Druckers nach [after] (wartet bis zu 3 s). null = kein neues Bild. */
+    suspend fun druckFrame(after: Long): Pair<Long, ByteArray>? = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(url("/api/device/druck/frame?after=$after")).build()
+        http.newCall(req).execute().use { resp ->
+            if (resp.code == 204) return@use null
+            checked(resp)
+            val seq = resp.header("X-Seq")?.toLongOrNull() ?: return@use null
+            seq to resp.body!!.bytes()
+        }
+    }
+
+    suspend fun druckLogo(): ByteArray? = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(url("/api/device/druck/logo")).build()
+        http.newCall(req).execute().use { resp -> if (resp.isSuccessful) resp.body!!.bytes() else null }
+    }
+
     suspend fun unregister(deviceId: String) {
         call("POST", "/api/device/unregister", """{"device_id":${kotlinx.serialization.json.JsonPrimitive(deviceId)}}""".toRequestBody(JSON_TYPE))
     }

@@ -298,7 +298,10 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
 
     @r.get("/druck/api/frame", dependencies=[Depends(require_viewer)])
     async def druck_frame(after: int = 0):
-        st.last_view = time.time()
+        return await next_frame(after)
+
+    async def next_frame(after: int):
+        st.last_view = time.time()  # jemand schaut zu -> die App schickt flüssig Bilder
         if st.frame is None or st.frame_seq <= after:
             ev = st.frame_event
             try:
@@ -309,6 +312,54 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
             return Response(status_code=204, headers={"Cache-Control": "no-store"})
         return Response(st.frame, media_type="image/jpeg",
                         headers={"X-Seq": str(st.frame_seq), "Cache-Control": "no-store"})
+
+    # ------------------------------------------------ Handys: Einblendung "3D-Druck live" in der Demo
+
+    @r.get("/api/device/druck/status", dependencies=[Depends(require_device)])
+    def device_druck_status(watch: bool = False):
+        """Läuft gerade ein Druck mit Kamerabild? Plus die Werte für die Einblendung.
+        watch=1: Einblendung beginnt gleich -> App schon jetzt um flüssige Bilder bitten."""
+        if watch:
+            st.last_view = time.time()
+        live = (st.state.get("printer") or {}).get("live") or {}
+        file = (st.state.get("printer") or {}).get("file") or {}
+        now = time.time()
+        active = bool(st.online and live.get("online") and live.get("state") == "printing"
+                      and st.frame is not None and now - st.frame_at < 90)
+        if not active:
+            return {"active": False}
+        name = st.model.get("name") or live.get("fileName") or ""
+        name = re.sub(r"\.(gcode|gx|3mf|stl|obj|glb|gco|g)$", "", name, flags=re.I)
+        name = re.sub(r"\.gcode$", "", name, flags=re.I)
+        return {
+            "active": True,
+            "model": name,
+            "progress": _num(live.get("progress")),
+            "remaining_s": _num(live.get("remainingSec")),
+            "remaining_estimated": bool(live.get("remainingEst")),
+            "elapsed_s": _num(live.get("elapsedSec")),
+            "layer": live.get("layer") or 0,
+            "layers": live.get("layers") or file.get("layers") or 0,
+            "nozzle": _num(live.get("nozzle"), 0), "nozzle_target": _num(live.get("nozzleTarget"), 0),
+            "bed": _num(live.get("bed"), 0), "bed_target": _num(live.get("bedTarget"), 0),
+            "speed_mms": _num(live.get("speedMms"), 0),
+            "fan": _num(live.get("fanPct")),
+            "filament": " · ".join(x for x in [file.get("filamentType") or live.get("filamentType"), file.get("filamentName")] if x),
+            "filament_color": file.get("filamentColor") or "",
+            "layer_height": _num(file.get("layerHeight"), 0),
+            "machine": live.get("machine") or "",
+        }
+
+    @r.get("/api/device/druck/frame", dependencies=[Depends(require_device)])
+    async def device_druck_frame(after: int = 0):
+        return await next_frame(after)
+
+    @r.get("/api/device/druck/logo", dependencies=[Depends(require_device)])
+    def device_druck_logo():
+        logo = web / "logo.png"
+        if not logo.exists():
+            raise HTTPException(404, "Kein Logo")
+        return FileResponse(logo, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
 
     @r.get("/druck/api/model", dependencies=[Depends(require_viewer)])
     def druck_model():

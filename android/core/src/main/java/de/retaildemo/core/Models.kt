@@ -151,6 +151,39 @@ data class Manifest(
     @SerialName("remove_bloatware") val removeBloatware: Boolean = false,
     /** Paketnamen, die trotzdem bleiben sollen. */
     @SerialName("bloatware_keep") val bloatwareKeep: List<String> = emptyList(),
+    /** Einblendung "3D-Druck live" zwischen den Medien (null = aus). */
+    @SerialName("druck_promo") val druckPromo: DruckPromo? = null,
+)
+
+@Serializable
+data class DruckPromo(
+    @SerialName("every_n") val everyN: Int = 8,
+    @SerialName("duration_s") val durationS: Int = 10,
+    val title: String = "",
+    val subtitle: String = "",
+)
+
+/** Laufender 3D-Druck für die Einblendung (active = false: kein Druck, Einblendung aus). */
+@Serializable
+data class DruckStatus(
+    val active: Boolean = false,
+    val model: String = "",
+    val progress: Double? = null, // 0..1
+    @SerialName("remaining_s") val remainingS: Double? = null,
+    @SerialName("remaining_estimated") val remainingEstimated: Boolean = false,
+    @SerialName("elapsed_s") val elapsedS: Double? = null,
+    val layer: Int = 0,
+    val layers: Int = 0,
+    val nozzle: Double? = null,
+    @SerialName("nozzle_target") val nozzleTarget: Double? = null,
+    val bed: Double? = null,
+    @SerialName("bed_target") val bedTarget: Double? = null,
+    @SerialName("speed_mms") val speedMms: Double? = null,
+    val fan: Double? = null,
+    val filament: String = "",
+    @SerialName("filament_color") val filamentColor: String = "",
+    @SerialName("layer_height") val layerHeight: Double? = null,
+    val machine: String = "",
 )
 
 @Serializable

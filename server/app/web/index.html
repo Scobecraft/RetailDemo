@@ -494,6 +494,7 @@
         <div class="panel" id="storeSettings"></div>
         <div class="panel" id="behaviourSettings"></div>
         <div class="panel" id="bloatSettings"></div>
+        <div class="panel" id="promoSettings"></div>
         <div class="panel" id="scheduleSettings"></div>
         <div class="panel" id="filterSettings"></div>
         <div class="panel" id="appUpdateSettings"></div>
@@ -1047,6 +1048,23 @@ function renderSettings() {
     el("p", { class: "sub" }, "Für Handys und Laptops, soweit nicht anders angegeben."),
     ...fields.flatMap(f => f.nodes),
     el("button", { class: "btn primary block", onclick: () => saveSettings(Object.fromEntries(fields.map(f => [f.key, f.input.value === "" ? s[f.key] : +f.input.value]))) }, "Speichern"));
+
+  // 3D-Druck-Einblendung in der Handy-Demo
+  const promoN = numberField("Einblendung nach jedem … Video/Bild (0 = aus)", "druck_promo_every_n", 0);
+  const promoDur = numberField("Live-Bild wird … Sekunden gezeigt", "druck_promo_duration_s");
+  const promoTitle = el("input", { type: "text", value: s.druck_promo_title || "", maxlength: 80 });
+  const promoSub = el("input", { type: "text", value: s.druck_promo_subtitle || "", maxlength: 80 });
+  $("#promoSettings").replaceChildren(
+    el("h3", {}, "3D-Druck in der Handy-Demo"),
+    el("p", { class: "sub" }, "Zwischen den Werbevideos erscheint eine animierte Einblendung und danach das Live-Bild des 3D-Druckers mit Fortschritt, Restzeit und Temperaturen. Nur während wirklich gedruckt wird (Druckmonitor-App sendet, Drucker druckt, Kamera liefert Bilder) – sonst läuft die Demo ganz normal weiter."),
+    ...promoN.nodes, ...promoDur.nodes,
+    el("label", {}, "Überschrift"), promoTitle,
+    el("label", {}, "Unterzeile"), promoSub,
+    el("button", { class: "btn primary block", onclick: () => saveSettings({
+      druck_promo_every_n: promoN.input.value === "" ? s.druck_promo_every_n : +promoN.input.value,
+      druck_promo_duration_s: +promoDur.input.value || s.druck_promo_duration_s,
+      druck_promo_title: promoTitle.value, druck_promo_subtitle: promoSub.value,
+    }, "Gespeichert – Handys übernehmen es beim nächsten Abgleich") }, "Speichern"));
 
   // Bloatware
   const bloatOn = el("input", { type: "checkbox", checked: !!s.remove_bloatware, style: "accent-color:var(--accent);width:16px;height:16px" });

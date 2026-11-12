@@ -64,6 +64,9 @@ DEFAULT_SETTINGS = {
     "cleanup_interval_h": 2,
     # Laptops: Kunden lesen/tippen länger, daher eigene Wartezeit bis zur Rückkehr der Demo
     "laptop_idle_timeout_s": 60,
+    # Handys: nach jedem … Medium die Einblendung "3D-Druck live" (nur während eines Drucks; 0 = aus)
+    "druck_promo_every_n": 8,
+    "druck_promo_duration_s": 10,
     # Handys: Apps, die nicht vom Hersteller stammen (Bloatware, von Kunden installiert), löschen (0/1)
     "remove_bloatware": 0,
 }
@@ -74,6 +77,9 @@ TEXT_SETTINGS = {
     "web_filter": "off",
     # zusätzlich gesperrte Webseiten, eine Domain pro Zeile
     "blocked_domains": "",
+    # Texte der 3D-Druck-Einblendung
+    "druck_promo_title": "Wir haben jetzt auch 3D-Drucker!",
+    "druck_promo_subtitle": "Schaut doch gerne zu – live aus unserem Laden.",
     # Apps, die beim Bloatware-Entfernen bleiben sollen: ein Paketname pro Zeile
     "bloatware_keep": "",
 }
@@ -104,7 +110,7 @@ def clean_domains(text: str) -> list[str]:
                 break
     return out
 # Einstellungen, bei denen 0 "aus" bedeutet
-ZERO_ALLOWED = {"cleanup_interval_h", "remove_bloatware"}
+ZERO_ALLOWED = {"cleanup_interval_h", "remove_bloatware", "druck_promo_every_n"}
 BOOL_SETTINGS = {"remove_bloatware"}
 PACKAGE_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$")
 
@@ -412,6 +418,9 @@ def build_manifest(c, device_row) -> dict:
         "cleanup_interval_h": s["cleanup_interval_h"],
         "heartbeat_interval_s": HEARTBEAT_INTERVAL_S,
     }
+    if s["druck_promo_every_n"] > 0:
+        manifest["druck_promo"] = {"every_n": s["druck_promo_every_n"], "duration_s": s["druck_promo_duration_s"],
+                                   "title": s["druck_promo_title"], "subtitle": s["druck_promo_subtitle"]}
     if s["remove_bloatware"]:
         # nur wenn eingeschaltet, damit sich der Hash der übrigen Handy-Manifeste nicht ändert
         manifest["remove_bloatware"] = True

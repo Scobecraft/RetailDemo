@@ -25,6 +25,8 @@ class DemoApp : Application() {
         private set
     lateinit var bloatware: BloatwareRemover
         private set
+    lateinit var druck: DruckWatcher
+        private set
 
     /** Bis zu diesem Zeitpunkt (elapsedRealtime) läuft ein App-Update – Demo nicht dazwischenschieben. */
     @Volatile var updateInProgressUntil = 0L
@@ -82,6 +84,8 @@ class DemoApp : Application() {
         updater = AppUpdater(this)
         bloatware = BloatwareRemover(this)
         bloatware.start(scope)
+        druck = DruckWatcher(this)
+        druck.start(scope)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(a: Activity) { resumedActivities++ }

@@ -180,7 +180,18 @@ private fun DemoScreen(app: DemoApp, onCustomerTouch: () -> Unit, onAdminGesture
     val slides = remember(manifest, contentVersion) { buildSlides(manifest, app.sync::isAvailable) }
     var index by remember { mutableIntStateOf(0) }
     val slide = slides.getOrNull(index % maxOf(1, slides.size))
-    val next = { index = (index + 1) % maxOf(1, slides.size) }
+    // 3D-Druck-Einblendung: nach jedem n-ten Video/Bild, aber nur während gerade gedruckt wird
+    val promo = manifest?.druckPromo?.takeIf { it.everyN > 0 }
+    var showPromo by remember { mutableStateOf(false) }
+    var mediaCount by remember { mutableIntStateOf(0) }
+    val next = {
+        if (slide is Slide.Media) mediaCount++
+        if (promo != null && mediaCount >= promo.everyN) {
+            mediaCount = 0
+            if (app.druck.active.value) showPromo = true
+        }
+        index = (index + 1) % maxOf(1, slides.size)
+    }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val player = remember {
@@ -197,7 +208,10 @@ private fun DemoScreen(app: DemoApp, onCustomerTouch: () -> Unit, onAdminGesture
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        when (slide) {
+        if (showPromo && promo != null) {
+            LaunchedEffect(Unit) { player.stop() }
+            DruckPromoSlide(app, promo) { showPromo = false }
+        } else when (slide) {
             null -> WaitingScreen(app)
             is Slide.Specs -> {
                 SpecsSlide(manifest!!)

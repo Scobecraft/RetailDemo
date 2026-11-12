@@ -259,6 +259,15 @@ go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch am
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w" -o Druckmonitor.exe .
 ```
 
+### 3D-Druck in der Handy-Demo
+
+Läuft gerade ein Druck, zeigt die Demo-App nach jedem 8. Video/Bild eine animierte Einblendung im
+expert-Stil („Wir haben jetzt auch 3D-Drucker! …“) und danach 10 Sekunden lang das Live-Bild des Druckers
+mit Fortschritt, Restzeit, Fertig-um, Schicht, Temperaturen, Geschwindigkeit und Filament – im Hoch- und
+Querformat passend zum Bildschirm. Nur wenn die Druckmonitor-App sendet, der Drucker wirklich druckt und
+die Kamera Bilder liefert; sonst läuft die Demo normal weiter. Einstellbar auf der Webseite unter
+Einstellungen → **3D-Druck in der Handy-Demo** (Abstand, Dauer, Texte; 0 = aus).
+
 ## Bloatware entfernen (Handys)
 
 Webseite → Einstellungen → **Bloatware entfernen** einschalten. Die Demo-App löscht dann alle Apps, die
