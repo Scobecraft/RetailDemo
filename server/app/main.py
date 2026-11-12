@@ -1139,6 +1139,11 @@ def web_index():
     return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/druck-dashboard.js", include_in_schema=False)
+def web_druck_dashboard():
+    return FileResponse(WEB_DIR / "druck-dashboard.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/logo.svg", include_in_schema=False)
 def web_logo():
     return FileResponse(WEB_DIR / "logo.svg", media_type="image/svg+xml")

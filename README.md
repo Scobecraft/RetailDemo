@@ -224,6 +224,16 @@ eintragen und **Starten** drücken. Das Kamerabild läuft flüssig (ca. 5 Bilder
 offen hat, sonst schickt die App nur alle 30 s ein Bild. Seriennummer, Prüfcode und Drucker-IP verlassen
 den PC nicht.
 
+Das Dashboard zeigt live (alle 2 s) und mit Verlauf der letzten Stunde:
+- **Druck:** Status, Fortschrittsring, Restzeit, Fertig-um, Schicht, Kamera, drehendes 3D-Modell (färbt sich
+  mit dem Fortschritt), Temperaturen von Düse und Druckbett samt Zielwerten, Lüfter, Geschwindigkeit, Slicer-Angaben
+- **PC, auf dem die App läuft:** Auslastung von CPU (auch je Kern), RAM, GPU und Grafikspeicher
+  (NVIDIA zusätzlich Temperatur, Leistung, Lüfter), Netzwerk, Datenträger (Belegung und Aktivität), die
+  Programme mit der höchsten Last und die verbaute Hardware (Prozessor, Grafikkarte, RAM-Module, Mainboard,
+  Datenträger, Netzwerkkarten, Windows-Version)
+
+Die alte Ansicht der App gibt es weiterhin über den Knopf „Programm-Ansicht“.
+
 Windows-App bauen (unter Linux/macOS mit Go 1.24):
 
 ```bash

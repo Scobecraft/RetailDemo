@@ -111,7 +111,9 @@ type App struct {
 	modelRev    int    // wird bei jedem Modellwechsel erhöht (Vollbild lädt dann neu)
 	modelSource string // "" = von Hand gewählt, sonst Fundort der automatischen Suche
 
-	pusher Pusher
+	pusher          Pusher
+	pushCount       int  // nur von pushLoop benutzt
+	serverNeedsInfo bool // Server hat noch keine Hardware-Angaben
 
 	metaMu   sync.Mutex
 	metaKey  string

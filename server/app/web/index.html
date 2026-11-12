@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Retail Demo – Verwaltung</title>
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
+<!-- three.js für die 3D-Ansicht im Reiter "3D-Drucker" (Dateien aus der Druckmonitor-App) -->
+<script type="importmap">{ "imports": { "three": "/druck/vendor/three.module.min.js", "three/addons/": "/druck/vendor/addons/" } }</script>
 <style>
   :root {
     --accent: #ee7f00;
@@ -227,12 +229,122 @@
   .rollout { margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); }
 
   /* ---------- Handy ---------- */
-  .druck-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-  .druck-frame { position: relative; aspect-ratio: 16 / 9; background: #0e0f12; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
-  .druck-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-  .druck-help { font-size: 13px; margin-top: 12px; max-width: 760px; }
-  #druckSub .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); vertical-align: 1px; }
-  #druckSub .dot.on { background: #16a34a; }
+  .druck-help { font-size: 13px; margin-top: 16px; max-width: 760px; }
+
+  /* ---------- 3D-Drucker ---------- */
+  .dk-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .dk-head h2 { margin: 0 0 4px; }
+  .dk-headline { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .dk-sub { color: var(--muted); font-size: 14px; }
+  .dk-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .dk-actions a.btn { text-decoration: none; display: inline-flex; align-items: center; color: inherit; }
+  .dk-pc-head { margin-top: 32px; }
+  .dk-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+  .dk-grid .span-5 { grid-column: span 5; } .dk-grid .span-7 { grid-column: span 7; }
+  .dk-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 18px 20px; min-width: 0;
+             animation: dk-in .5s cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes dk-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .dk-card h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .dk-card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .dk-dash { width: 14px !important; height: 0 !important; border-top: 2px dashed var(--muted); border-radius: 0 !important; background: none !important; }
+  .dk-empty { display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); font-size: 14px; }
+  .dk-hero { display: grid; grid-template-columns: 1.3fr auto 1.4fr; gap: 28px; align-items: center; position: relative; overflow: hidden; padding: 24px 28px 30px;
+             background: radial-gradient(120% 140% at 0% 0%, rgba(238,127,0,.14), transparent 55%), var(--card); }
+  .dk-state { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; padding: 5px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+  .dk-state i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .dk-state.run i, .dk-state.warm i { animation: pulse-o 1.6s infinite; }
+  .dk-state.ok { background: rgba(22,163,74,.12); color: var(--ok); }
+  .dk-state.bad { background: rgba(220,38,38,.1); color: var(--danger); }
+  .dk-state.idle { background: rgba(127,127,127,.12); color: var(--muted); }
+  .dk-state.warn { background: rgba(234,179,8,.15); color: var(--warn); }
+  @keyframes pulse-o { 0% { box-shadow: 0 0 0 0 currentColor; } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .dk-model { font-size: 28px; font-weight: 700; letter-spacing: -.01em; margin: 12px 0 6px; overflow-wrap: anywhere; }
+  .dk-fileline { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .dk-fileline span { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--bg); color: var(--muted); }
+  .dk-fileline .dk-swatch { width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--line); }
+  .dk-ring-box { position: relative; width: 168px; height: 168px; }
+  .dk-ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .dk-ring-bg { fill: none; stroke: var(--meter-track); stroke-width: 11; }
+  .dk-ring-fg { fill: none; stroke: var(--accent); stroke-width: 11; stroke-linecap: round; transition: stroke-dashoffset 1.2s cubic-bezier(.2,.7,.2,1); }
+  .dk-ring-fg.active { filter: drop-shadow(0 0 6px rgba(238,127,0,.55)); }
+  .dk-ring-text { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .dk-ring-pct { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .dk-ring-sub { font-size: 12px; color: var(--muted); }
+  .dk-hero-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; }
+  .dk-stat-l { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .dk-stat-v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .dk-stat-n { font-size: 12px; color: var(--muted); min-height: 16px; }
+  .dk-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: var(--meter-track); }
+  .dk-bar-fill { height: 100%; width: 0; background: var(--accent); transition: width 1.2s cubic-bezier(.2,.7,.2,1); position: relative; overflow: hidden; }
+  .dk-bar-fill.active::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); animation: dk-shine 2.2s infinite; }
+  @keyframes dk-shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  .dk-cam-box, .dk-3d-box { position: relative; border-radius: 12px; overflow: hidden; background: #0e0f12; }
+  .dk-cam-box { aspect-ratio: 16 / 9; }
+  .dk-cam { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .dk-cam-box:fullscreen { border-radius: 0; }
+  .dk-cam-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9aa1ae; font-size: 14px; text-align: center; padding: 20px; }
+  .dk-cam-badge { position: absolute; left: 12px; top: 12px; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: #fff; background: rgba(220,38,38,.9); padding: 3px 9px; border-radius: 999px; }
+  .dk-cam-badge:empty { display: none; }
+  .dk-cam-badge.stale { background: rgba(0,0,0,.6); font-weight: 500; letter-spacing: 0; }
+  .dk-3d-box { aspect-ratio: 4 / 3; background: radial-gradient(circle at 50% 40%, #252830, #0e0f12 70%); }
+  .dk-3d { width: 100%; height: 100%; display: block; }
+  .dk-model-info { color: var(--muted); font-size: 13px; margin-top: 8px; overflow-wrap: anywhere; }
+  .dk-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .dk-mini { height: 6px; border-radius: 3px; background: var(--meter-track); margin-top: 6px; overflow: hidden; }
+  .dk-mini-fill { height: 100%; width: 0; border-radius: 3px; transition: width .9s ease; }
+  .dk-dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin: 0; font-size: 14px; }
+  .dk-dl dt { color: var(--muted); }
+  .dk-dl dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+  .dk-meter { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+  .dk-meter-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .dk-meter-d { font-size: 12px; color: var(--muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+  .dk-meter-pct { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; margin-top: 6px; }
+  .dk-meter-track { height: 8px; border-radius: 4px; background: var(--meter-track); overflow: hidden; margin-top: 6px; }
+  .dk-meter-fill { height: 100%; width: 0; border-radius: 4px; background: var(--meter-fill); transition: width .9s cubic-bezier(.2,.7,.2,1); }
+  .dk-meter.hot .dk-meter-pct { color: var(--warn); }
+  .dk-meter-note { font-size: 12px; color: var(--muted); min-height: 16px; margin-top: 6px; }
+  .dk-spark { height: 36px; margin: 8px -20px 0; }
+  .dk-spark svg { display: block; width: 100%; height: 36px; }
+  .dk-cores { display: grid; grid-template-columns: repeat(var(--n, 8), 1fr); gap: 4px; height: 170px; align-content: stretch; }
+  .dk-core { position: relative; background: var(--meter-track); border-radius: 4px; overflow: hidden; min-height: 18px; }
+  .dk-core i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--s1); border-radius: 4px 4px 0 0; transition: height .9s cubic-bezier(.2,.7,.2,1); }
+  .dk-core-note { font-size: 12px; margin-top: 10px; }
+  .dk-now { display: flex; gap: 20px; flex-wrap: wrap; font-size: 14px; margin-bottom: 8px; }
+  .dk-now b { font-variant-numeric: tabular-nums; font-size: 18px; }
+  .dk-disks { display: grid; gap: 12px; margin-bottom: 14px; }
+  .dk-disk-top { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+  .dk-disk .dk-meter-fill { background: var(--s1); }
+  .dk-disk.hot .dk-meter-fill { background: var(--warn); }
+  .dk-procs { display: grid; gap: 2px; font-size: 13px; }
+  .dk-proc { display: grid; grid-template-columns: minmax(0, 1.3fr) 1fr 1fr; gap: 12px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .dk-proc:last-child { border-bottom: 0; }
+  .dk-proc-h { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .dk-proc-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .dk-proc-v { position: relative; display: flex; align-items: center; height: 22px; }
+  .dk-proc-v i { position: absolute; left: 0; top: 4px; bottom: 4px; border-radius: 3px; opacity: .22; transition: width .9s ease; }
+  .dk-proc-v b { position: relative; padding-left: 6px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .dk-hw { display: grid; gap: 0; }
+  .dk-hw-row { display: grid; grid-template-columns: 130px 1fr; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .dk-hw-row:last-child { border-bottom: 0; }
+  .dk-hw-l { color: var(--muted); }
+  .dk-hw-main { font-weight: 600; overflow-wrap: anywhere; }
+  .dk-hw-sub { color: var(--muted); font-size: 12px; white-space: pre-line; margin-top: 2px; }
+  .dk-endpt { animation: dk-blink 2s ease-in-out infinite; }
+  @keyframes dk-blink { 50% { opacity: .45; } }
+  @media (max-width: 1000px) { .dk-hero { grid-template-columns: 1fr auto; } .dk-hero-stats { grid-column: span 2; grid-template-columns: repeat(4, 1fr); } }
+  @media (max-width: 900px) { .dk-grid .span-3 { grid-column: span 6; } .dk-grid .span-4, .dk-grid .span-5, .dk-grid .span-6, .dk-grid .span-7, .dk-grid .span-8 { grid-column: span 12; } }
+  @media (max-width: 640px) {
+    .dk-hero { grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 20px; }
+    .dk-fileline { justify-content: center; }
+    .dk-hero-stats { grid-column: auto; grid-template-columns: 1fr 1fr; width: 100%; }
+    .dk-grid .span-3 { grid-column: span 12; }
+    .dk-hw-row { grid-template-columns: 1fr; gap: 2px; }
+    .dk-model { font-size: 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dk-card, .dk-endpt, .dk-bar-fill.active::after, .dk-state i { animation: none !important; }
+    .dk-ring-fg, .dk-bar-fill, .dk-meter-fill, .dk-mini-fill, .dk-core i, .dk-proc-v i { transition: none; }
+  }
   @media (max-width: 640px) {
     .bar { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 6px; gap: 8px 12px; }
     .bar .brand { flex: 1; }
@@ -316,20 +428,8 @@
       <div class="ov-grid" id="ovGrid"></div>
     </div>
 
-    <!-- 3D-Drucker -->
-    <div data-page="druck" hidden>
-      <div class="druck-head">
-        <div>
-          <h2>3D-Drucker</h2>
-          <p class="sub" id="druckSub">Live-Ansicht aus der Druckmonitor-App.</p>
-        </div>
-        <button class="btn small" id="druckFull">Vollbild</button>
-      </div>
-      <div class="druck-frame" id="druckFrame"></div>
-      <p class="muted druck-help">So kommen die Daten hierher: In der Druckmonitor-App auf dem PC beim Drucker unter
-        <b>Webseite (Retail-Demo-Server)</b> die Adresse dieses Servers und das Geräte-Token (<code>DEVICE_TOKEN</code>, wie bei den Demo-Handys)
-        eintragen und „Starten“ drücken. Das Kamerabild läuft flüssig, solange diese Seite offen ist.</p>
-    </div>
+    <!-- 3D-Drucker (Inhalt baut druck-dashboard.js) -->
+    <div data-page="druck" hidden></div>
 
     <div data-page="media" hidden>
       <h2>Medien</h2>
@@ -529,43 +629,6 @@ document.querySelectorAll("nav button").forEach(b => b.addEventListener("click",
   if (b.dataset.tab === "overview") loadOverview();
   showDruck(b.dataset.tab === "druck");
 }));
-
-// ---------------------------------------------------------------- 3D-Drucker
-// Die Ansicht selbst ist dieselbe Seite wie in der Druckmonitor-App (/druck/monitor). Nur laden, solange
-// der Reiter offen ist: Dann schickt die App flüssig Kamerabilder, sonst nur selten ein Vorschaubild.
-let druckTimer = null;
-function showDruck(on) {
-  const box = $("#druckFrame");
-  clearInterval(druckTimer); druckTimer = null;
-  if (!on) { box.replaceChildren(); return; }
-  if (!box.firstChild) box.append(el("iframe", { src: "/druck/monitor", title: "3D-Drucker live", allow: "fullscreen" }));
-  loadDruck(); druckTimer = setInterval(() => { if (!document.hidden) loadDruck().catch(() => {}); }, 5000);
-}
-async function loadDruck() {
-  const d = await api("/api/admin/druck");
-  const sub = $("#druckSub");
-  if (d.online) {
-    const parts = ["Live"];
-    if (d.model_name) parts.push(d.model_name);
-    if (d.status) parts.push(d.status);
-    if (d.progress != null && d.progress >= 0) parts.push(Math.round(d.progress * 100) + " %");
-    sub.replaceChildren(el("span", { class: "dot on" }), parts.join(" · "));
-  } else {
-    const ago = d.last_update ? fmtAgo(d.server_time - d.last_update) : null;
-    sub.replaceChildren(el("span", { class: "dot" }), ago ? `Druckmonitor-App offline – zuletzt Daten vor ${ago}` : "Noch keine Daten von der Druckmonitor-App (siehe unten).");
-  }
-}
-function fmtAgo(s) {
-  s = Math.max(0, Math.round(s));
-  if (s < 120) return `${s} s`;
-  if (s < 7200) return `${Math.round(s / 60)} min`;
-  if (s < 172800) return `${Math.round(s / 3600)} h`;
-  return `${Math.round(s / 86400)} Tagen`;
-}
-$("#druckFull").addEventListener("click", () => {
-  const f = $("#druckFrame");
-  (f.requestFullscreen || f.webkitRequestFullscreen)?.call(f);
-});
 
 async function loadAll() {
   [state.media, state.playlists, state.settings] = await Promise.all([
@@ -1260,5 +1323,6 @@ async function renderAppUpdate() {
 // ---------------------------------------------------------------- Start
 api("/api/web/me").then(me => { managedByEnv = !!me.managed_by_env; showApp(); }).catch(showLogin);
 </script>
+<script src="/druck-dashboard.js"></script>
 </body>
 </html>

@@ -159,6 +159,11 @@ type postFunc func(path, ctype string, body io.Reader, size int64) (*http.Respon
 
 // pushState sendet Druckerdaten, Kamerastatus und Anzeige-Texte. Antwort: schaut gerade jemand zu?
 func (a *App) pushState(post postFunc, c Config) (bool, error) {
+	pc, pcInfo := sysMon.Latest()
+	a.pushCount++
+	if a.pushCount%30 != 1 && !a.serverNeedsInfo { // Hardware ändert sich nicht: ca. jede Minute reicht
+		pcInfo = nil
+	}
 	st := a.stream.Status()
 	st["url"] = "" // interne Drucker-Adresse geht den Server nichts an
 	if !a.isRunning() {
@@ -171,6 +176,8 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		},
 		"printer": a.printerState(),
 		"status":  st,
+		"pc":      pc,
+		"pcInfo":  pcInfo,
 	})
 	resp, err := post("/api/druck/state", "application/json", bytes.NewReader(body), int64(len(body)))
 	if err != nil {
@@ -185,8 +192,10 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 	}
 	var r struct {
 		Watching bool `json:"watching"`
+		NeedInfo bool `json:"needInfo"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&r)
+	a.serverNeedsInfo = r.NeedInfo && pcInfo == nil
 	return r.Watching, nil
 }
 

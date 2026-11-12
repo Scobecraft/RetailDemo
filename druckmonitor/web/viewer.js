@@ -276,6 +276,7 @@ export class ModelViewer {
 
   _loop(now) {
     requestAnimationFrame(this._loop);
+    if (this.paused) return; // z. B. Reiter auf der Webseite nicht sichtbar
     // auf ~30 Bilder/s begrenzen: reicht für eine langsame Drehung und schont schwache PCs
     if (now - (this._last || 0) < 31) return;
     this._last = now;

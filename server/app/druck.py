@@ -7,6 +7,7 @@ Unter /druck/ liefert der Server dieselbe Vollbildansicht wie die Desktop-App au
 Co. aus druckmonitor/web) und beantwortet deren /api/*-Abfragen mit den zuletzt empfangenen Daten.
 """
 import asyncio
+import collections
 import json
 import mimetypes
 import os
@@ -23,6 +24,9 @@ OFFLINE_AFTER_S = 15
 WATCHING_S = 15
 MAX_FRAME = 5 * 1024 * 1024
 MAX_MODEL = 95 * 1024 * 1024
+# Verlauf für die Diagramme: alle 5 s ein Punkt, eine Stunde lang (nur im Speicher)
+HISTORY_STEP_S = 5
+HISTORY_LEN = 720
 MODEL_EXT = {".stl", ".3mf", ".obj", ".glb", ".gltf", ".gcode", ".gco", ".g", ".gx"}
 
 
@@ -49,6 +53,8 @@ class DruckState:
         self.frame_event = asyncio.Event()
         self.last_view = 0.0
         self.model = self._load_model_info()
+        self.pc_info: Optional[dict] = None
+        self.history: collections.deque = collections.deque(maxlen=HISTORY_LEN)
 
     def _load_model_info(self) -> dict:
         try:
@@ -79,8 +85,11 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
             raise HTTPException(400, "Kein JSON")
         if not isinstance(data, dict):
             raise HTTPException(400, "Kein JSON-Objekt")
+        if isinstance(data.get("pcInfo"), dict):
+            st.pc_info = data["pcInfo"]
         st.state, st.state_at = data, time.time()
-        return {"ok": True, "watching": time.time() - st.last_view < WATCHING_S}
+        _record_history(st)
+        return {"ok": True, "watching": time.time() - st.last_view < WATCHING_S, "needInfo": st.pc_info is None}
 
     @r.post("/api/druck/frame", dependencies=[Depends(require_device)])
     async def push_frame(request: Request):
@@ -135,6 +144,25 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
             "model_name": st.model.get("name", ""),
             "status": live.get("status") or live.get("state") or "",
             "progress": live.get("progress"),
+        }
+
+    @r.get("/api/admin/druck/live", dependencies=[Depends(require_viewer)])
+    def admin_druck_live(since: float = 0):
+        """Alles für den Reiter "3D-Drucker": aktuelle Werte und Verlauf (nur Punkte nach ?since)."""
+        printer = st.state.get("printer") or {}
+        return {
+            "online": st.online,
+            "server_time": time.time(),
+            "last_update": st.state_at or None,
+            "frame_at": st.frame_at or None,
+            "config": {k: v for k, v in (st.state.get("config") or {}).items() if k in ("title", "subtitle", "modelColor")},
+            "live": printer.get("live") if st.online else None,
+            "file": printer.get("file") or {},
+            "model": {"rev": st.model.get("rev", 0), "name": st.model.get("name", ""), "has_file": bool(st.model.get("file"))},
+            "camera": {k: (st.state.get("status") or {}).get(k) for k in ("state", "fps", "error")} if st.online else None,
+            "pc": st.state.get("pc") if st.online else None,
+            "pc_info": st.pc_info,
+            "history": [p for p in st.history if p["t"] > since],
         }
 
     @r.get("/druck", include_in_schema=False)
@@ -211,6 +239,37 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
         return FileResponse(target, media_type=mime, headers={"Cache-Control": "no-cache"})
 
     return r
+
+
+def _num(v, lo: float = -0.5):
+    """Zahl oder None (unbekannte Werte meldet die App als -1)."""
+    return round(float(v), 2) if isinstance(v, (int, float)) and v > lo else None
+
+
+def _record_history(st: DruckState):
+    now = time.time()
+    if st.history and now - st.history[-1]["t"] < HISTORY_STEP_S:
+        return
+    live = (st.state.get("printer") or {}).get("live") or {}
+    pc = st.state.get("pc") or {}
+    p = {"t": round(now, 1)}
+    if live.get("online"):
+        prog = _num(live.get("progress"), -0.5)
+        p.update({"nozzle": _num(live.get("nozzle"), 0), "nozzle_t": _num(live.get("nozzleTarget"), -0.5),
+                  "bed": _num(live.get("bed"), 0), "bed_t": _num(live.get("bedTarget"), -0.5),
+                  "progress": round(prog * 100, 2) if prog is not None else None,
+                  "speed": _num(live.get("speedMms")), "fan": _num(live.get("fanPct"))})
+    if pc:
+        ram_total = pc.get("ramTotalB") or 0
+        gpus = pc.get("gpus") or []
+        g = gpus[0] if gpus else {}
+        p.update({"cpu": _num(pc.get("cpuPct")),
+                  "ram": round(100 * pc.get("ramUsedB", 0) / ram_total, 2) if ram_total else None,
+                  "gpu": _num(g.get("pct")) if g else None,
+                  "gpu_temp": _num(g.get("tempC"), 0) if g else None,
+                  "rx": _num(pc.get("netRxBps")), "tx": _num(pc.get("netTxBps")),
+                  "disk_r": _num(pc.get("diskReadBps")), "disk_w": _num(pc.get("diskWriteBps"))})
+    st.history.append(p)
 
 
 def _fmt_ago(s: int) -> str:

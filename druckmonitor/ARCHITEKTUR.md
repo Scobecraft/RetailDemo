@@ -36,6 +36,12 @@ Verwaltungs-Webseite sie im Reiter „3D-Drucker“ mit derselben `monitor.html`
 | Kamerabild (JPEG) | `POST /api/druck/frame` | bis ca. 5/s, solange jemand zuschaut, sonst alle 30 s |
 | Modell (Rohdaten, `?name=&file=`) | `POST /api/druck/model` | bei jedem Modellwechsel (max. 90 MB) |
 
+Der State enthält außerdem `pc` (PC-Messwerte, `sysstats*.go`) und etwa jede Minute `pcInfo` (verbaute
+Hardware). Unter Windows: CPU/RAM/Laufwerke über die Windows-API, Kerne/Netzwerk/Datenträger/GPU/Prozesse
+über einen unsichtbaren PowerShell-Prozess (WMI-Klassen `Win32_PerfFormattedData_*`, nicht übersetzt),
+NVIDIA-Werte über `nvidia-smi -l 2`, Hardware einmalig per WMI. Hilfsprozesse hängen an einem Job-Objekt
+(enden mit der App) und laufen nur, solange an den Server gesendet wird.
+
 Seriennummer, Prüfcode, Drucker-IP und Kamera-Adresse werden **nicht** übertragen. Alle Seiten verwenden
 relative Pfade (`api/…`, `vendor/…`), damit sie sowohl unter `/` (App) als auch unter `/druck/` (Server) laufen.
 
