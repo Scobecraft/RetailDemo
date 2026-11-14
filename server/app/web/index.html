@@ -354,6 +354,31 @@
   .dk-hw-main { font-weight: 600; overflow-wrap: anywhere; }
   .dk-hw-sub { color: var(--muted); font-size: 12px; white-space: pre-line; margin-top: 2px; }
   .dk-endpt { animation: dk-blink 2s ease-in-out infinite; }
+  .dkj-top { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: start; }
+  .dkj-drop { margin: 0; padding: 28px 16px; }
+  .dkj-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .dkj-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; align-items: end; }
+  .dkj-form label { margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  .dkj-form input[type=range] { accent-color: var(--accent); width: 100%; }
+  .dkj-check { flex-direction: row !important; align-items: center; gap: 8px !important; color: var(--text) !important; font-size: 14px !important; cursor: pointer; margin: 6px 0 !important; display: flex; }
+  .dkj-check input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .dkj-warn { grid-column: 1 / -1; color: var(--warn); font-size: 13px; font-weight: 600; min-height: 0; }
+  .dkj-warn:empty { display: none; }
+  .dkj-printer { margin: 16px 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .dkj-printer .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); flex: none; }
+  .dkj-printer .dot.on { background: var(--ok); }
+  .dkj-list { display: grid; gap: 0; }
+  .dkj-job { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+  .dkj-name { font-weight: 700; overflow-wrap: anywhere; }
+  .dkj-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .dkj-facts span { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--bg); color: var(--muted); }
+  .dkj-msg { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .dkj-msg.bad { color: var(--danger); }
+  .dkj-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .dkj-empty { padding: 12px 0; }
+  .dkj-preview { width: min(760px, calc(100vw - 80px)); }
+  dialog.wide { width: min(820px, calc(100vw - 32px)); }
+  @media (max-width: 760px) { .dkj-top { grid-template-columns: 1fr; } .dkj-job { grid-template-columns: 1fr; } .dkj-actions { justify-content: flex-start; } }
   @keyframes dk-blink { 50% { opacity: .45; } }
   @media (max-width: 1000px) { .dk-hero { grid-template-columns: 1fr auto; } .dk-hero-stats { grid-column: span 2; grid-template-columns: repeat(4, 1fr); } }
   @media (max-width: 900px) { .dk-grid .span-3 { grid-column: span 6; } .dk-grid .span-4, .dk-grid .span-5, .dk-grid .span-6, .dk-grid .span-7, .dk-grid .span-8 { grid-column: span 12; } }

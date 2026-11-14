@@ -179,6 +179,8 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		"pc":         pc,
 		"pcInfo":     pcInfo,
 		"appVersion": version,
+		// kann Druckaufträge von der Webseite an den Drucker schicken (braucht Seriennummer + Prüfcode)
+		"capabilities": map[string]bool{"upload": strings.TrimSpace(c.FFSerial) != "" && strings.TrimSpace(c.FFCheckCode) != ""},
 	})
 	resp, err := post("/api/druck/state", "application/json", bytes.NewReader(body), int64(len(body)))
 	if err != nil {
@@ -195,6 +197,7 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		Watching bool        `json:"watching"`
 		NeedInfo bool        `json:"needInfo"`
 		Update   *UpdateInfo `json:"update"`
+		PrintJob *PrintJob   `json:"print_job"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&r)
 	a.serverNeedsInfo = r.NeedInfo && pcInfo == nil
@@ -202,6 +205,7 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		r.Update = nil
 	}
 	a.onServerUpdate(r.Update)
+	a.onPrintJob(r.PrintJob)
 	return r.Watching, nil
 }
 

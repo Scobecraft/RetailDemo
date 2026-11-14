@@ -259,6 +259,19 @@ go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch am
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w" -o Druckmonitor.exe .
 ```
 
+### Drucken von der Webseite
+
+Im Reiter **3D-Drucker** → **Drucken** eine 3D-Datei hochladen (STL, 3MF, OBJ) und Material (PLA, PETG, ABS,
+ASA, TPU), Qualität (0,12 / 0,20 / 0,28 mm), Füllung, Stützen und Rand wählen. Der Server slict sie mit
+PrusaSlicer und dem Profil `server/app/slicer/adventurer5m.ini` für den Flashforge Adventurer 5M / 5M Pro
+(0,4-mm-Düse) und zeigt Druckzeit, Filament, Schichten und eine 3D-Vorschau der Druckwege. Fertiger G-Code
+(z. B. aus Flash Studio) wird ohne Slicen übernommen.
+
+**Drucken** (nach dem Abhaken „Druckbett leer“ und „Filament eingelegt“) übergibt den Auftrag an die
+Druckmonitor-App; sie lädt den G-Code und schickt ihn über die Schnittstelle des Druckers (Port 8898) mit
+„sofort drucken“. Voraussetzungen: Druckmonitor ab 1.2.0, Seriennummer und Prüfcode in der App eingetragen,
+Drucker bereit (nicht schon am Drucken). Den ersten Druck mit dem Server-Profil bitte beaufsichtigen.
+
 ### 3D-Druck in der Handy-Demo
 
 Läuft gerade ein Druck, zeigt die Demo-App nach jedem 8. Video/Bild eine animierte Einblendung im

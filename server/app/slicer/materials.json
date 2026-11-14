@@ -1,0 +1,7 @@
+{
+  "PLA":  {"name": "PLA",  "temperature": 210, "first_layer_temperature": 215, "bed_temperature": 55, "first_layer_bed_temperature": 60, "filament_density": 1.24, "fan": 100, "max_volumetric_speed": 18},
+  "PETG": {"name": "PETG", "temperature": 240, "first_layer_temperature": 240, "bed_temperature": 70, "first_layer_bed_temperature": 75, "filament_density": 1.27, "fan": 40,  "max_volumetric_speed": 12},
+  "ABS":  {"name": "ABS",  "temperature": 255, "first_layer_temperature": 260, "bed_temperature": 95, "first_layer_bed_temperature": 100, "filament_density": 1.04, "fan": 15, "max_volumetric_speed": 15, "enclosure": true},
+  "ASA":  {"name": "ASA",  "temperature": 260, "first_layer_temperature": 260, "bed_temperature": 95, "first_layer_bed_temperature": 100, "filament_density": 1.07, "fan": 15, "max_volumetric_speed": 15, "enclosure": true},
+  "TPU":  {"name": "TPU",  "temperature": 225, "first_layer_temperature": 225, "bed_temperature": 45, "first_layer_bed_temperature": 50, "filament_density": 1.21, "fan": 80,  "max_volumetric_speed": 3.5}
+}

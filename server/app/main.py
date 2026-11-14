@@ -29,6 +29,7 @@ from pydantic import BaseModel
 
 from .apkinfo import read_apk_info
 from .druck import make_router as make_druck_router
+from .druckjobs import make_jobs_router
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 MEDIA_DIR = DATA_DIR / "media"
@@ -571,7 +572,8 @@ class UploadInit(BaseModel):
     filename: str
     size: int
     mime: str = ""
-    kind: str = "media"  # "media", "apk" (App-Update der Demo-App) oder "druck" (Druckmonitor-Installer)
+    kind: str = "media"  # "media", "apk" (Demo-App), "druck" (Druckmonitor-Installer) oder "druckjob" (3D-Druck)
+    options: dict = {}  # bei "druckjob": Slicer-Einstellungen
 
 
 class UploadComplete(BaseModel):
@@ -590,6 +592,9 @@ def upload_init(body: UploadInit):
     if body.kind == "apk":
         if not body.filename.lower().endswith(".apk"):
             raise HTTPException(400, "Bitte eine .apk-Datei auswählen")
+    elif body.kind == "druckjob":
+        if body.size > 500 * 1024 * 1024:
+            raise HTTPException(400, "Datei zu groß (max. 500 MB)")
     elif body.kind == "druck":
         if not body.filename.lower().endswith(".exe"):
             raise HTTPException(400, "Bitte den Installer Druckmonitor-Setup-….exe auswählen")
@@ -633,6 +638,10 @@ def upload_complete(upload_id: str, body: UploadComplete):
         release = register_druck_release(part)
         meta.unlink(missing_ok=True)
         return release
+    if info.get("kind") == "druckjob":
+        job = register_druck_job(part, info["filename"], info.get("options") or {})
+        meta.unlink(missing_ok=True)
+        return job
     item = _register_media(part, info["filename"], info["mime"], body.title)
     meta.unlink(missing_ok=True)
     _add_to_playlists(item["id"], body.playlist_ids)
@@ -1465,5 +1474,10 @@ def admin_overview(history: bool = True):
 
 
 # ------------------------------------------------------------------ 3D-Drucker (Druckmonitor-App)
-druck_router, register_druck_release = make_druck_router(DATA_DIR, require_device, require_admin)
+_druck_hooks: dict = {}
+druck_router, register_druck_release = make_druck_router(DATA_DIR, require_device, require_admin, _druck_hooks)
 app.include_router(druck_router)
+jobs_router, register_druck_job, _pending_job = make_jobs_router(
+    DATA_DIR, require_device, require_admin, lambda: _druck_hooks["printer_state"]())
+_druck_hooks["pending_job"] = _pending_job
+app.include_router(jobs_router)

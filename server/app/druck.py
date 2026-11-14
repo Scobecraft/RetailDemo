@@ -98,7 +98,9 @@ def read_installer_version(path: Path) -> Optional[str]:
     return v if v and re.fullmatch(r"\d+(\.\d+){1,3}", v) else None
 
 
-def make_router(data_dir: Path, require_device: Callable, require_viewer: Callable):
+def make_router(data_dir: Path, require_device: Callable, require_viewer: Callable, hooks: Optional[dict] = None):
+    """hooks["pending_job"]: liefert den Druckauftrag, den die App abholen soll (siehe druckjobs.py)."""
+    hooks = hooks if hooks is not None else {}
     st = DruckState(data_dir)
     web = _web_dir()
     r = APIRouter()
@@ -151,8 +153,10 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
             st.pc_info = data["pcInfo"]
         st.state, st.state_at = data, time.time()
         _record_history(st)
+        pending = hooks.get("pending_job")
         return {"ok": True, "watching": time.time() - st.last_view < WATCHING_S, "needInfo": st.pc_info is None,
-                "update": update_for(str(data.get("appVersion") or ""))}
+                "update": update_for(str(data.get("appVersion") or "")),
+                "print_job": pending() if pending else None}
 
     # ------------------------------------------------ Programm-Updates
 
@@ -387,6 +391,15 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
             mime = "text/javascript"
         return FileResponse(target, media_type=mime, headers={"Cache-Control": "no-cache"})
 
+    def printer_state() -> dict:
+        """Kurzer Druckerzustand für die Druckaufträge."""
+        live = (st.state.get("printer") or {}).get("live") or {}
+        return {"online": st.online and bool(live.get("online")), "app_online": st.online,
+                "state": live.get("state") if st.online else None, "status": live.get("status") if st.online else None,
+                "can_upload": bool((st.state.get("capabilities") or {}).get("upload")),
+                "app_version": st.state.get("appVersion")}
+
+    hooks["printer_state"] = printer_state
     return r, register_release
 
 

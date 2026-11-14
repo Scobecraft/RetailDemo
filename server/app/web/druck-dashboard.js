@@ -163,7 +163,7 @@ function dkBuild() {
     el("div", { class: "dk-head" },
       el("div", {}, el("h2", {}, "3D-Drucker"), el("div", { class: "dk-headline" }, R.live, R.sub)),
       el("div", { class: "dk-actions" }, fullBtn, progBtn)),
-    el("div", { class: "dk-grid" }, hero, camCard, modelCard, tempCard, nowCard, progCard, detailCard),
+    el("div", { class: "dk-grid" }, hero, dkJobsCard(), camCard, modelCard, tempCard, nowCard, progCard, detailCard),
     el("div", { class: "dk-head dk-pc-head" }, el("div", {}, R.pcTitle, el("div", { class: "dk-headline" }, R.pcSub))),
     R.pcHint, R.pcGrid, R.foot,
     el("p", { class: "muted druck-help" }, "Die Daten kommen von der Druckmonitor-App auf dem PC beim Drucker (Einstellungen → „Webseite (Retail-Demo-Server)“: Adresse dieses Servers und Geräte-Token). Das Kamerabild läuft flüssig, solange diese Seite offen ist.")));
@@ -525,6 +525,7 @@ async function dkLoad() {
     }
     if (!DK.built) dkBuild();
     dkUpdate(d);
+    dkLoadJobs();
   } catch (e) {
     if (DK.built) dkSetLive(false, "Server nicht erreichbar");
   } finally { DK.busy = false; }
@@ -542,3 +543,164 @@ function showDruck(on) {
 }
 let dkResizeT;
 addEventListener("resize", () => { clearTimeout(dkResizeT); dkResizeT = setTimeout(() => { if (DK.visible && DK.data) dkUpdate(DK.data); }, 200); });
+
+// ---------------------------------------------------------------- Drucken (Aufträge)
+// Datei hochladen → Server slict für den Adventurer 5M → "Drucken" → Druckmonitor-App schickt sie an den Drucker.
+const DKJ = { opts: { material: "PLA", quality: "standard", infill: 15, supports: false, brim: true }, last: "", data: null, busy: false };
+const DKJ_STATE = {
+  slicing: ["Wird geslict …", "warm"], ready: ["Bereit", "ok"], failed: ["Slicen fehlgeschlagen", "bad"],
+  queued: ["Wartet auf Druckmonitor …", "warm"], sending: ["Wird übertragen …", "run"], printing: ["An den Drucker geschickt", "ok"],
+  error: ["Fehler", "bad"],
+};
+const DKJ_QUALITY = { fein: "Fein · 0,12 mm", standard: "Standard · 0,20 mm", schnell: "Schnell · 0,28 mm" };
+
+function dkOptionsForm(o) {
+  const mat = el("select", {}, ...["PLA", "PETG", "ABS", "ASA", "TPU"].map(m => el("option", { value: m, selected: o.material === m }, m)));
+  const q = el("select", {}, ...Object.entries(DKJ_QUALITY).map(([k, v]) => el("option", { value: k, selected: o.quality === k }, v)));
+  const infillVal = el("b", {}, `${o.infill} %`);
+  const infill = el("input", { type: "range", min: 0, max: 100, step: 5, value: o.infill, oninput: () => infillVal.textContent = `${infill.value} %` });
+  const sup = el("input", { type: "checkbox", checked: o.supports });
+  const brim = el("input", { type: "checkbox", checked: o.brim });
+  const warn = el("div", { class: "dkj-warn" });
+  const upd = () => warn.textContent = ["ABS", "ASA"].includes(mat.value) ? "ABS/ASA nur mit geschlossenem Gehäuse (Adventurer 5M Pro) drucken." : mat.value === "TPU" ? "TPU wird sehr langsam gedruckt." : "";
+  mat.addEventListener("change", upd); upd();
+  const node = el("div", { class: "dkj-form" },
+    el("label", {}, "Material", mat), el("label", {}, "Qualität", q),
+    el("label", {}, el("span", {}, "Füllung ", infillVal), infill),
+    el("label", { class: "dkj-check" }, sup, "Stützstrukturen (automatisch)"),
+    el("label", { class: "dkj-check" }, brim, "Rand (Brim) für bessere Haftung"), warn);
+  return { node, value: () => ({ material: mat.value, quality: q.value, infill: +infill.value, supports: sup.checked, brim: brim.checked }) };
+}
+
+function dkJobsCard() {
+  const R = DK.refs;
+  const input = el("input", { type: "file", accept: ".stl,.3mf,.obj,.gcode,.gco,.g,.gx", hidden: true, onchange: () => { const f = input.files[0]; input.value = ""; if (f) dkUploadJob(f); } });
+  R.jobForm = dkOptionsForm(DKJ.opts);
+  R.jobDrop = el("div", { class: "drop dkj-drop", onclick: () => input.click() },
+    el("strong", {}, "3D-Datei hierher ziehen"), el("span", {}, "oder klicken · STL, 3MF, OBJ werden automatisch für den Adventurer 5M geslict · fertiger G-Code geht direkt"), input);
+  R.jobDrop.addEventListener("dragover", e => { e.preventDefault(); R.jobDrop.classList.add("over"); });
+  R.jobDrop.addEventListener("dragleave", () => R.jobDrop.classList.remove("over"));
+  R.jobDrop.addEventListener("drop", e => { e.preventDefault(); R.jobDrop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) dkUploadJob(f); });
+  R.jobProgress = el("div", { class: "progress", hidden: true }, el("div"));
+  R.jobPrinter = el("div", { class: "dkj-printer muted" });
+  R.jobList = el("div", { class: "dkj-list" });
+  return dkCard("span-12", "Drucken",
+    el("div", { class: "dkj-top" }, el("div", {}, R.jobDrop, R.jobProgress), R.jobForm.node),
+    R.jobPrinter, R.jobList);
+}
+
+async function dkUploadJob(f) {
+  const R = DK.refs, bar = R.jobProgress.firstChild;
+  DKJ.opts = R.jobForm.value();
+  R.jobProgress.hidden = false; bar.style.width = "0%";
+  try {
+    const { id } = await api("/api/admin/uploads", json("POST", { filename: f.name, size: f.size, kind: "druckjob", options: DKJ.opts }));
+    let off = 0;
+    while (off < f.size) {
+      const r = await api(`/api/admin/uploads/${id}?offset=${off}`, { method: "PUT", body: f.slice(off, off + CHUNK), headers: { "Content-Type": "application/octet-stream" } });
+      off = r.received; bar.style.width = Math.round(off / f.size * 100) + "%";
+    }
+    const job = await api(`/api/admin/uploads/${id}/complete`, json("POST", {}));
+    toast(job.state === "slicing" ? `„${job.name}“ wird geslict …` : `„${job.name}“ ist bereit`);
+  } catch (err) { toast("Fehler: " + err.message); }
+  R.jobProgress.hidden = true;
+  DKJ.last = ""; dkLoadJobs();
+}
+
+async function dkLoadJobs() {
+  if (DKJ.busy) return;
+  DKJ.busy = true;
+  try {
+    const d = await api("/api/admin/druck/jobs");
+    const key = JSON.stringify(d);
+    if (key !== DKJ.last) { DKJ.last = key; DKJ.data = d; dkRenderJobs(d); }
+  } catch (e) { /* nächster Versuch beim nächsten Laden */ } finally { DKJ.busy = false; }
+}
+
+function dkPrinterReady(p) {
+  if (!p.app_online) return [false, "Die Druckmonitor-App ist nicht verbunden – drucken geht erst, wenn sie läuft."];
+  if (!p.can_upload) return [false, "In der Druckmonitor-App fehlen Seriennummer und Prüfcode (oder die App ist veraltet) – ohne sie kann sie nichts an den Drucker schicken."];
+  if (!p.online) return [false, "Der Drucker ist nicht erreichbar."];
+  if (!["idle", "done"].includes(p.state)) return [false, `Der Drucker ist gerade beschäftigt (${p.status || p.state}).`];
+  return [true, "Drucker bereit."];
+}
+
+function dkRenderJobs(d) {
+  const R = DK.refs;
+  const [ready, why] = dkPrinterReady(d.printer || {});
+  R.jobPrinter.replaceChildren(el("span", { class: "dot" + (ready ? " on" : "") }), why);
+  if (!d.jobs.length) { R.jobList.replaceChildren(el("div", { class: "muted dkj-empty" }, "Noch keine Druckaufträge.")); return; }
+  R.jobList.replaceChildren(...d.jobs.map(j => {
+    const [label, cls] = DKJ_STATE[j.state] || [j.state, "idle"];
+    const st = j.stats || {};
+    const o = j.options || {};
+    const facts = [
+      st.time_s ? `⏱ ${dkDur(st.time_s)}` : null,
+      st.filament_g ? `${dkNum(st.filament_g, 0)} g Filament` : st.filament_m ? `${dkNum(st.filament_m, 1)} m Filament` : null,
+      st.layers ? `${dkNum(st.layers)} Schichten` : null,
+      j.sliced_by_user ? "eigener G-Code" : `${o.material} · ${DKJ_QUALITY[o.quality] || o.quality} · ${o.infill} % Füllung${o.supports ? " · Stützen" : ""}`,
+    ].filter(Boolean);
+    const canPrint = ready && ["ready", "error", "printing"].includes(j.state);
+    return el("div", { class: "dkj-job" },
+      el("div", { class: "dkj-main" },
+        el("div", { class: "dkj-name" }, j.name),
+        el("div", { class: "dkj-facts" }, ...facts.map(f => el("span", {}, f))),
+        j.message ? el("div", { class: "dkj-msg " + (["failed", "error"].includes(j.state) ? "bad" : "") }, j.message) : null),
+      el("span", { class: `dk-state ${cls}` }, el("i"), el("span", {}, label)),
+      el("div", { class: "dkj-actions" },
+        el("button", { class: "btn small", onclick: () => dkPreviewJob(j) }, "Vorschau"),
+        !j.sliced_by_user && !["slicing", "queued", "sending"].includes(j.state)
+          ? el("button", { class: "btn small", onclick: () => dkResliceJob(j) }, "Einstellungen") : null,
+        j.state === "queued" ? el("button", { class: "btn small", onclick: async () => { await api(`/api/admin/druck/jobs/${j.id}/cancel`, { method: "POST" }); DKJ.last = ""; dkLoadJobs(); } }, "Zurückholen") : null,
+        el("button", { class: "btn small primary", disabled: !canPrint, title: canPrint ? "" : why, onclick: () => dkPrintJob(j) }, "Drucken"),
+        !["slicing", "queued", "sending"].includes(j.state)
+          ? el("button", { class: "btn small danger", onclick: async () => { if (await confirmDlg("Auftrag löschen?", `„${j.name}“ wird vom Server gelöscht.`)) { await api(`/api/admin/druck/jobs/${j.id}`, { method: "DELETE" }); DKJ.last = ""; dkLoadJobs(); } } }, "Löschen") : null));
+  }));
+}
+
+async function dkPrintJob(j) {
+  const mat = j.sliced_by_user ? "das passende Filament" : `${j.options.material}-Filament`;
+  const c1 = el("input", { type: "checkbox" }), c2 = el("input", { type: "checkbox" }), lev = el("input", { type: "checkbox", checked: true });
+  const content = [
+    el("p", {}, `„${j.name}“ wird an den Drucker geschickt und startet sofort` + (j.stats?.time_s ? ` (ca. ${dkDur(j.stats.time_s)}).` : ".")),
+    el("label", { class: "dkj-check" }, c1, "Das Druckbett ist leer und sauber"),
+    el("label", { class: "dkj-check" }, c2, `${mat[0].toUpperCase() + mat.slice(1)} ist eingelegt`),
+    el("label", { class: "dkj-check" }, lev, "Vor dem Druck das Bett vermessen (empfohlen)"),
+  ];
+  if (await dialog("Jetzt drucken?", content, [["Abbrechen", ""], ["Drucken", "ok", "primary"]]) !== "ok") return;
+  if (!c1.checked || !c2.checked) { toast("Bitte erst Druckbett und Filament prüfen und beides abhaken"); return; }
+  try {
+    await api(`/api/admin/druck/jobs/${j.id}/print`, json("POST", { leveling: lev.checked }));
+    toast("Wird an die Druckmonitor-App übergeben …");
+  } catch (err) { toast(err.message); }
+  DKJ.last = ""; dkLoadJobs();
+}
+
+async function dkResliceJob(j) {
+  const form = dkOptionsForm(j.options);
+  if (await dialog(`„${j.name}“ neu slicen`, [form.node], [["Abbrechen", ""], ["Neu slicen", "ok", "primary"]]) !== "ok") return;
+  try { await api(`/api/admin/druck/jobs/${j.id}/slice`, json("POST", form.value())); } catch (err) { toast(err.message); }
+  DKJ.last = ""; dkLoadJobs();
+}
+
+let dkPreviewViewer = null;
+async function dkPreviewJob(j) {
+  const canvas = el("canvas", { class: "dk-3d" });
+  const msg = el("div", { class: "dk-cam-msg" }, "Lade Vorschau …");
+  const kind = j.gcode ? "gcode" : "source";
+  const box = el("div", { class: "dk-3d-box dkj-preview" }, canvas, msg);
+  const info = el("p", { class: "muted", style: "font-size:13px;margin:8px 0 0" }, kind === "gcode" ? "Vorschau des geslicten G-Codes (Druckwege)" : "Vorschau des Modells");
+  const p = dialog(j.name, [box, info], [["Schließen", ""]]);
+  $("#dlg").classList.add("wide");
+  try {
+    const { ModelViewer } = await import("/druck/viewer.js");
+    dkPreviewViewer = new ModelViewer(canvas, { color: "#ff7a00", speed: 0.35, width: 800, height: 600 });
+    dkPreviewViewer.setPixelScale(1);
+    const r = await dkPreviewViewer.load(`/api/admin/druck/jobs/${j.id}/preview/${kind}`);
+    msg.hidden = !!r;
+    if (r?.size) info.textContent += ` · ${r.size.map(v => dkNum(v, 1)).join(" × ")} mm`;
+  } catch (e) { msg.textContent = "Vorschau nicht möglich: " + e.message; }
+  await p;
+  $("#dlg").classList.remove("wide");
+  if (dkPreviewViewer) { dkPreviewViewer.paused = true; dkPreviewViewer.clear(); dkPreviewViewer.renderer?.dispose(); dkPreviewViewer = null; }
+}
