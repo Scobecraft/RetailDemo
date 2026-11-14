@@ -23,6 +23,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from .slicer import schema
+
 SLICER = os.environ.get("PRUSA_SLICER", "prusa-slicer")
 PROFILE = Path(__file__).parent / "slicer" / "adventurer5m.ini"
 MATERIALS = json.loads((Path(__file__).parent / "slicer" / "materials.json").read_text())
@@ -36,11 +38,48 @@ IDLE_STATES = {"idle", "done"}
 
 
 class SliceOptions(BaseModel):
-    material: str = "PLA"
-    quality: str = "standard"
-    infill: int = 15
-    supports: bool = False
-    brim: bool = True
+    values: dict = {}
+
+
+BED_HALF, MAX_Z = 110.0, 220.0
+_full_profile: Optional[dict] = None
+_full_lock = threading.Lock()
+
+
+def full_profile() -> dict:
+    """Vollständige Konfiguration (unser Profil + PrusaSlicer-Standardwerte), einmal ermittelt."""
+    global _full_profile
+    with _full_lock:
+        if _full_profile is None:
+            prof = schema.read_ini(PROFILE)
+            try:
+                tmp = Path(os.environ.get("TMPDIR", "/tmp")) / f"retaildemo-slicer-{os.getpid()}.ini"
+                subprocess.run([SLICER, "--load", str(PROFILE), "--save", str(tmp)], capture_output=True, timeout=60)
+                if tmp.exists():
+                    prof = schema.read_ini(tmp)
+                    tmp.unlink(missing_ok=True)
+            except (OSError, subprocess.SubprocessError):
+                pass
+            _full_profile = prof
+        return _full_profile
+
+
+def material_key(name: str) -> str:
+    return name if name in MATERIALS else "PLA"
+
+
+def material_defaults(name: str) -> dict:
+    return schema.defaults(full_profile(), MATERIALS[material_key(name)])
+
+
+def _legacy(o: dict) -> dict:
+    """Aufträge aus der ersten Version (material/quality/infill/supports/brim) umrechnen."""
+    if "material" not in o and "quality" not in o:
+        return o
+    v = {"filament_type": o.get("material", "PLA"), "layer_height": QUALITIES.get(o.get("quality"), 0.2),
+         "fill_density": o.get("infill", 15), "support_material": bool(o.get("supports")),
+         "brim_width": 5 if o.get("brim", True) else 0}
+    return v
 
 
 class PrintRequest(BaseModel):
@@ -52,14 +91,48 @@ class JobStatus(BaseModel):
     message: str = ""
 
 
-def _clean_options(o: SliceOptions) -> dict:
-    return {
-        "material": o.material if o.material in MATERIALS else "PLA",
-        "quality": o.quality if o.quality in QUALITIES else "standard",
-        "infill": max(0, min(100, int(o.infill))),
-        "supports": bool(o.supports),
-        "brim": bool(o.brim),
-    }
+def _clean_options(values: dict, base: Optional[dict] = None) -> dict:
+    """Alle Werte prüfen: Materialvorlage als Grundlage, darüber gespeicherte Standards, darüber die Eingaben."""
+    values = _legacy(values or {})
+    mat = material_key(str(values.get("filament_type") or (base or {}).get("filament_type") or "PLA"))
+    out = material_defaults(mat)
+    for src in (base or {}, values):
+        for k, v in src.items():
+            if k in schema.BY_KEY and k in out:
+                try:
+                    out[k] = schema.coerce(schema.BY_KEY[k], v)
+                except (ValueError, TypeError):
+                    raise HTTPException(400, f"Ungültiger Wert für „{schema.BY_KEY[k]['label']}“")
+    if out.get("support_material") is False:
+        out["support_material_auto"] = out.get("support_material_auto", True)
+    return out
+
+
+def _check_bounds(path: Path) -> Optional[str]:
+    """Liegt jede Bewegung auf dem Druckbett? Sonst nicht drucken (Schutz für den Drucker)."""
+    max_x = max_y = max_z = 0.0
+    with open(path, "r", errors="ignore") as f:
+        for line in f:
+            if not line.startswith(("G0", "G1")):
+                continue
+            for tok in line.split(";", 1)[0].split()[1:]:
+                c = tok[:1]
+                if c in "XYZ":
+                    try:
+                        v = float(tok[1:])
+                    except ValueError:
+                        continue
+                    if c == "X":
+                        max_x = max(max_x, abs(v))
+                    elif c == "Y":
+                        max_y = max(max_y, abs(v))
+                    elif v > max_z:
+                        max_z = v
+    if max_x > BED_HALF + 0.01 or max_y > BED_HALF + 0.01:
+        return "Das Modell passt nicht auf das Druckbett (220 × 220 mm) – kleiner skalieren oder weniger Kopien."
+    if max_z > MAX_Z + 10.01:  # Endfahrt hebt den Kopf um 10 mm
+        return "Das Modell ist zu hoch (max. 220 mm)."
+    return None
 
 
 def _parse_gcode_stats(path: Path) -> dict:
@@ -148,26 +221,18 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
                 save(job)
             d = jobs_dir / job_id
             o = job["options"]
-            mat = MATERIALS[o["material"]]
             out = d / "druck.gcode"
-            cmd = [SLICER, "--export-gcode", "--load", str(PROFILE),
-                   "--layer-height", str(QUALITIES[o["quality"]]),
-                   "--fill-density", f"{o['infill']}%",
-                   "--temperature", str(mat["temperature"]), "--first-layer-temperature", str(mat["first_layer_temperature"]),
-                   "--bed-temperature", str(mat["bed_temperature"]), "--first-layer-bed-temperature", str(mat["first_layer_bed_temperature"]),
-                   "--filament-density", str(mat["filament_density"]), "--filament-type", mat["name"],
-                   "--max-fan-speed", str(mat["fan"]), "--min-fan-speed", str(mat["fan"]),
-                   "--filament-max-volumetric-speed", str(mat["max_volumetric_speed"]),
-                   "--brim-width", "5" if o["brim"] else "0",
-                   "--center", "0,0", "--ensure-on-bed",
-                   "--output", str(out), str(d / job["source"])]
-            if o["supports"]:
-                cmd[3:3] = ["--support-material", "--support-material-auto"]
+            out.unlink(missing_ok=True)
+            cmd = [SLICER, "--export-gcode", "--load", str(PROFILE), *schema.cli_args(o, set(full_profile())),
+                   "--center", "0,0", "--ensure-on-bed", "--output", str(out), str(d / job["source"])]
             try:
                 res = subprocess.run(cmd, capture_output=True, text=True, timeout=900,
                                      env={**os.environ, "HOME": str(d), "XDG_CONFIG_HOME": str(d / ".config")})
                 ok = res.returncode == 0 and out.exists() and out.stat().st_size > 0
-                err = "" if ok else _slicer_error(res.stdout + "\n" + res.stderr)
+                err = "" if ok else (_slicer_error(res.stdout + "\n" + res.stderr) if res.returncode > 0 else
+                                     "Der Slicer ist bei dieser Einstellungskombination abgestürzt – z. B. Abstand zwischen Kopien erhöhen.")
+                if ok and (bad := _check_bounds(out)):
+                    ok, err = False, bad
             except FileNotFoundError:
                 ok, err = False, "Slicer (PrusaSlicer) ist auf dem Server nicht installiert – Server neu bauen."
             except subprocess.TimeoutExpired:
@@ -196,7 +261,7 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
         shutil.move(str(tmp), d / source)
         title = re.sub(r"\.(gcode\.3mf|stl|3mf|obj|gcode|gco|g|gx)$", "", name, flags=re.I) or "Druck"
         job = {"id": job_id, "name": title[:120], "file_name": name, "source": source, "created": time.time(),
-               "options": _clean_options(SliceOptions(**(options or {}))), "stats": {}, "message": ""}
+               "options": _clean_options(options or {}, user_defaults()), "stats": {}, "message": ""}
         if ext in GCODE_EXT or low.endswith(".gcode.3mf"):
             if low.endswith(".gcode.3mf"):
                 shutil.rmtree(d)
@@ -210,7 +275,38 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
             threading.Thread(target=run_slicer, args=(job_id,), daemon=True).start()
         return job
 
+    defaults_file = data_dir / "druck" / "slicer-defaults.json"
+
+    def user_defaults() -> dict:
+        try:
+            return json.loads(defaults_file.read_text())
+        except (OSError, ValueError):
+            return {}
+
     # ------------------------------------------------ Webseite
+
+    @r.get("/api/admin/druck/slicer", dependencies=[Depends(require_viewer)])
+    def slicer_schema():
+        """Alles für das Einstellungsformular: Felder, Bereiche, Vorlagen je Material, gespeicherte Standards."""
+        known = full_profile()
+        fields = [fld for fld in schema.FIELDS if fld.get("transform") or fld["key"] in known]
+        return {"sections": schema.SECTIONS, "fields": fields,
+                "materials": {k: material_defaults(k) for k in MATERIALS},
+                "material_info": {k: {"enclosure": v.get("enclosure", False)} for k, v in MATERIALS.items()},
+                "qualities": QUALITIES, "user_defaults": _clean_options(user_defaults()) if user_defaults() else None}
+
+    @r.put("/api/admin/druck/slicer/defaults", dependencies=[Depends(require_viewer)])
+    def save_defaults(body: SliceOptions):
+        values = _clean_options(body.values)
+        for k in schema.TRANSFORM_DEFAULTS:  # Modell-Drehung/Kopien nicht als Standard merken
+            values.pop(k, None)
+        defaults_file.write_text(json.dumps(values))
+        return {"ok": True}
+
+    @r.delete("/api/admin/druck/slicer/defaults", dependencies=[Depends(require_viewer)])
+    def reset_defaults():
+        defaults_file.unlink(missing_ok=True)
+        return {"ok": True}
 
     @r.get("/api/admin/druck/jobs", dependencies=[Depends(require_viewer)])
     def list_jobs():
@@ -227,7 +323,7 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
                 raise HTTPException(400, "Fertiger G-Code wird nicht neu geslict")
             if job["state"] in ("slicing", "queued", "sending"):
                 raise HTTPException(409, "Gerade beschäftigt")
-            job.update(options=_clean_options(body), state="slicing", message="", stats={})
+            job.update(options=_clean_options(body.values), state="slicing", message="", stats={})
             save(job)
         threading.Thread(target=run_slicer, args=(job_id,), daemon=True).start()
         return job

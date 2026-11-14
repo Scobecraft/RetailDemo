@@ -261,8 +261,14 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsg
 
 ### Drucken von der Webseite
 
-Im Reiter **3D-Drucker** → **Drucken** eine 3D-Datei hochladen (STL, 3MF, OBJ) und Material (PLA, PETG, ABS,
-ASA, TPU), Qualität (0,12 / 0,20 / 0,28 mm), Füllung, Stützen und Rand wählen. Der Server slict sie mit
+Im Reiter **3D-Drucker** → **Drucken** eine 3D-Datei hochladen (STL, 3MF, OBJ). Schnellauswahl: Material,
+Qualität, Füllung, Stützen, Rand. **„⚙ Alle Einstellungen …“** öffnet alle Slicer-Einstellungen (rund 85, mit
+Suche): Qualität, Wände & Oberflächen (auch Bügeln), Füllung (Muster, Winkel), Stützen (normal/eng/organisch,
+Abstände, Kontaktschichten, Raft), Haftung (Brim, Skirt), Geschwindigkeiten und Beschleunigungen, Temperatur &
+Kühlung, Rückzug, Material sowie Modell (Skalieren, Drehen, Kopien, Vasenmodus). Geänderte Werte sind markiert
+und einzeln zurücksetzbar; „Als Standard speichern“ merkt die Auswahl für künftige Uploads. Bereits
+hochgeladene Aufträge lassen sich über „Einstellungen“ mit anderen Werten neu slicen. Nach dem Slicen prüft der
+Server, dass jede Bewegung auf dem Druckbett liegt – sonst wird der Auftrag nicht freigegeben. Der Server slict sie mit
 PrusaSlicer und dem Profil `server/app/slicer/adventurer5m.ini` für den Flashforge Adventurer 5M / 5M Pro
 (0,4-mm-Düse) und zeigt Druckzeit, Filament, Schichten und eine 3D-Vorschau der Druckwege. Fertiger G-Code
 (z. B. aus Flash Studio) wird ohne Slicen übernommen.

@@ -546,55 +546,156 @@ addEventListener("resize", () => { clearTimeout(dkResizeT); dkResizeT = setTimeo
 
 // ---------------------------------------------------------------- Drucken (Aufträge)
 // Datei hochladen → Server slict für den Adventurer 5M → "Drucken" → Druckmonitor-App schickt sie an den Drucker.
-const DKJ = { opts: { material: "PLA", quality: "standard", infill: 15, supports: false, brim: true }, last: "", data: null, busy: false };
+// Alle Slicer-Einstellungen kommen als Liste vom Server (Felder, Bereiche, Vorlagen je Material).
+const DKJ = { schema: null, values: null, last: "", data: null, busy: false };
 const DKJ_STATE = {
   slicing: ["Wird geslict …", "warm"], ready: ["Bereit", "ok"], failed: ["Slicen fehlgeschlagen", "bad"],
   queued: ["Wartet auf Druckmonitor …", "warm"], sending: ["Wird übertragen …", "run"], printing: ["An den Drucker geschickt", "ok"],
   error: ["Fehler", "bad"],
 };
 const DKJ_QUALITY = { fein: "Fein · 0,12 mm", standard: "Standard · 0,20 mm", schnell: "Schnell · 0,28 mm" };
+// Werte, die beim Materialwechsel aus der Materialvorlage übernommen werden
+const DKJ_MAT_KEYS = ["temperature", "first_layer_temperature", "bed_temperature", "first_layer_bed_temperature",
+  "filament_density", "filament_max_volumetric_speed", "min_fan_speed", "max_fan_speed"];
 
-function dkOptionsForm(o) {
-  const mat = el("select", {}, ...["PLA", "PETG", "ABS", "ASA", "TPU"].map(m => el("option", { value: m, selected: o.material === m }, m)));
-  const q = el("select", {}, ...Object.entries(DKJ_QUALITY).map(([k, v]) => el("option", { value: k, selected: o.quality === k }, v)));
-  const infillVal = el("b", {}, `${o.infill} %`);
-  const infill = el("input", { type: "range", min: 0, max: 100, step: 5, value: o.infill, oninput: () => infillVal.textContent = `${infill.value} %` });
-  const sup = el("input", { type: "checkbox", checked: o.supports });
-  const brim = el("input", { type: "checkbox", checked: o.brim });
-  const warn = el("div", { class: "dkj-warn" });
-  const upd = () => warn.textContent = ["ABS", "ASA"].includes(mat.value) ? "ABS/ASA nur mit geschlossenem Gehäuse (Adventurer 5M Pro) drucken." : mat.value === "TPU" ? "TPU wird sehr langsam gedruckt." : "";
-  mat.addEventListener("change", upd); upd();
-  const node = el("div", { class: "dkj-form" },
-    el("label", {}, "Material", mat), el("label", {}, "Qualität", q),
-    el("label", {}, el("span", {}, "Füllung ", infillVal), infill),
-    el("label", { class: "dkj-check" }, sup, "Stützstrukturen (automatisch)"),
-    el("label", { class: "dkj-check" }, brim, "Rand (Brim) für bessere Haftung"), warn);
-  return { node, value: () => ({ material: mat.value, quality: q.value, infill: +infill.value, supports: sup.checked, brim: brim.checked }) };
+async function dkjSchema() {
+  if (!DKJ.schema) {
+    DKJ.schema = await api("/api/admin/druck/slicer");
+    DKJ.values = { ...(DKJ.schema.user_defaults || DKJ.schema.materials.PLA) };
+  }
+  return DKJ.schema;
+}
+const dkjField = k => DKJ.schema.fields.find(f => f.key === k);
+const dkjFmt = (f, v) => f.type === "bool" ? (v ? "an" : "aus") : f.type === "select" ? (f.choices.find(c => c[0] === v) || [v, v])[1] : `${dkNum(v, f.type === "int" ? 0 : (String(f.step || 1).split(".")[1] || "").length)}${f.unit ? " " + f.unit : ""}`;
+// Vergleichsbasis für "geändert": Materialvorlage des gewählten Materials
+const dkjBase = v => ({ ...DKJ.schema.materials[v.filament_type] || DKJ.schema.materials.PLA, scale: 100, rotate: 0, rotate_x: 0, rotate_y: 0, duplicate: 1 });
+const dkjChanged = v => { const b = dkjBase(v); return Object.keys(v).filter(k => b[k] !== undefined && String(b[k]) !== String(v[k])); };
+
+function dkjApplyMaterial(v, mat) {
+  const m = DKJ.schema.materials[mat];
+  if (!m) return;
+  v.filament_type = mat;
+  for (const k of DKJ_MAT_KEYS) if (m[k] !== undefined) v[k] = m[k];
+}
+
+// Eingabe für ein Feld; onChange(neuerWert)
+function dkjInput(f, value, onChange) {
+  if (f.type === "bool") {
+    const i = el("input", { type: "checkbox", checked: !!value, onchange: () => onChange(i.checked) });
+    return i;
+  }
+  if (f.type === "select") {
+    const i = el("select", { onchange: () => onChange(i.value) }, ...f.choices.map(([v, t]) => el("option", { value: v, selected: v === value }, t)));
+    return i;
+  }
+  const i = el("input", { type: "number", min: f.min, max: f.max, step: f.step || 1, value,
+    onchange: () => { let v = parseFloat(String(i.value).replace(",", ".")); if (isNaN(v)) v = value; v = Math.min(f.max ?? v, Math.max(f.min ?? v, v)); i.value = v; onChange(v); } });
+  return i;
+}
+
+// Kompletter Einstellungsdialog (wie ein Slicer): Bereiche als Reiter, Suche, Zurücksetzen je Feld
+async function dkjSettingsDialog(title, start, okLabel) {
+  await dkjSchema();
+  const v = { ...start };
+  const body = el("div", { class: "dkj-set" });
+  const tabs = el("div", { class: "dkj-tabs" });
+  const search = el("input", { type: "search", placeholder: "Einstellung suchen …", class: "dkj-search" });
+  const changedInfo = el("span", { class: "muted dkj-changed" });
+  let section = DKJ.schema.sections[0];
+  const render = () => {
+    const q = normText(search.value.trim());
+    const base = dkjBase(v), changed = new Set(dkjChanged(v));
+    changedInfo.textContent = changed.size ? `${changed.size} Einstellung${changed.size > 1 ? "en" : ""} geändert` : "Alles wie in der Materialvorlage";
+    tabs.replaceChildren(...DKJ.schema.sections.map(s => {
+      const n = DKJ.schema.fields.filter(f => f.section === s && changed.has(f.key)).length;
+      return el("button", { type: "button", class: "dkj-tab" + (s === section && !q ? " active" : ""), onclick: () => { section = s; search.value = ""; render(); } }, s, n ? el("b", {}, String(n)) : null);
+    }));
+    const list = DKJ.schema.fields.filter(f => q ? normText(f.label + " " + f.section).includes(q) : f.section === section);
+    body.replaceChildren(...(list.length ? list.map(f => {
+      const row = el("div", { class: "dkj-row" + (changed.has(f.key) ? " changed" : "") });
+      const reset = el("button", { type: "button", class: "dkj-reset", title: `Zurück auf ${dkjFmt(f, base[f.key])}`, onclick: () => { v[f.key] = base[f.key]; render(); } }, "↺");
+      const input = dkjInput(f, v[f.key], val => {
+        if (f.key === "filament_type") dkjApplyMaterial(v, val); else v[f.key] = val;
+        render();
+      });
+      row.append(
+        el("label", {}, el("span", {}, f.label), q ? el("small", {}, f.section) : null, f.hint ? el("small", {}, f.hint) : null),
+        el("div", { class: "dkj-in" }, input, f.unit && f.type !== "bool" ? el("span", { class: "muted" }, f.unit) : null),
+        changed.has(f.key) ? reset : el("span"));
+      return row;
+    }) : [el("div", { class: "muted", style: "padding:12px 0" }, "Keine passende Einstellung.")]));
+  };
+  search.addEventListener("input", render);
+  render();
+  const top = el("div", { class: "dkj-set-top" }, search, changedInfo);
+  const res = await dialog(title, [top, tabs, body], [["Abbrechen", ""], ["Alles zurücksetzen", "reset"], [okLabel, "ok", "primary"]]);
+  if (res === "reset") { const b = dkjBase(v); Object.assign(v, b); return dkjSettingsDialog(title, v, okLabel); }
+  return res === "ok" ? v : null;
+}
+
+function dkjQualityOf(v) {
+  return Object.entries(DKJ.schema.qualities).find(([, h]) => Math.abs(h - v.layer_height) < 1e-6)?.[0] || "eigene";
 }
 
 function dkJobsCard() {
   const R = DK.refs;
   const input = el("input", { type: "file", accept: ".stl,.3mf,.obj,.gcode,.gco,.g,.gx", hidden: true, onchange: () => { const f = input.files[0]; input.value = ""; if (f) dkUploadJob(f); } });
-  R.jobForm = dkOptionsForm(DKJ.opts);
   R.jobDrop = el("div", { class: "drop dkj-drop", onclick: () => input.click() },
     el("strong", {}, "3D-Datei hierher ziehen"), el("span", {}, "oder klicken · STL, 3MF, OBJ werden automatisch für den Adventurer 5M geslict · fertiger G-Code geht direkt"), input);
   R.jobDrop.addEventListener("dragover", e => { e.preventDefault(); R.jobDrop.classList.add("over"); });
   R.jobDrop.addEventListener("dragleave", () => R.jobDrop.classList.remove("over"));
   R.jobDrop.addEventListener("drop", e => { e.preventDefault(); R.jobDrop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) dkUploadJob(f); });
   R.jobProgress = el("div", { class: "progress", hidden: true }, el("div"));
+  R.jobQuick = el("div", { class: "dkj-form" }, el("div", { class: "muted" }, "Lade Slicer-Einstellungen …"));
   R.jobPrinter = el("div", { class: "dkj-printer muted" });
   R.jobList = el("div", { class: "dkj-list" });
+  dkjSchema().then(dkjRenderQuick).catch(e => R.jobQuick.replaceChildren(el("div", { class: "muted" }, "Slicer-Einstellungen nicht verfügbar: " + e.message)));
   return dkCard("span-12", "Drucken",
-    el("div", { class: "dkj-top" }, el("div", {}, R.jobDrop, R.jobProgress), R.jobForm.node),
+    el("div", { class: "dkj-top" }, el("div", {}, R.jobDrop, R.jobProgress), R.jobQuick),
     R.jobPrinter, R.jobList);
+}
+
+// Schnellauswahl neben dem Upload; "Alle Einstellungen …" öffnet den vollständigen Dialog
+function dkjRenderQuick() {
+  const R = DK.refs, v = DKJ.values, S = DKJ.schema;
+  const mat = el("select", { onchange: () => { dkjApplyMaterial(v, mat.value); dkjRenderQuick(); } },
+    ...dkjField("filament_type").choices.filter(([k]) => S.materials[k]).map(([k, t]) => el("option", { value: k, selected: v.filament_type === k }, t)));
+  const qual = el("select", { onchange: () => { if (S.qualities[qual.value]) v.layer_height = S.qualities[qual.value]; dkjRenderQuick(); } },
+    ...Object.entries(DKJ_QUALITY).map(([k, t]) => el("option", { value: k, selected: dkjQualityOf(v) === k }, t)),
+    dkjQualityOf(v) === "eigene" ? el("option", { value: "eigene", selected: true }, `Eigene · ${dkNum(v.layer_height, 2)} mm`) : null);
+  const infillVal = el("b", {}, `${dkNum(v.fill_density)} %`);
+  const infill = el("input", { type: "range", min: 0, max: 100, step: 5, value: v.fill_density, oninput: () => { v.fill_density = +infill.value; infillVal.textContent = `${infill.value} %`; } });
+  const sup = el("input", { type: "checkbox", checked: v.support_material, onchange: () => { v.support_material = sup.checked; if (sup.checked) v.support_material_auto = true; dkjRenderQuick(); } });
+  const brim = el("input", { type: "checkbox", checked: v.brim_width > 0 && v.brim_type !== "no_brim", onchange: () => {
+    if (brim.checked) { v.brim_type = v.brim_type === "no_brim" ? "outer_only" : v.brim_type; v.brim_width = v.brim_width > 0 ? v.brim_width : 5; } else v.brim_type = "no_brim";
+  } });
+  const changed = dkjChanged(v).length;
+  const warn = ["ABS", "ASA", "PC", "PA"].includes(v.filament_type) ? `${v.filament_type} nur mit geschlossenem Gehäuse (Adventurer 5M Pro) drucken.` : v.filament_type === "TPU" ? "TPU wird sehr langsam gedruckt." : "";
+  R.jobQuick.replaceChildren(
+    el("label", {}, "Material", mat), el("label", {}, "Qualität", qual),
+    el("label", {}, el("span", {}, "Füllung ", infillVal), infill),
+    el("div", {},
+      el("label", { class: "dkj-check" }, sup, "Stützstrukturen"),
+      el("label", { class: "dkj-check" }, brim, "Rand (Brim)")),
+    ...(warn ? [el("div", { class: "dkj-warn" }, warn)] : []),
+    el("div", { class: "dkj-quick-actions" },
+      el("button", { class: "btn small", type: "button", onclick: async () => {
+        $("#dlg").classList.add("wide");
+        const nv = await dkjSettingsDialog("Slicer-Einstellungen", v, "Übernehmen");
+        $("#dlg").classList.remove("wide");
+        if (nv) { DKJ.values = nv; dkjRenderQuick(); }
+      } }, "⚙ Alle Einstellungen …", changed ? el("b", { class: "dkj-badge" }, String(changed)) : null),
+      el("button", { class: "btn small", type: "button", title: "Diese Einstellungen für künftige Uploads vorauswählen", onclick: async () => {
+        await api("/api/admin/druck/slicer/defaults", json("PUT", { values: v })); toast("Als Standard gespeichert");
+      } }, "Als Standard speichern")));
 }
 
 async function dkUploadJob(f) {
   const R = DK.refs, bar = R.jobProgress.firstChild;
-  DKJ.opts = R.jobForm.value();
+  await dkjSchema();
   R.jobProgress.hidden = false; bar.style.width = "0%";
   try {
-    const { id } = await api("/api/admin/uploads", json("POST", { filename: f.name, size: f.size, kind: "druckjob", options: DKJ.opts }));
+    const { id } = await api("/api/admin/uploads", json("POST", { filename: f.name, size: f.size, kind: "druckjob", options: DKJ.values }));
     let off = 0;
     while (off < f.size) {
       const r = await api(`/api/admin/uploads/${id}?offset=${off}`, { method: "PUT", body: f.slice(off, off + CHUNK), headers: { "Content-Type": "application/octet-stream" } });
@@ -625,6 +726,17 @@ function dkPrinterReady(p) {
   return [true, "Drucker bereit."];
 }
 
+function dkjSummary(o) {
+  if (o.material || o.quality) // Aufträge aus der ersten Version
+    return `${o.material} · ${DKJ_QUALITY[o.quality] || o.quality} · ${o.infill} % Füllung${o.supports ? " · Stützen" : ""}`;
+  const parts = [o.filament_type, `${dkNum(o.layer_height, 2)} mm`, `${dkNum(o.fill_density)} % Füllung`];
+  if (o.support_material) parts.push(o.support_material_style === "organic" ? "Baumstützen" : "Stützen");
+  if (o.duplicate > 1) parts.push(`${o.duplicate} Kopien`);
+  if (o.scale && o.scale !== 100) parts.push(`${o.scale} %`);
+  if (o.spiral_vase) parts.push("Vase");
+  return parts.join(" · ");
+}
+
 function dkRenderJobs(d) {
   const R = DK.refs;
   const [ready, why] = dkPrinterReady(d.printer || {});
@@ -633,12 +745,11 @@ function dkRenderJobs(d) {
   R.jobList.replaceChildren(...d.jobs.map(j => {
     const [label, cls] = DKJ_STATE[j.state] || [j.state, "idle"];
     const st = j.stats || {};
-    const o = j.options || {};
     const facts = [
       st.time_s ? `⏱ ${dkDur(st.time_s)}` : null,
       st.filament_g ? `${dkNum(st.filament_g, 0)} g Filament` : st.filament_m ? `${dkNum(st.filament_m, 1)} m Filament` : null,
       st.layers ? `${dkNum(st.layers)} Schichten` : null,
-      j.sliced_by_user ? "eigener G-Code" : `${o.material} · ${DKJ_QUALITY[o.quality] || o.quality} · ${o.infill} % Füllung${o.supports ? " · Stützen" : ""}`,
+      j.sliced_by_user ? "eigener G-Code" : dkjSummary(j.options || {}),
     ].filter(Boolean);
     const canPrint = ready && ["ready", "error", "printing"].includes(j.state);
     return el("div", { class: "dkj-job" },
@@ -659,12 +770,13 @@ function dkRenderJobs(d) {
 }
 
 async function dkPrintJob(j) {
-  const mat = j.sliced_by_user ? "das passende Filament" : `${j.options.material}-Filament`;
+  const matName = j.options?.filament_type || j.options?.material;
+  const mat = j.sliced_by_user || !matName ? "Das passende Filament" : `${matName}-Filament`;
   const c1 = el("input", { type: "checkbox" }), c2 = el("input", { type: "checkbox" }), lev = el("input", { type: "checkbox", checked: true });
   const content = [
     el("p", {}, `„${j.name}“ wird an den Drucker geschickt und startet sofort` + (j.stats?.time_s ? ` (ca. ${dkDur(j.stats.time_s)}).` : ".")),
     el("label", { class: "dkj-check" }, c1, "Das Druckbett ist leer und sauber"),
-    el("label", { class: "dkj-check" }, c2, `${mat[0].toUpperCase() + mat.slice(1)} ist eingelegt`),
+    el("label", { class: "dkj-check" }, c2, `${mat} ist eingelegt`),
     el("label", { class: "dkj-check" }, lev, "Vor dem Druck das Bett vermessen (empfohlen)"),
   ];
   if (await dialog("Jetzt drucken?", content, [["Abbrechen", ""], ["Drucken", "ok", "primary"]]) !== "ok") return;
@@ -677,9 +789,14 @@ async function dkPrintJob(j) {
 }
 
 async function dkResliceJob(j) {
-  const form = dkOptionsForm(j.options);
-  if (await dialog(`„${j.name}“ neu slicen`, [form.node], [["Abbrechen", ""], ["Neu slicen", "ok", "primary"]]) !== "ok") return;
-  try { await api(`/api/admin/druck/jobs/${j.id}/slice`, json("POST", form.value())); } catch (err) { toast(err.message); }
+  await dkjSchema();
+  const o = j.options || {};
+  const start = o.material || o.quality ? { ...DKJ.schema.materials[o.material] || DKJ.schema.materials.PLA } : { ...dkjBase(o), ...o };
+  $("#dlg").classList.add("wide");
+  const nv = await dkjSettingsDialog(`„${j.name}“ neu slicen`, start, "Neu slicen");
+  $("#dlg").classList.remove("wide");
+  if (!nv) return;
+  try { await api(`/api/admin/druck/jobs/${j.id}/slice`, json("POST", { values: nv })); toast("Wird neu geslict …"); } catch (err) { toast(err.message); }
   DKJ.last = ""; dkLoadJobs();
 }
 

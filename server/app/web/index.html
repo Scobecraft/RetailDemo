@@ -363,6 +363,27 @@
   .dkj-check { flex-direction: row !important; align-items: center; gap: 8px !important; color: var(--text) !important; font-size: 14px !important; cursor: pointer; margin: 6px 0 !important; display: flex; }
   .dkj-check input { accent-color: var(--accent); width: 16px; height: 16px; }
   .dkj-warn { grid-column: 1 / -1; color: var(--warn); font-size: 13px; font-weight: 600; min-height: 0; }
+  .dkj-quick-actions { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
+  .dkj-badge { background: var(--accent); color: #fff; border-radius: 999px; font-size: 11px; padding: 0 6px; margin-left: 4px; }
+  .dkj-set-top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .dkj-search { flex: 1; min-width: 180px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+  .dkj-changed { font-size: 13px; }
+  .dkj-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .dkj-tab { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+  .dkj-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .dkj-tab b { background: var(--accent-soft); color: var(--accent); border-radius: 999px; font-size: 11px; padding: 0 6px; }
+  .dkj-tab.active b { background: rgba(255,255,255,.25); color: #fff; }
+  .dkj-set { max-height: min(55vh, 520px); overflow: auto; padding-right: 4px; }
+  .dkj-row { display: grid; grid-template-columns: minmax(0, 1fr) 190px 28px; gap: 12px; align-items: center; padding: 8px 6px; border-bottom: 1px solid var(--line); border-radius: 6px; }
+  .dkj-row.changed { background: var(--accent-soft); }
+  .dkj-row label { margin: 0; display: flex; flex-direction: column; color: var(--text); font-size: 14px; }
+  .dkj-row label small { color: var(--muted); font-size: 12px; }
+  .dkj-in { display: flex; align-items: center; gap: 6px; }
+  .dkj-in input[type=number], .dkj-in select { width: 100%; padding: 6px 8px; }
+  .dkj-in input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
+  .dkj-in .muted { font-size: 12px; white-space: nowrap; }
+  .dkj-reset { border: 0; background: none; cursor: pointer; color: var(--accent); font-size: 16px; padding: 0; }
+  @media (max-width: 560px) { .dkj-row { grid-template-columns: minmax(0, 1fr) 120px 24px; } }
   .dkj-warn:empty { display: none; }
   .dkj-printer { margin: 16px 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
   .dkj-printer .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); flex: none; }
