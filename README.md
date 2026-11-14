@@ -267,7 +267,13 @@ Stützen-Kontakt, Rand …; Schicht-Regler, Legende zum Ein-/Ausblenden, Druckbe
 rechts alle Einstellungen. Jede Änderung slict der Server kurz danach neu und die Vorschau zeigt das Ergebnis
 (mit Druckzeit, Filament, Schichten); **Übernehmen** speichert die Einstellungen für den Druck.
 
-Eine 3D-Datei hochladen (STL, 3MF, OBJ). Schnellauswahl: Material,
+Eine 3D-Datei hochladen (STL, 3MF, OBJ – oder eine ZIP-Datei: jedes Modell darin wird ein eigener Auftrag).
+
+**Von Thingiverse:** Link (z. B. `https://www.thingiverse.com/thing:12345`) ins Feld unter „Modell hinzufügen“
+einfügen → „Laden“ → Dateien auswählen → „Importieren“. Der Server lädt sie über die offizielle Thingiverse-API
+und slict sie; Urheber und Lizenz stehen beim Auftrag. Einmalig nötig: kostenloser „App Token“ von Thingiverse
+(⚙ neben „Laden“ zeigt die Schritte). Blockiert Thingiverse die Abfrage (Cloudflare-Schutzseite), die Dateien im
+Browser mit „Download All Files“ laden und die ZIP-Datei in den Slicer ziehen. Schnellauswahl: Material,
 Qualität, Füllung, Stützen, Rand. **„⚙ Alle Einstellungen …“** öffnet alle Slicer-Einstellungen (rund 85, mit
 Suche): Qualität, Wände & Oberflächen (auch Bügeln), Füllung (Muster, Winkel), Stützen (normal/eng/organisch,
 Abstände, Kontaktschichten, Raft), Haftung (Brim, Skirt), Geschwindigkeiten und Beschleunigungen, Temperatur &

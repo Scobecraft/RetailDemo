@@ -16,7 +16,11 @@ import shutil
 import subprocess
 import threading
 import time
+import tempfile
+import urllib.error
+import urllib.request
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -34,6 +38,9 @@ MODEL_EXT = {".stl", ".3mf", ".obj"}
 GCODE_EXT = {".gcode", ".gco", ".g", ".gx"}
 # So lange darf ein bereitgestellter Auftrag auf die Druckmonitor-App warten
 PICKUP_TIMEOUT_S = 180
+TV_API = os.environ.get("THINGIVERSE_API", "https://api.thingiverse.com")  # änderbar für Tests
+TV_BLOCKED = ("Thingiverse lässt die Abfrage vom Server gerade nicht zu (Schutzseite). Lade die Dateien auf "
+              "Thingiverse mit „Download All Files“ herunter und ziehe die ZIP-Datei hier hinein.")
 # Druck nur starten, wenn der Drucker gerade nichts tut
 IDLE_STATES = {"idle", "done"}
 
@@ -261,22 +268,52 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
                     job.update(state="failed", message=err)
                 save(job)
 
-    def register_upload(tmp: Path, filename: str, options: dict) -> dict:
+    def register_zip(tmp: Path, filename: str, options: dict, extra: Optional[dict] = None) -> dict:
+        """ZIP (z. B. von Thingiverse heruntergeladen): jedes enthaltene Modell wird ein eigener Auftrag."""
+        base = re.sub(r"\.zip$", "", Path(filename).name, flags=re.I)
+        jobs = []
+        try:
+            with zipfile.ZipFile(tmp) as z:
+                members = [m for m in z.infolist() if not m.is_dir() and Path(m.filename).suffix.lower() in MODEL_EXT
+                           and not Path(m.filename).name.startswith(".") and "__MACOSX" not in m.filename]
+                if not members:
+                    raise HTTPException(400, "In der ZIP-Datei ist kein Modell (STL, 3MF, OBJ)")
+                if len(members) > 30:
+                    raise HTTPException(400, "Zu viele Modelle in der ZIP-Datei (max. 30)")
+                if sum(m.file_size for m in members) > 1024 ** 3:
+                    raise HTTPException(400, "Die Modelle in der ZIP-Datei sind zusammen größer als 1 GB")
+                for m in members:
+                    with tempfile.NamedTemporaryFile(delete=False, dir=jobs_dir, suffix=".part") as out, z.open(m) as src:
+                        shutil.copyfileobj(src, out)
+                    part_name = Path(m.filename).name
+                    jobs.append(register_upload(Path(out.name), part_name, options, extra=extra,
+                                                title_prefix=base if len(members) > 1 else ""))
+        except zipfile.BadZipFile:
+            raise HTTPException(400, "Die ZIP-Datei ist beschädigt")
+        finally:
+            tmp.unlink(missing_ok=True)
+        return {**jobs[0], "jobs": jobs}
+
+    def register_upload(tmp: Path, filename: str, options: dict, extra: Optional[dict] = None, title_prefix: str = "") -> dict:
         """Vom Upload in Stücken aufgerufen: Auftrag anlegen und (bei Modellen) slicen."""
         name = Path(filename).name
         low = name.lower()
+        if low.endswith(".zip"):
+            return register_zip(tmp, name, options, extra)
         ext = ".3mf" if low.endswith(".gcode.3mf") else Path(low).suffix
         if ext not in MODEL_EXT | GCODE_EXT:
             tmp.unlink(missing_ok=True)
-            raise HTTPException(400, "Bitte eine STL-, 3MF-, OBJ- oder G-Code-Datei hochladen")
+            raise HTTPException(400, "Bitte eine STL-, 3MF-, OBJ-, ZIP- oder G-Code-Datei hochladen")
         job_id = uuid.uuid4().hex
         d = jobs_dir / job_id
         d.mkdir()
         source = "modell" + ext
         shutil.move(str(tmp), d / source)
         title = re.sub(r"\.(gcode\.3mf|stl|3mf|obj|gcode|gco|g|gx)$", "", name, flags=re.I) or "Druck"
+        if title_prefix:
+            title = f"{title_prefix} – {title}"
         job = {"id": job_id, "name": title[:120], "file_name": name, "source": source, "created": time.time(),
-               "options": _clean_options(options or {}, user_defaults()), "stats": {}, "message": ""}
+               "options": _clean_options(options or {}, user_defaults()), "stats": {}, "message": "", **(extra or {})}
         if ext in GCODE_EXT or low.endswith(".gcode.3mf"):
             if low.endswith(".gcode.3mf"):
                 shutil.rmtree(d)
@@ -297,6 +334,120 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
             return json.loads(defaults_file.read_text())
         except (OSError, ValueError):
             return {}
+
+    # ------------------------------------------------ Thingiverse (offizielle API mit App-Token)
+    tv_file = data_dir / "druck" / "thingiverse.json"
+
+    def tv_token() -> str:
+        try:
+            return json.loads(tv_file.read_text()).get("token", "")
+        except (OSError, ValueError):
+            return os.environ.get("THINGIVERSE_TOKEN", "")
+
+    def tv_get(url: str, raw: bool = False):
+        token = tv_token()
+        if not token:
+            raise HTTPException(409, "Thingiverse ist noch nicht eingerichtet (Zugangsschlüssel fehlt)")
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "User-Agent": "RetailDemo-Slicer/1.0",
+                                                   "Accept": "*/*" if raw else "application/json"})
+        try:
+            resp = urllib.request.urlopen(req, timeout=60)
+            if raw:
+                return resp  # Aufrufer liest und schließt
+            with resp:
+                if "json" not in resp.headers.get("Content-Type", ""):
+                    raise HTTPException(502, TV_BLOCKED)
+                return json.loads(resp.read(5 * 1024 * 1024))
+        except urllib.error.HTTPError as e:
+            body = e.read(4000).decode("utf-8", "ignore")
+            if "Just a moment" in body or "challenge" in body:
+                raise HTTPException(502, TV_BLOCKED)
+            if e.code == 401:
+                raise HTTPException(400, "Der Thingiverse-Zugangsschlüssel ist ungültig")
+            if e.code == 404:
+                raise HTTPException(404, "Dieses Modell gibt es auf Thingiverse nicht (mehr)")
+            raise HTTPException(502, f"Thingiverse antwortet mit Fehler {e.code}")
+        except (urllib.error.URLError, TimeoutError) as e:
+            raise HTTPException(502, f"Thingiverse nicht erreichbar ({getattr(e, 'reason', e)})")
+
+    class TvToken(BaseModel):
+        token: str = ""
+
+    class TvLookup(BaseModel):
+        url: str
+
+    class TvImport(BaseModel):
+        thing_id: int
+        file_ids: list[int]
+        values: dict = {}
+
+    @r.get("/api/admin/druck/thingiverse", dependencies=[Depends(require_viewer)])
+    def tv_status():
+        return {"configured": bool(tv_token())}
+
+    @r.put("/api/admin/druck/thingiverse", dependencies=[Depends(require_viewer)])
+    def tv_set_token(body: TvToken):
+        token = body.token.strip()
+        if token and not re.fullmatch(r"[A-Za-z0-9_\-.]{10,200}", token):
+            raise HTTPException(400, "Das sieht nicht wie ein Thingiverse-Schlüssel aus")
+        if token:
+            tv_file.write_text(json.dumps({"token": token}))
+        else:
+            tv_file.unlink(missing_ok=True)
+        return {"configured": bool(token)}
+
+    @r.post("/api/admin/druck/thingiverse/lookup", dependencies=[Depends(require_viewer)])
+    def tv_lookup(body: TvLookup):
+        m = re.search(r"thing[:/](\d+)", body.url) or re.fullmatch(r"\s*(\d+)\s*", body.url)
+        if not m:
+            raise HTTPException(400, "Bitte einen Thingiverse-Link einfügen (z. B. https://www.thingiverse.com/thing:12345)")
+        tid = int(m.group(1))
+        thing = tv_get(f"{TV_API}/things/{tid}")
+        files = tv_get(f"{TV_API}/things/{tid}/files")
+        out = []
+        for f in files if isinstance(files, list) else []:
+            ext = Path(f.get("name", "")).suffix.lower()
+            out.append({"id": f.get("id"), "name": f.get("name"), "size": f.get("size"), "ext": ext,
+                        "supported": ext in MODEL_EXT | GCODE_EXT, "thumbnail": f.get("thumbnail")})
+        return {"id": tid, "name": thing.get("name") or f"Thing {tid}", "url": thing.get("public_url") or f"https://www.thingiverse.com/thing:{tid}",
+                "creator": (thing.get("creator") or {}).get("name"), "license": thing.get("license"),
+                "thumbnail": thing.get("thumbnail"), "files": out}
+
+    @r.post("/api/admin/druck/thingiverse/import", dependencies=[Depends(require_viewer)])
+    def tv_import(body: TvImport):
+        if not body.file_ids:
+            raise HTTPException(400, "Bitte mindestens eine Datei auswählen")
+        if len(body.file_ids) > 30:
+            raise HTTPException(400, "Höchstens 30 Dateien auf einmal")
+        thing = tv_get(f"{TV_API}/things/{body.thing_id}")
+        files = {f.get("id"): f for f in tv_get(f"{TV_API}/things/{body.thing_id}/files")}
+        extra = {"origin": {"site": "Thingiverse", "url": thing.get("public_url") or f"https://www.thingiverse.com/thing:{body.thing_id}",
+                            "creator": (thing.get("creator") or {}).get("name"), "license": thing.get("license"),
+                            "thing": thing.get("name")}}
+        jobs = []
+        for fid in body.file_ids:
+            f = files.get(fid)
+            if not f or Path(f.get("name", "")).suffix.lower() not in MODEL_EXT | GCODE_EXT:
+                continue
+            url = f.get("download_url") or f"{TV_API}/files/{fid}/download"
+            resp = tv_get(url, raw=True)
+            with tempfile.NamedTemporaryFile(delete=False, dir=jobs_dir, suffix=".part") as out:
+                size = 0
+                while chunk := resp.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > 300 * 1024 * 1024:
+                        out.close(); Path(out.name).unlink(missing_ok=True)
+                        raise HTTPException(400, f"„{f.get('name')}“ ist zu groß (über 300 MB)")
+                    out.write(chunk)
+            resp.close()
+            if size < 84 or Path(out.name).read_bytes()[:15].lower().startswith(b"<!doctype html"):
+                Path(out.name).unlink(missing_ok=True)
+                raise HTTPException(502, TV_BLOCKED)
+            jobs.append(register_upload(Path(out.name), f["name"], body.values, extra=extra,
+                                        title_prefix=(thing.get("name") or "")[:60] if len(body.file_ids) > 1 else ""))
+        if not jobs:
+            raise HTTPException(400, "Keine der gewählten Dateien lässt sich slicen")
+        return {"jobs": jobs}
 
     # ------------------------------------------------ Webseite
 

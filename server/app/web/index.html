@@ -394,11 +394,25 @@
   .sl-drop strong { font-size: 15px; }
   .sl-drop span { font-size: 12px; }
   .sl-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .sl-tv { display: flex; gap: 6px; }
+  .sl-tv-input { flex: 1; min-width: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-size: 13px; }
+  .sl-origin { font-size: 11px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sl-steps { padding-left: 20px; font-size: 14px; display: grid; gap: 6px; }
+  .sl-steps a, .sl-tv-head a { color: var(--accent); }
+  .sl-tv-head { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+  .sl-tv-head img { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; background: var(--bg); }
+  .sl-tv-head strong { font-size: 16px; display: block; }
+  .sl-tv-files { display: grid; gap: 4px; max-height: 45vh; overflow: auto; }
+  .sl-tv-file { display: grid; grid-template-columns: auto 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; margin: 0; padding: 6px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px; }
+  .sl-tv-file.off { opacity: .55; cursor: default; }
+  .sl-tv-file input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .sl-tv-file img, .sl-tv-noimg { width: 44px; height: 33px; object-fit: cover; border-radius: 4px; background: var(--bg); display: block; }
+  .sl-tv-fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sl-printer { font-size: 13px; display: flex; gap: 8px; align-items: center; color: var(--muted); }
   .sl-printer .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); flex: none; }
   .sl-printer .dot.on { background: var(--ok); }
   .sl-label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-top: 4px; }
-  .sl-jobs { overflow: auto; display: grid; gap: 6px; align-content: start; margin: 0 -4px; padding: 0 4px; }
+  .sl-jobs { overflow-y: auto; overflow-x: hidden; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-content: start; }
   .sl-job { position: relative; padding: 10px 30px 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; transition: border-color .15s, background .15s; }
   .sl-job:hover { border-color: var(--accent); }
   .sl-job.active { border-color: var(--accent); background: var(--accent-soft); }

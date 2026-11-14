@@ -639,7 +639,7 @@ def upload_complete(upload_id: str, body: UploadComplete):
         meta.unlink(missing_ok=True)
         return release
     if info.get("kind") == "druckjob":
-        job = register_druck_job(part, info["filename"], info.get("options") or {})
+        job = register_druck_job(part, info["filename"], info.get("options") or {})  # ZIP: mehrere Aufträge
         meta.unlink(missing_ok=True)
         return job
     item = _register_media(part, info["filename"], info["mime"], body.title)

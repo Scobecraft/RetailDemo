@@ -52,9 +52,15 @@ function slJobValues(j) {
 function slBuild() {
   const page = $("[data-page=slicer]");
   const R = SL.r = {};
-  const input = el("input", { type: "file", accept: ".stl,.3mf,.obj,.gcode,.gco,.g,.gx", hidden: true, onchange: () => { const f = input.files[0]; input.value = ""; if (f) slUpload(f); } });
+  const input = el("input", { type: "file", accept: ".stl,.3mf,.obj,.zip,.gcode,.gco,.g,.gx", hidden: true, onchange: () => { const f = input.files[0]; input.value = ""; if (f) slUpload(f); } });
   R.drop = el("div", { class: "drop sl-drop", onclick: () => input.click() },
-    el("strong", {}, "+ Modell hinzufügen"), el("span", {}, "STL, 3MF, OBJ oder fertiger G-Code"), input);
+    el("strong", {}, "+ Modell hinzufügen"), el("span", {}, "STL, 3MF, OBJ, ZIP oder fertiger G-Code"), input);
+  // Thingiverse-Link
+  R.tvInput = el("input", { type: "url", placeholder: "Thingiverse-Link einfügen …", class: "sl-tv-input",
+    onkeydown: e => { if (e.key === "Enter") slThingiverse(); } });
+  R.tvBtn = el("button", { class: "btn small primary", onclick: slThingiverse }, "Laden");
+  R.tv = el("div", { class: "sl-tv" }, R.tvInput, R.tvBtn,
+    el("button", { class: "btn small", title: "Thingiverse einrichten", onclick: () => slTvSetup() }, "⚙"));
   R.drop.addEventListener("dragover", e => { e.preventDefault(); R.drop.classList.add("over"); });
   R.drop.addEventListener("dragleave", () => R.drop.classList.remove("over"));
   R.drop.addEventListener("drop", e => { e.preventDefault(); R.drop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) slUpload(f); });
@@ -69,7 +75,7 @@ function slBuild() {
   page.replaceChildren(el("div", { class: "sl ov" },
     el("aside", { class: "sl-side" },
       el("div", { class: "sl-side-head" }, el("h2", {}, "3D-Slicer"), el("p", { class: "sub" }, "Flashforge Adventurer 5M · 220 × 220 × 220 mm")),
-      R.drop, R.progress, R.printer, el("div", { class: "sl-label" }, "Aufträge"), R.jobs),
+      R.drop, R.tv, R.progress, R.printer, el("div", { class: "sl-label" }, "Aufträge"), R.jobs),
     el("section", { class: "sl-view" }, R.viewTop, R.viewHost, R.empty),
     el("aside", { class: "sl-panel" }, R.panel, R.actions)));
   SL.built = true;
@@ -130,6 +136,7 @@ function slRenderJobs() {
     return el("div", { class: "sl-job" + (j.id === SL.sel ? " active" : ""), onclick: () => slSelect(j.id) },
       el("div", { class: "sl-job-name", title: j.file_name || j.name }, j.name),
       el("div", { class: "sl-job-meta" }, el("span", { class: `dk-state ${cls}` }, el("i"), el("span", {}, label)), facts ? el("span", { class: "muted" }, facts) : null),
+      j.origin ? el("div", { class: "sl-origin" }, `${j.origin.site}${j.origin.creator ? " · " + j.origin.creator : ""}${j.origin.license ? " · " + j.origin.license : ""}`) : null,
       j.message && ["failed", "error"].includes(j.state) ? el("div", { class: "dkj-msg bad" }, j.message) : null,
       !["slicing", "queued", "sending"].includes(j.state) ? el("button", { class: "sl-job-del", title: "Auftrag löschen", onclick: async e => {
         e.stopPropagation();
@@ -351,9 +358,69 @@ async function slUpload(f) {
       off = r.received; bar.style.width = Math.round(off / f.size * 100) + "%";
     }
     const job = await api(`/api/admin/uploads/${id}/complete`, json("POST", {}));
-    toast(job.state === "slicing" ? `„${job.name}“ wird geslict …` : `„${job.name}“ ist bereit`);
+    toast(job.jobs?.length > 1 ? `${job.jobs.length} Modelle aus der ZIP-Datei werden geslict …`
+      : job.state === "slicing" ? `„${job.name}“ wird geslict …` : `„${job.name}“ ist bereit`);
     SL.last = ""; await slLoad();
     slSelect(job.id);
   } catch (err) { toast("Fehler: " + err.message); }
   R.progress.hidden = true;
+}
+
+// ---------------------------------------------------------------- Thingiverse
+async function slTvSetup(after) {
+  const st = await api("/api/admin/druck/thingiverse").catch(() => ({}));
+  const tok = el("input", { type: "password", placeholder: st.configured ? "•••••• (gespeichert – leer lassen zum Behalten)" : "App Token", autocomplete: "off" });
+  const steps = el("ol", { class: "sl-steps" },
+    el("li", {}, "Bei ", el("a", { href: "https://www.thingiverse.com", target: "_blank", rel: "noopener" }, "thingiverse.com"), " anmelden (kostenlos)."),
+    el("li", {}, el("a", { href: "https://www.thingiverse.com/apps/create", target: "_blank", rel: "noopener" }, "Neue App anlegen"), " (Developers → Create an App): Typ „Web App“, Name z. B. „Retail Demo“, Rest beliebig."),
+    el("li", {}, "Auf der Seite der App den „App Token“ kopieren und hier einfügen."));
+  const res = await dialog("Thingiverse einrichten", [
+    el("p", {}, "Damit der Server Modelle von Thingiverse laden darf, braucht er einen kostenlosen Zugangsschlüssel der offiziellen Thingiverse-Schnittstelle."),
+    steps, el("label", {}, "App Token"), tok,
+  ], [["Abbrechen", ""], ...(st.configured ? [["Schlüssel entfernen", "del"]] : []), ["Speichern", "ok", "primary"]]);
+  try {
+    if (res === "del") { await api("/api/admin/druck/thingiverse", json("PUT", { token: "" })); toast("Schlüssel entfernt"); return; }
+    if (res !== "ok") return;
+    if (tok.value.trim()) { await api("/api/admin/druck/thingiverse", json("PUT", { token: tok.value.trim() })); toast("Gespeichert"); }
+    if (after) after();
+  } catch (err) { toast(err.message); }
+}
+
+async function slThingiverse() {
+  const R = SL.r, url = R.tvInput.value.trim();
+  if (!url) { R.tvInput.focus(); return; }
+  const st = await api("/api/admin/druck/thingiverse").catch(() => ({}));
+  if (!st.configured) { slTvSetup(slThingiverse); return; }
+  R.tvBtn.disabled = true; R.tvBtn.textContent = "Lädt …";
+  let thing;
+  try { thing = await api("/api/admin/druck/thingiverse/lookup", json("POST", { url })); }
+  catch (err) { R.tvBtn.disabled = false; R.tvBtn.textContent = "Laden"; dialog("Thingiverse", el("p", {}, err.message), [["OK", ""]]); return; }
+  R.tvBtn.disabled = false; R.tvBtn.textContent = "Laden";
+  const boxes = thing.files.map(f => {
+    const cb = el("input", { type: "checkbox", checked: f.supported, disabled: !f.supported, value: f.id });
+    return { f, cb, row: el("label", { class: "sl-tv-file" + (f.supported ? "" : " off") },
+      cb, f.thumbnail ? el("img", { src: f.thumbnail, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "sl-tv-noimg" }),
+      el("span", { class: "sl-tv-fname" }, f.name), el("span", { class: "muted" }, f.supported ? (f.size ? size(f.size) : "") : "nicht druckbar")) };
+  });
+  const head = el("div", { class: "sl-tv-head" },
+    thing.thumbnail ? el("img", { src: thing.thumbnail, alt: "", referrerpolicy: "no-referrer" }) : null,
+    el("div", {}, el("strong", {}, thing.name),
+      el("div", { class: "muted" }, [thing.creator && `von ${thing.creator}`, thing.license].filter(Boolean).join(" · ")),
+      el("a", { href: thing.url, target: "_blank", rel: "noopener" }, "Auf Thingiverse ansehen ↗")));
+  const res = await dialog("Von Thingiverse importieren", [head,
+    el("p", { class: "muted", style: "font-size:13px" }, "Welche Dateien sollen in den Slicer? Jede wird ein eigener Auftrag und mit den aktuellen Einstellungen geslict. Bitte die Lizenz des Modells beachten."),
+    el("div", { class: "sl-tv-files" }, ...boxes.map(b => b.row))],
+    [["Abbrechen", ""], ["Importieren", "ok", "primary"]]);
+  if (res !== "ok") return;
+  const ids = boxes.filter(b => b.cb.checked).map(b => b.f.id);
+  if (!ids.length) { toast("Keine Datei ausgewählt"); return; }
+  R.tvBtn.disabled = true; R.tvBtn.textContent = "Lädt …";
+  try {
+    const r = await api("/api/admin/druck/thingiverse/import", json("POST", { thing_id: thing.id, file_ids: ids, values: SL.values }));
+    toast(`${r.jobs.length} Datei${r.jobs.length > 1 ? "en" : ""} von Thingiverse geladen – wird geslict …`);
+    R.tvInput.value = "";
+    SL.last = ""; await slLoad();
+    slSelect(r.jobs[0].id);
+  } catch (err) { dialog("Thingiverse", el("p", {}, err.message), [["OK", ""]]); }
+  R.tvBtn.disabled = false; R.tvBtn.textContent = "Laden";
 }
