@@ -110,6 +110,13 @@
 
   /* ---------- Medien-Raster ---------- */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; margin-top: 24px; }
+  .search { position: relative; display: flex; align-items: center; margin: 0 0 16px; }
+  .search svg { position: absolute; left: 12px; width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+  .search input { width: 100%; padding: 10px 110px 10px 40px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 15px; }
+  .search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .search-count { position: absolute; right: 14px; color: var(--muted); font-size: 13px; pointer-events: none; }
+  .search input::-webkit-search-cancel-button { margin-right: 4px; cursor: pointer; }
+  mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 1px; }
   .tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
   .thumb { aspect-ratio: 1; background: #1f2937 center/cover no-repeat; position: relative; cursor: pointer; }
   .thumb .badge { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.65); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
@@ -452,6 +459,11 @@
     <div data-page="media" hidden>
       <h2>Medien</h2>
       <p class="sub">Videos und Bilder, die auf den Demo-Geräten laufen. Neue Inhalte kommen beim nächsten Abgleich auf die Geräte.</p>
+      <div class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        <input type="search" id="mediaSearch" placeholder="Medien nach Namen suchen …" autocomplete="off" aria-label="Medien nach Namen suchen">
+        <span class="search-count" id="mediaCount"></span>
+      </div>
       <div class="drop" id="drop">
         <strong>Dateien hierher ziehen</strong>
         <span>oder klicken, um Videos und Bilder auszuwählen · auch große Videos möglich</span>
@@ -684,17 +696,65 @@ async function loadAll() {
 }
 
 // ---------------------------------------------------------------- Medien
+// Suche: Groß-/Kleinschreibung und Akzente egal, mehrere Wörter müssen alle vorkommen.
+// Umlaute passen als "ä" wie auch als "a" oder "ae" (Präsentation = prasentation = praesentation).
+const normText = (t, ae = false) => {
+  let x = String(t || "").toLocaleLowerCase("de-DE").replace(/ß/g, "ss");
+  if (ae) x = x.replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue");
+  return x.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+};
+const searchWords = q => String(q || "").trim().split(/\s+/).filter(Boolean);
+// Liefert den passenden Normalisierer, wenn das Wort im Titel vorkommt, sonst null
+function wordMatch(title, w) {
+  for (const ae of [false, true]) for (const qae of [false, true]) {
+    if (normText(title, ae).includes(normText(w, qae))) return { ae, needle: normText(w, qae) };
+  }
+  return null;
+}
+const mediaMatches = (title, words) => words.every(w => wordMatch(title, w));
+function highlight(title, words) {
+  if (!words.length) return title;
+  const chars = [...title], hit = new Array(chars.length).fill(false);
+  for (const w of words) {
+    const m = wordMatch(title, w);
+    if (!m) continue;
+    // Treffer im Originaltext markieren: Position jedes normalisierten Zeichens -> Originalzeichen
+    const map = []; let norm = "";
+    chars.forEach((c, i) => { const n = normText(c, m.ae); for (const _ of n) map.push(i); norm += n; });
+    for (let pos = norm.indexOf(m.needle); pos >= 0; pos = norm.indexOf(m.needle, pos + 1))
+      for (let k = pos; k < pos + m.needle.length; k++) hit[map[k]] = true;
+  }
+  const out = []; let buf = "", on = false;
+  chars.forEach((c, i) => {
+    if (hit[i] !== on) { if (buf) out.push(on ? el("mark", {}, buf) : buf); buf = ""; on = hit[i]; }
+    buf += c;
+  });
+  if (buf) out.push(on ? el("mark", {}, buf) : buf);
+  return out;
+}
+$("#mediaSearch").addEventListener("input", () => renderMedia());
+$("#mediaSearch").addEventListener("keydown", e => { if (e.key === "Escape") { e.target.value = ""; renderMedia(); } });
+// "/" springt in die Suche (wenn gerade nicht getippt wird)
+document.addEventListener("keydown", e => {
+  if (e.key !== "/" || $("[data-page=media]").hidden || /^(input|textarea|select)$/i.test(document.activeElement?.tagName || "")) return;
+  e.preventDefault(); $("#mediaSearch").focus();
+});
+
 function renderMedia() {
   const grid = $("#mediaGrid");
+  const words = searchWords($("#mediaSearch").value);
+  const list = state.media.filter(m => mediaMatches(m.title, words));
+  $("#mediaCount").textContent = words.length ? `${list.length} von ${state.media.length}` : state.media.length ? `${state.media.length} Medien` : "";
   if (!state.media.length) { grid.replaceChildren(el("div", { class: "empty", style: "grid-column:1/-1" }, "Noch keine Medien – zieh deine ersten Videos oder Bilder oben in das Feld.")); return; }
-  grid.replaceChildren(...state.media.map(m => {
+  if (!list.length) { grid.replaceChildren(el("div", { class: "empty", style: "grid-column:1/-1" }, `Keine Medien gefunden für „${$("#mediaSearch").value.trim()}“.`)); return; }
+  grid.replaceChildren(...list.map(m => {
     const used = state.playlists.filter(p => p.media_ids.includes(m.id)).map(p => p.name);
     return el("div", { class: "tile" },
       el("div", { class: "thumb", style: `background-image:url('${thumbUrl(m.id)}')`, onclick: () => preview(m) },
         el("span", { class: "badge" }, m.type === "video" ? "Video" : "Bild"),
         m.type === "video" ? el("div", { class: "play" }, "▶") : null),
       el("div", { class: "info" },
-        el("div", { class: "title", title: m.title }, m.title),
+        el("div", { class: "title", title: m.title }, highlight(m.title, words)),
         el("div", { class: "meta" }, (m.type === "image" ? `${m.duration_s || state.settings.image_duration_s} s · ` : "") + size(m.size)),
         el("div", { class: "meta" }, used.length ? "In: " + used.join(", ") : (state.playlists.length ? "in keiner Playlist" : "")),
         el("div", { class: "actions" },
