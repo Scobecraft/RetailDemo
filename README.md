@@ -259,9 +259,15 @@ go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch am
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w" -o Druckmonitor.exe .
 ```
 
-### Drucken von der Webseite
+### 3D-Slicer (Drucken von der Webseite)
 
-Im Reiter **3D-Drucker** → **Drucken** eine 3D-Datei hochladen (STL, 3MF, OBJ). Schnellauswahl: Material,
+Der Reiter **3D-Slicer** ist ein Arbeitsbereich wie ein Slicer-Programm: links Aufträge und Upload, in der Mitte
+die Live-Vorschau der Druckwege (nach Art eingefärbt: Wände, Füllung, Oberseite, Brücken, Stützen,
+Stützen-Kontakt, Rand …; Schicht-Regler, Legende zum Ein-/Ausblenden, Druckbett, drehen/zoomen/verschieben),
+rechts alle Einstellungen. Jede Änderung slict der Server kurz danach neu und die Vorschau zeigt das Ergebnis
+(mit Druckzeit, Filament, Schichten); **Übernehmen** speichert die Einstellungen für den Druck.
+
+Eine 3D-Datei hochladen (STL, 3MF, OBJ). Schnellauswahl: Material,
 Qualität, Füllung, Stützen, Rand. **„⚙ Alle Einstellungen …“** öffnet alle Slicer-Einstellungen (rund 85, mit
 Suche): Qualität, Wände & Oberflächen (auch Bügeln), Füllung (Muster, Winkel), Stützen (normal/eng/organisch,
 Abstände, Kontaktschichten, Raft), Haftung (Brim, Skirt), Geschwindigkeiten und Beschleunigungen, Temperatur &

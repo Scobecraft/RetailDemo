@@ -1164,9 +1164,12 @@ def web_index():
     return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
-@app.get("/druck-dashboard.js", include_in_schema=False)
-def web_druck_dashboard():
-    return FileResponse(WEB_DIR / "druck-dashboard.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+@app.get("/{name}.js", include_in_schema=False)
+def web_script(name: str):
+    """Skripte der Webseite (3D-Drucker, 3D-Slicer, G-Code-Vorschau)."""
+    if name not in ("druck-dashboard", "slicer", "gcode-preview"):
+        raise HTTPException(404, "Nicht gefunden")
+    return FileResponse(WEB_DIR / f"{name}.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/logo.svg", include_in_schema=False)

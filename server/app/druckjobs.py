@@ -8,6 +8,7 @@ Ablauf:
      Den Fortschritt meldet sie zurück.
 Der Server muss den Drucker dafür nicht erreichen können.
 """
+import hashlib
 import json
 import os
 import re
@@ -168,8 +169,8 @@ def _parse_gcode_stats(path: Path) -> dict:
     if m := re.search(r";\s*total layer number:\s*(\d+)", text) or re.search(r";LAYER_COUNT:(\d+)", text):
         stats["layers"] = int(m.group(1))
     else:  # PrusaSlicer-Profil schreibt ";Z:<Höhe>" vor jede Schicht
-        with open(path, "rb") as f:
-            n = sum(1 for line in f if line.startswith(b";Z:"))
+        with open(path, "rb") as f:  # verschiedene Höhen zählen (Stützen/Kopien wiederholen ";Z:")
+            n = len({line.strip() for line in f if line.startswith(b";Z:")})
         if n:
             stats["layers"] = n
     return {k: v for k, v in stats.items() if v}
@@ -213,35 +214,49 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
                     j.update(state="ready", message="Die Druckmonitor-App hat den Auftrag nicht abgeholt (läuft sie?).")
                     save(j)
 
+    def slice_to(job: dict, values: dict, out: Path) -> tuple[bool, str]:
+        """Modell des Auftrags mit [values] slicen und nach [out] schreiben; prüft das Ergebnis."""
+        d = jobs_dir / job["id"]
+        out.unlink(missing_ok=True)
+        cmd = [SLICER, "--export-gcode", "--load", str(PROFILE), *schema.cli_args(values, set(full_profile())),
+               "--center", "0,0", "--ensure-on-bed", "--output", str(out), str(d / job["source"])]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=900,
+                                 env={**os.environ, "HOME": str(d), "XDG_CONFIG_HOME": str(d / ".config")})
+            ok = res.returncode == 0 and out.exists() and out.stat().st_size > 0
+            err = "" if ok else (_slicer_error(res.stdout + "\n" + res.stderr) if res.returncode > 0 else
+                                 "Der Slicer ist bei dieser Einstellungskombination abgestürzt – z. B. Abstand zwischen Kopien erhöhen.")
+            if ok and (bad := _check_bounds(out)):
+                ok, err = False, bad
+        except FileNotFoundError:
+            ok, err = False, "Slicer (PrusaSlicer) ist auf dem Server nicht installiert – Server neu bauen."
+        except subprocess.TimeoutExpired:
+            ok, err = False, "Slicen hat zu lange gedauert (über 15 Minuten)."
+        return ok, err
+
+    def options_hash(values: dict) -> str:
+        return hashlib.sha1(json.dumps(values, sort_keys=True).encode()).hexdigest()[:16]
+
     def run_slicer(job_id: str):
         with slice_sem:
             with lock:
                 job = load(job_id)
                 job.update(state="slicing", message="")
                 save(job)
-            d = jobs_dir / job_id
-            o = job["options"]
-            out = d / "druck.gcode"
-            out.unlink(missing_ok=True)
-            cmd = [SLICER, "--export-gcode", "--load", str(PROFILE), *schema.cli_args(o, set(full_profile())),
-                   "--center", "0,0", "--ensure-on-bed", "--output", str(out), str(d / job["source"])]
-            try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=900,
-                                     env={**os.environ, "HOME": str(d), "XDG_CONFIG_HOME": str(d / ".config")})
-                ok = res.returncode == 0 and out.exists() and out.stat().st_size > 0
-                err = "" if ok else (_slicer_error(res.stdout + "\n" + res.stderr) if res.returncode > 0 else
-                                     "Der Slicer ist bei dieser Einstellungskombination abgestürzt – z. B. Abstand zwischen Kopien erhöhen.")
-                if ok and (bad := _check_bounds(out)):
-                    ok, err = False, bad
-            except FileNotFoundError:
-                ok, err = False, "Slicer (PrusaSlicer) ist auf dem Server nicht installiert – Server neu bauen."
-            except subprocess.TimeoutExpired:
-                ok, err = False, "Slicen hat zu lange gedauert (über 15 Minuten)."
+            out = jobs_dir / job_id / "druck.gcode"
+            # schon als Live-Vorschau mit genau diesen Einstellungen geslict? Dann nur übernehmen
+            cached = jobs_dir / job_id / "live" / f"{options_hash(job['options'])}.gcode"
+            if cached.exists():
+                shutil.copyfile(cached, out)
+                ok, err = True, ""
+            else:
+                ok, err = slice_to(job, job["options"], out)
             with lock:
                 job = load(job_id)
                 if ok:
                     job.update(state="ready", gcode="druck.gcode", size=out.stat().st_size,
-                               stats=_parse_gcode_stats(out), message="", sliced_at=time.time())
+                               stats=_parse_gcode_stats(out), message="", sliced_at=time.time(),
+                               options_hash=options_hash(job["options"]))
                 else:
                     job.update(state="failed", message=err)
                 save(job)
@@ -327,6 +342,43 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
             save(job)
         threading.Thread(target=run_slicer, args=(job_id,), daemon=True).start()
         return job
+
+    # ------------------------------------------------ Live-Vorschau beim Einstellen (3D-Slicer)
+    preview_sem = threading.Semaphore(1)
+
+    @r.post("/api/admin/druck/jobs/{job_id}/live")
+    def live_preview(job_id: str, body: SliceOptions, _=Depends(require_viewer)):
+        """Mit den Einstellungen im Formular slicen (ohne den Auftrag zu ändern) und das Ergebnis liefern."""
+        job = load(job_id)
+        if job.get("sliced_by_user"):
+            raise HTTPException(400, "Fertiger G-Code wird nicht neu geslict")
+        values = _clean_options(body.values)
+        h = options_hash(values)
+        if job.get("state") == "ready" and job.get("options_hash") == h:
+            return {"hash": h, "ok": True, "error": "", "stats": job.get("stats", {}), "url": f"/api/admin/druck/jobs/{job_id}/preview/gcode"}
+        live = jobs_dir / job_id / "live"
+        live.mkdir(exist_ok=True)
+        meta = live / f"{h}.json"
+        with preview_sem:
+            if not meta.exists():
+                out = live / f"{h}.gcode"
+                ok, err = slice_to(job, values, out)
+                meta.write_text(json.dumps({"hash": h, "ok": ok, "error": err, "stats": _parse_gcode_stats(out) if ok else {}}))
+                # nur die letzten Vorschauen aufheben
+                for old in sorted(live.glob("*.json"), key=lambda p: p.stat().st_mtime)[:-8]:
+                    old.unlink(missing_ok=True)
+                    old.with_suffix(".gcode").unlink(missing_ok=True)
+        res = json.loads(meta.read_text())
+        res["url"] = f"/api/admin/druck/jobs/{job_id}/live/{h}" if res["ok"] else None
+        return res
+
+    @r.get("/api/admin/druck/jobs/{job_id}/live/{h}", dependencies=[Depends(require_viewer)])
+    def live_file(job_id: str, h: str):
+        load(job_id)
+        f = jobs_dir / job_id / "live" / f"{h}.gcode"
+        if not re.fullmatch(r"[0-9a-f]{16}", h) or not f.exists():
+            raise HTTPException(404, "Vorschau abgelaufen")
+        return FileResponse(f, media_type="text/plain", headers={"Cache-Control": "private, max-age=3600"})
 
     @r.post("/api/admin/druck/jobs/{job_id}/print", dependencies=[Depends(require_viewer)])
     def print_job(job_id: str, body: PrintRequest):
