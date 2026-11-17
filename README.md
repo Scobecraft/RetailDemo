@@ -394,6 +394,13 @@ während des Drucks alle 3 s ein Bild). Am Ende entsteht ein kurzes Video: Es er
 (einstellbar) in die Medien und Playlists der Handys und läuft in der Druckmonitor-App und unter /druck/,
 solange nicht gedruckt wird.
 
+**PC herunterfahren (Feierabend):** Die Druckmonitor-App (ab 1.2.6) fährt den PC am Drucker nach Zeitplan herunter –
+Standard Montag bis Freitag 19:00, Samstag 16:00, Sonntag nicht. Einstellbar auf der Webseite unter Einstellungen →
+„PC herunterfahren“ (auch „Heute nicht herunterfahren“). Läuft noch ein Druck, wartet sie, bis er fertig ist. Einige
+Minuten vorher erscheint im Monitor ein Hinweis mit Countdown und „Heute nicht herunterfahren“; Windows warnt eine
+Minute vorher. Wird der PC erst nach der Uhrzeit eingeschaltet, fährt er nicht gleich wieder herunter. Der Plan ist
+in der App gespeichert und funktioniert auch ohne Verbindung zum Server.
+
 ### Übergang zwischen den Medien
 
 Zwischen Videos, Bildern und der Spec-Seite läuft auf den Handys ein kurzer Übergang (ca. 1,5 s): eine

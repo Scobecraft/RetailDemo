@@ -85,6 +85,13 @@
   .spinner { width: 54px; height: 54px; border-radius: 50%; border: 4px solid rgba(255,122,0,.2); border-top-color: var(--orange);
     animation: rot 1s linear infinite; }
   @keyframes rot { to { transform: rotate(360deg); } }
+  /* Feierabend-Hinweis (PC fährt nach Zeitplan herunter) */
+  .sd { position: fixed; left: 50%; top: 24px; transform: translate(-50%, -140%); z-index: 50; display: flex; align-items: center; gap: 20px;
+    padding: 16px 22px; border-radius: 14px; background: rgba(14,15,18,.94); border: 2px solid var(--orange); box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    transition: transform .5s cubic-bezier(.2,.8,.2,1); font-size: 20px; }
+  .sd.on { transform: translate(-50%, 0); }
+  .sd b { color: var(--orange); font-size: 26px; font-variant-numeric: tabular-nums; }
+  .sd button { font: inherit; font-size: 17px; font-weight: 600; padding: 10px 18px; border-radius: 10px; border: 0; background: var(--orange); color: #fff; cursor: pointer; }
   /* Zeitraffer (läuft, solange nicht gedruckt wird) */
   .tl { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity .8s; pointer-events: none; }
   .tl.on { opacity: 1; }
@@ -185,6 +192,7 @@
     <div class="clock"><div class="t" id="t">--:--</div><div class="d" id="d"></div></div>
   </header>
 
+  <div class="sd" id="sd"><span id="sdText"></span><button type="button" id="sdSkip">Heute nicht herunterfahren</button></div>
   <div class="glow"></div>
   <div class="frame print nocam" id="camFrame">
     <canvas id="cam"></canvas>
@@ -357,6 +365,36 @@ function tlSetPrinter(known, printing) {
   TL.known = known; TL.printing = printing; tlApply();
 }
 tlLoad(); setInterval(tlLoad, 60000);
+
+// ---------- Feierabend: Hinweis vor dem Herunterfahren ----------
+let sdState = null;
+async function sdLoad() {
+  try {
+    const r = await fetch('api/shutdown', { cache: 'no-store' });
+    sdState = r.ok ? await r.json() : null;
+  } catch (e) { sdState = null; }
+  sdRender();
+}
+function sdRender() {
+  const s = sdState, box = $('sd');
+  const show = s && ['warning', 'waiting_print', 'shutting_down'].includes(s.state);
+  box.classList.toggle('on', !!show);
+  if (!show) return;
+  const hm = s.todayAt ? new Date(s.todayAt * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+  if (s.state === 'warning') {
+    const left = Math.max(0, Math.round(s.todayAt - Date.now() / 1000));
+    $('sdText').innerHTML = `Feierabend: Der PC fährt um ${hm} herunter – in <b>${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</b>`;
+  } else if (s.state === 'waiting_print') {
+    $('sdText').textContent = `Feierabend (${hm}): Der PC fährt herunter, sobald der Druck fertig ist.`;
+  } else {
+    $('sdText').innerHTML = '<b>Der PC fährt jetzt herunter …</b>';
+  }
+}
+$('sdSkip').addEventListener('click', async () => {
+  try { await fetch('api/shutdown?action=skip', { method: 'POST' }); } catch (e) {}
+  sdLoad();
+});
+sdLoad(); setInterval(sdLoad, 10000); setInterval(sdRender, 1000);
 
 // Notbremse: falls die Oberfläche selbst hängen sollte, komplett neu laden
 setInterval(() => { if (Date.now() - lastServerOk > 30000) location.reload(); }, 5000);

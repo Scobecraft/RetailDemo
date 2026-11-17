@@ -29,7 +29,7 @@ const (
 	pushFrameIdle    = 30 * time.Second
 	pushFrameLive    = 66 * time.Millisecond // höchstens ca. 15 Bilder/s (so viele liefert die Kamera ohnehin selten)
 	pushFrameFlight  = 3                     // so viele Bilder dürfen gleichzeitig unterwegs sein (verdeckt die Laufzeit übers Internet)
-	pushMaxModelSize = 90 << 20               // Cloudflare lässt höchstens 100 MB pro Anfrage durch
+	pushMaxModelSize = 90 << 20              // Cloudflare lässt höchstens 100 MB pro Anfrage durch
 )
 
 type Pusher struct {
@@ -243,6 +243,7 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		"pc":         pc,
 		"pcInfo":     pcInfo,
 		"appVersion": version,
+		"shutdown":   a.shutdownStatus(),
 		// kann Druckaufträge von der Webseite an den Drucker schicken (braucht Seriennummer + Prüfcode)
 		"capabilities": map[string]bool{"upload": strings.TrimSpace(c.FFSerial) != "" && strings.TrimSpace(c.FFCheckCode) != ""},
 	})
@@ -264,8 +265,9 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		PrintJob *PrintJob      `json:"print_job"`
 		Model    *ModelOverride `json:"model_override"`
 		// Zeitraffer läuft: alle frame_every_s Sekunden ein Bild schicken
-		Timelapse  bool    `json:"timelapse"`
-		FrameEvery float64 `json:"frame_every_s"`
+		Timelapse  bool          `json:"timelapse"`
+		Shutdown   *ShutdownPlan `json:"shutdown_plan"`
+		FrameEvery float64       `json:"frame_every_s"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&r)
 	a.serverNeedsInfo = r.NeedInfo && pcInfo == nil
@@ -279,6 +281,7 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 	a.onServerUpdate(r.Update)
 	a.onPrintJob(r.PrintJob)
 	a.onModelOverride(r.Model)
+	a.onShutdownPlan(r.Shutdown)
 	return r.Watching, nil
 }
 

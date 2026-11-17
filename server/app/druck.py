@@ -111,6 +111,7 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
     r = APIRouter()
     tracker = PrintTracker(st.dir, hooks)
     hooks["tracker"] = tracker
+    hooks["druck_status"] = lambda: {"online": st.online, "shutdown": st.state.get("shutdown"), "app_version": st.state.get("appVersion")}
     r.include_router(make_timelapse_router(tracker, require_device, require_viewer))  # vor /druck/api/{rest}
     release_file = st.dir / "Druckmonitor-Setup.exe"
     release_json = st.dir / "release.json"
@@ -167,6 +168,8 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
         pending = hooks.get("pending_job")
         return {"ok": True, "watching": time.time() - st.last_view < WATCHING_S, "needInfo": st.pc_info is None,
                 "update": update_for(str(data.get("appVersion") or "")),
+                # Feierabend: Zeitplan zum Herunterfahren des PCs
+                "shutdown_plan": (hooks["shutdown_plan"]() if hooks.get("shutdown_plan") else None),
                 # Zeitraffer: während des Drucks regelmäßig Bilder schicken (auch wenn niemand zuschaut)
                 "timelapse": tracker.wants_frames(), "frame_every_s": FRAME_EVERY_S,
                 "print_job": pending() if pending else None,

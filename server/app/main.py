@@ -36,6 +36,7 @@ from .alerts import Alerts, make_alerts_router
 from .activity import Activity, install as install_activity, make_activity_router
 from .backup import make_backup_router
 from .stats import make_stats_router
+from .shutdown import make_shutdown_router
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 MEDIA_DIR = DATA_DIR / "media"
@@ -1575,6 +1576,9 @@ jobs_router, register_druck_job, _pending_job, _jobs_hooks = make_jobs_router(
     DATA_DIR, require_device, require_admin, lambda: _druck_hooks["printer_state"](),
     lambda path, name: _druck_hooks["set_model"](path, name), _druck_hooks)
 _druck_hooks["pending_job"] = _pending_job
+shutdown_router, _shutdown_plan = make_shutdown_router(DATA_DIR / "druck", require_admin, lambda: _druck_hooks["druck_status"]())
+_druck_hooks["shutdown_plan"] = _shutdown_plan
+app.include_router(shutdown_router)
 _druck_hooks.update(_jobs_hooks)
 app.include_router(jobs_router)
 

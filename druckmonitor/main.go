@@ -201,6 +201,7 @@ func main() {
 	go app.autoModelLoop()
 	go app.pushLoop()
 	go app.frameLoop()
+	go app.shutdownLoop()
 	// --autostart (Windows-Start, nach einem Update): gespeicherte Einstellungen übernehmen und
 	// direkt die Vollbildansicht zeigen
 	for _, arg := range os.Args[1:] {
@@ -398,6 +399,8 @@ func (a *App) routes() http.Handler {
 
 	// Zeitraffer vom Server (Abspielen, solange nicht gedruckt wird)
 	mux.HandleFunc("/api/timelapses", a.handleTimelapses)
+	// Feierabend: Herunterfahren nach Zeitplan (Status, „Heute nicht“)
+	mux.HandleFunc("/api/shutdown", a.handleShutdown)
 	mux.HandleFunc("/api/timelapse/", a.handleTimelapseFile)
 
 	// Druckerdaten (live) + Angaben aus der Slicer-Datei

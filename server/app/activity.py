@@ -60,6 +60,8 @@ ACTIONS = [
     ("PUT", r"^/api/admin/alerts/config$", "Benachrichtigungen eingestellt"),
     ("DELETE", r"^/api/admin/stats$", "Statistik zurückgesetzt"),
     ("PUT", r"^/api/admin/timelapse/config$", "Zeitraffer-Einstellungen geändert"),
+    ("PUT", r"^/api/admin/druck/shutdown$", "Zeitplan „PC herunterfahren“ geändert"),
+    ("POST", r"^/api/admin/druck/shutdown/skip$", "Herunterfahren heute ausgelassen/wieder aktiviert"),
 ]
 # nicht protokollieren (zu häufig / ändert nichts Dauerhaftes)
 SKIP = [r"^/api/admin/uploads/[^/]+$", r"^/api/admin/druck/jobs/[^/]+/live$", r"^/api/admin/editor/projects/[^/]+$",

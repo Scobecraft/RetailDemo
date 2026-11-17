@@ -314,6 +314,13 @@
   .autospecs div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* ---------- Einstellungen ---------- */
+  .sd-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--accent-soft); border-radius: 10px; padding: 10px 14px; margin: 4px 0 12px; font-size: 14px; }
+  .sd-status span { flex: 1; min-width: 200px; }
+  .sd-days { display: grid; gap: 6px; margin: 10px 0 6px; }
+  .sd-row { display: grid; grid-template-columns: 22px 120px 130px; align-items: center; gap: 8px; margin: 0; color: var(--text); font-size: 14px; }
+  .sd-row input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+  .sd-row input[type=time] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); }
+  .sd-row input[type=time]:disabled { opacity: .4; }
   .set-layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; align-items: start; }
   .set-nav { position: sticky; top: 84px; display: grid; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
   .set-group { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; padding: 10px 10px 4px; }
@@ -1001,6 +1008,8 @@
           <div class="set-group">Handys</div>
           <button data-set="promoSettings"><span class="set-ic">🖨</span><b>3D-Druck-Einblendung</b><small>Live-Bild zwischen den Videos</small></button>
           <button data-set="bloatSettings"><span class="set-ic">🧹</span><b>Bloatware entfernen</b><small>Fremde Apps löschen</small></button>
+          <div class="set-group">3D-Druck</div>
+          <button data-set="shutdownSettings"><span class="set-ic">🌙</span><b>PC herunterfahren</b><small>Feierabend für den Druckmonitor-PC</small></button>
           <div class="set-group">Laptops</div>
           <button data-set="filterSettings"><span class="set-ic">🛡</span><b>Kindersicherung</b><small>Webseiten sperren</small></button>
           <div class="set-group">Updates</div>
@@ -1013,6 +1022,7 @@
           <div class="panel" id="scheduleSettings" hidden></div>
           <div class="panel" id="promoSettings" hidden></div>
           <div class="panel" id="bloatSettings" hidden></div>
+          <div class="panel" id="shutdownSettings" hidden></div>
           <div class="panel" id="filterSettings" hidden></div>
           <div class="panel" id="appUpdateSettings" hidden></div>
           <div class="panel" id="druckUpdateSettings" hidden></div>
@@ -1258,7 +1268,7 @@ document.querySelectorAll("nav [data-tab]").forEach(b => b.addEventListener("cli
   try { localStorage.setItem("tab", b.dataset.tab); } catch (e) {}
   document.querySelectorAll("[data-page]").forEach(p => p.hidden = p.dataset.page !== b.dataset.tab);
   if (b.dataset.tab === "devices") loadDevices();
-  if (b.dataset.tab === "settings") { renderSettings(); renderAppUpdate(); renderDruckUpdate(); }
+  if (b.dataset.tab === "settings") { renderSettings(); renderAppUpdate(); renderDruckUpdate(); renderShutdown(); }
   if (b.dataset.tab === "overview") loadOverview();
   showDruck(b.dataset.tab === "druck");
   showSlicer(b.dataset.tab === "slicer");
@@ -2125,6 +2135,51 @@ document.querySelectorAll("#setNav [data-set]").forEach(b => b.addEventListener(
   if (matchMedia("(max-width: 640px)").matches) b.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
 }));
 try { showSetSection(localStorage.getItem("setSection") || "storeSettings"); } catch (e) { showSetSection("storeSettings"); }
+
+// Feierabend: Druckmonitor-PC nach Zeitplan herunterfahren
+async function renderShutdown() {
+  const box = $("#shutdownSettings");
+  let d;
+  try { d = await api("/api/admin/druck/shutdown"); } catch (e) { box.replaceChildren(el("p", { class: "muted" }, e.message)); return; }
+  const p = d.plan, st = d.status || null;
+  const en = el("input", { type: "checkbox", checked: p.enabled });
+  const rows = d.days.map((name, i) => {
+    const on = el("input", { type: "checkbox", checked: p.days[i].on });
+    const t = el("input", { type: "time", value: p.days[i].time, disabled: !p.days[i].on });
+    on.onchange = () => { t.disabled = !on.checked; };
+    return { on, t, row: el("label", { class: "sd-row" }, on, el("span", {}, name), t) };
+  });
+  const nwp = el("input", { type: "checkbox", checked: p.not_while_printing });
+  const warn = el("input", { type: "number", min: 0, max: 30, value: p.warn_min, style: "width:80px" });
+  const fmtT = ts => new Date(ts * 1000).toLocaleString("de-DE", { weekday: "long", hour: "2-digit", minute: "2-digit" }) + " Uhr";
+  const stateText = !st ? (d.online ? "Der Druckmonitor ist zu alt für diese Funktion (ab Version 1.2.6)." : "Druckmonitor gerade nicht verbunden – der Plan wird beim nächsten Verbinden übernommen.")
+    : !st.enabled ? "Ausgeschaltet."
+    : st.state === "waiting_print" ? "Uhrzeit erreicht – der PC fährt herunter, sobald der Druck fertig ist."
+    : st.state === "shutting_down" ? "Der PC fährt gerade herunter."
+    : st.skippedToday ? "Heute wird nicht heruntergefahren." + (st.next ? ` Nächstes Mal: ${fmtT(st.next)}.` : "")
+    : st.next ? `Nächstes Herunterfahren: ${fmtT(st.next)}.` : "Kein Termin geplant.";
+  const skipBtn = st && st.enabled ? el("button", { class: "btn small", onclick: async () => {
+    await api("/api/admin/druck/shutdown/skip", json("POST", { skip: !st.skippedToday }));
+    toast(st.skippedToday ? "Heute wird doch heruntergefahren" : "Heute wird nicht heruntergefahren");
+    setTimeout(renderShutdown, 2500);
+  } }, st.skippedToday ? "Heute doch herunterfahren" : "Heute nicht herunterfahren") : null;
+  box.replaceChildren(
+    el("h3", {}, "PC herunterfahren (Druckmonitor)"),
+    el("p", { class: "sub" }, "Die Druckmonitor-App fährt den PC am Drucker zum Feierabend herunter. Läuft noch ein Druck, wartet sie, bis er fertig ist. Vorher erscheint im Monitor ein Hinweis mit „Heute nicht herunterfahren“, Windows warnt zusätzlich eine Minute vorher."),
+    el("div", { class: "sd-status" }, el("span", {}, stateText), skipBtn),
+    el("label", { class: "dkj-check" }, en, "Automatisch herunterfahren"),
+    el("div", { class: "sd-days" }, ...rows.map(r => r.row)),
+    el("label", { class: "dkj-check" }, nwp, "Nicht während eines Drucks (wartet, bis der Druck fertig ist)"),
+    el("div", { class: "row", style: "margin-top:8px;font-size:14px" }, "Hinweis im Monitor", warn, "Minuten vorher (0 = keiner)"),
+    el("button", { class: "btn primary block", onclick: async () => {
+      try {
+        await api("/api/admin/druck/shutdown", json("PUT", { enabled: en.checked, not_while_printing: nwp.checked, warn_min: +warn.value || 0,
+          days: rows.map(r => ({ on: r.on.checked, time: r.t.value || "19:00" })) }));
+        toast("Gespeichert – der Druckmonitor übernimmt den Plan in wenigen Sekunden");
+        setTimeout(renderShutdown, 2500);
+      } catch (e) { toast(e.message); }
+    } }, "Speichern"));
+}
 
 async function renderAppUpdate() {
   const box = $("#appUpdateSettings");
