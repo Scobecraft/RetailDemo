@@ -68,6 +68,8 @@
 
   .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--card); padding: 8px 14px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
   .btn:hover { border-color: var(--accent); }
+  a.btn { text-decoration: none; color: inherit; }
+  a.btn.primary { color: #fff; }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   .btn.primary:hover { background: var(--accent-dark); }
   .btn.danger { color: var(--danger); }
@@ -151,6 +153,68 @@
   @keyframes ytIn { from { opacity: 0; transform: translateY(6px); } }
   @media (max-width: 600px) { .yt-jthumb { display: none; } .yt-bar { flex-direction: column; } }
   @media (prefers-reduced-motion: reduce) { .yt-card, .yt-job { animation: none; } }
+  /* ---------- Statistik / Benachrichtigungen / Backup / Protokoll ---------- */
+  .ops-dev { width: auto; max-width: 220px; }
+  .ops-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .ops-seg button { border: 0; background: var(--card); color: var(--text); padding: 7px 12px; cursor: pointer; font: inherit; font-size: 14px; }
+  .ops-seg button.on { background: var(--accent); color: #fff; font-weight: 600; }
+  .ops-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin: 8px 0 16px; }
+  .ops-tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 2px; }
+  .ops-tile small { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .ops-tile b { font-size: 28px; font-variant-numeric: tabular-nums; }
+  .ops-tile span { font-size: 13px; }
+  .ops-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .ops-grid .span2 { grid-column: span 2; } .ops-grid .span3 { grid-column: span 3; }
+  .ops-card { padding: 16px 18px; margin-bottom: 14px; }
+  .ops-grid .ops-card { margin: 0; }
+  .ops-card h3 { margin: 0 0 12px; font-size: 15px; }
+  .ops-chart { position: relative; padding-left: 4px; }
+  .ops-ymax { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .ops-bars { display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line); background: repeating-linear-gradient(to top, transparent 0 calc(25% - 1px), var(--line) calc(25% - 1px) 25%); }
+  .ops-col { flex: 1; height: 100%; display: flex; align-items: flex-end; cursor: default; }
+  .ops-col:hover .ops-bar { background: var(--accent-dark); }
+  .ops-bar { width: 100%; max-width: 40px; margin: 0 auto; background: var(--accent); border-radius: 4px 4px 0 0; transition: height .4s; }
+  .ops-axis { display: flex; gap: 2px; }
+  .ops-axis span { flex: 1; text-align: center; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+  .ops-tip { position: absolute; right: 0; top: -6px; background: var(--text); color: var(--bg); font-size: 12px; padding: 4px 8px; border-radius: 6px; pointer-events: none; }
+  .ops-rank { display: grid; gap: 6px; }
+  .ops-rank-row { display: grid; grid-template-columns: minmax(120px, 2fr) 3fr 56px 80px; gap: 12px; align-items: center; font-size: 14px; }
+  .ops-rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ops-rank-track { height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; }
+  .ops-rank-fill { height: 100%; background: var(--accent); border-radius: 5px; }
+  .ops-rank-row b { text-align: right; font-variant-numeric: tabular-nums; }
+  .ops-table-wrap { overflow-x: auto; }
+  .ops-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .ops-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .ops-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ops-pct { font-weight: 600; color: var(--ok); } .ops-pct.low { color: var(--danger); }
+  .ops-foot { font-size: 13px; }
+  .linkbtn.inline { display: inline; margin: 0; padding: 0; font-size: inherit; }
+  .ops-cfg { margin-top: 12px; font-size: 14px; }
+  .ops-cfg input[type=time] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); }
+  .ops-alerts { display: grid; gap: 8px; }
+  .ops-alert { display: flex; gap: 12px; align-items: flex-start; background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; padding: 10px 14px; }
+  .ops-alert.info { border-left-color: var(--ok); } .ops-alert.error { border-left-color: var(--danger); }
+  .ops-alert.resolved, .ops-alert.acked { opacity: .7; }
+  .ops-alert-ic { font-size: 18px; line-height: 1.3; }
+  .ops-alert-body { flex: 1; display: grid; gap: 2px; font-size: 14px; }
+  .ops-bad { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+  .ops-backups { display: grid; gap: 8px; }
+  .ops-backup { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .ops-act { display: grid; gap: 2px; margin-bottom: 12px; }
+  .ops-act-day { font-size: 13px; font-weight: 600; color: var(--muted); margin: 14px 0 4px; }
+  .ops-act-row { display: grid; grid-template-columns: 52px 90px 1fr auto; gap: 10px; align-items: center; padding: 7px 10px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+  .ops-act-row.bad { border-color: var(--danger); }
+  .ops-act-row.bad small { color: var(--danger); }
+  .ops-act-time { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .ops-act-who { font-size: 12px; padding: 2px 8px; border-radius: 999px; text-align: center; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .ops-act-who.app { background: color-mix(in srgb, #3b82f6 16%, transparent); color: #3b82f6; }
+  .ops-act-ip { font-size: 12px; }
+  @media (max-width: 800px) {
+    .ops-grid { grid-template-columns: minmax(0, 1fr); } .ops-grid .span2, .ops-grid .span3 { grid-column: auto; }
+    .ops-rank-row { grid-template-columns: 1fr 50px; } .ops-rank-track, .ops-rank-row > span.muted { display: none; }
+    .ops-act-row { grid-template-columns: 46px 1fr; } .ops-act-who, .ops-act-ip { display: none; }
+  }
   /* ---------- Medien-Raster ---------- */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; margin-top: 24px; }
   .search { position: relative; display: flex; align-items: center; margin: 0 0 16px; }
@@ -558,6 +622,24 @@
   .sl-printer { font-size: 13px; display: flex; gap: 8px; align-items: center; color: var(--muted); }
   .sl-printer .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); flex: none; }
   .sl-printer .dot.on { background: var(--ok); }
+  .dk-tl-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .dk-tl-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .dk-tl-item { display: grid; gap: 8px; }
+  .dk-tl-item video { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 10px; object-fit: cover; cursor: pointer; }
+  .dk-tl-meta { display: grid; gap: 2px; min-width: 0; }
+  .dk-tl-meta b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sl-bedqueue { display: grid; gap: 10px; }
+  .sl-bedqueue:empty { display: none; }
+  .sl-bed { display: grid; gap: 6px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent-soft); font-size: 13px; }
+  .sl-bed b { color: var(--accent); }
+  .sl-bed .btn { justify-self: start; }
+  .sl-queue { display: grid; gap: 6px; }
+  .sl-qitem { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; }
+  .sl-qn { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; flex: none; }
+  .sl-qname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .sl-qname small { color: var(--muted); }
+  .sl-qbtn { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 6px; width: 24px; height: 24px; cursor: pointer; padding: 0; }
+  .sl-qbtn:disabled { opacity: .35; cursor: default; }
   .sl-label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-top: 4px; }
   .sl-jobs { overflow-y: auto; overflow-x: hidden; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-content: start; }
   .sl-job { position: relative; padding: 10px 30px 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; transition: border-color .15s, background .15s; }
@@ -755,6 +837,7 @@
           <button data-tab="media"><b>Medien</b><small>Videos und Bilder hochladen</small></button>
           <button data-tab="playlists"><b>Playlists</b><small>Was auf welchem Gerät läuft</small></button>
           <button data-tab="devices"><b>Geräte</b><small>Handys und Laptops</small></button>
+          <button data-tab="stats"><b>Statistik</b><small>Wiedergaben, Kundenkontakte, Online-Zeit</small></button>
           <div class="menu-group">Werkzeuge</div>
           <button data-tab="editor"><b>Video-Schnitt</b><small>Werbevideos schneiden, Text und Musik</small></button>
           <button data-tab="youtube"><b>YouTube-Import</b><small>Werbung laden, umwandeln, einplanen</small></button>
@@ -763,6 +846,9 @@
           <button data-tab="slicer"><b>3D-Slicer</b><small>Modelle slicen und drucken</small></button>
           <div class="menu-group">System</div>
           <button data-tab="settings"><b>Einstellungen</b><small>Demo, Updates, Kindersicherung</small></button>
+          <button data-tab="alerts"><b>Benachrichtigungen</b><small>Alarme für die Admin-App</small></button>
+          <button data-tab="backup"><b>Backup</b><small>Sichern und wiederherstellen</small></button>
+          <button data-tab="activity"><b>Protokoll</b><small>Wer hat wann was geändert</small></button>
         </div>
       </nav>
       <button class="btn small theme-btn" id="themeBtn" type="button"></button>
@@ -786,6 +872,11 @@
     <div data-page="slicer" hidden></div>
     <!-- Video-Schnitt (Inhalt baut editor.js) -->
     <div data-page="editor" hidden></div>
+    <!-- Statistik, Benachrichtigungen, Backup, Protokoll (Inhalt baut ops.js) -->
+    <div data-page="stats" hidden></div>
+    <div data-page="alerts" hidden></div>
+    <div data-page="backup" hidden></div>
+    <div data-page="activity" hidden></div>
     <!-- YouTube-Import über ScobeTube (Inhalt baut youtube.js) -->
     <div data-page="youtube" hidden></div>
 
@@ -1038,6 +1129,7 @@ document.querySelectorAll("nav [data-tab]").forEach(b => b.addEventListener("cli
   showSlicer(b.dataset.tab === "slicer");
   showEditor(b.dataset.tab === "editor");
   showYoutube(b.dataset.tab === "youtube");
+  showOps(b.dataset.tab);
 }));
 
 async function loadAll() {
@@ -1928,5 +2020,6 @@ api("/api/web/me").then(me => { managedByEnv = !!me.managed_by_env; showApp(); }
 <script src="/slicer.js"></script>
 <script src="/editor.js"></script>
 <script src="/youtube.js"></script>
+<script src="/ops.js"></script>
 </body>
 </html>

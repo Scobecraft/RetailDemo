@@ -94,6 +94,15 @@ class PrintRequest(BaseModel):
     leveling: bool = True
 
 
+class QueueRequest(BaseModel):
+    leveling: bool = True
+    not_before: Optional[float] = None  # frühester Start (Unix-Zeit), None = sobald frei
+
+
+class QueueOrder(BaseModel):
+    order: list[str]
+
+
 class JobStatus(BaseModel):
     state: str  # sending, printing, error
     message: str = ""
@@ -221,9 +230,11 @@ def _parse_gcode_stats(path: Path) -> dict:
 
 
 def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: Callable, printer_state: Callable[[], dict],
-                     set_model: Optional[Callable[[Path, str], dict]] = None):
+                     set_model: Optional[Callable[[Path, str], dict]] = None, hooks: Optional[dict] = None):
+    hooks = hooks if hooks is not None else {}
     jobs_dir = data_dir / "druck" / "jobs"
     jobs_dir.mkdir(parents=True, exist_ok=True)
+    bed_file = data_dir / "druck" / "bed.json"
     lock = threading.RLock()
     slice_sem = threading.Semaphore(1)  # immer nur ein Slicer gleichzeitig
     r = APIRouter()
@@ -258,6 +269,74 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
                 if j["state"] == "queued" and time.time() - j.get("queued_at", 0) > PICKUP_TIMEOUT_S:
                     j.update(state="ready", message="Die Druckmonitor-App hat den Auftrag nicht abgeholt (läuft sie?).")
                     save(j)
+
+    # ------------------------------------------------ Druckbett und Warteschlange
+    def bed() -> dict:
+        try:
+            return json.loads(bed_file.read_text())
+        except (OSError, ValueError):
+            return {"clear": True, "since": None, "job": ""}
+
+    def set_bed(clear: bool, job_name: str = ""):
+        bed_file.write_text(json.dumps({"clear": clear, "since": time.time(), "job": job_name}))
+
+    def queue() -> list[dict]:
+        q = [j for j in all_jobs() if j["state"] == "waiting"]
+        return sorted(q, key=lambda j: (j.get("queue_pos", 0), j["created"]))
+
+    def advance_queue():
+        """Nächsten Auftrag der Warteschlange starten: Drucker frei, Druckbett abgeräumt, Startzeit erreicht."""
+        with lock:
+            q = queue()
+            if not q or not bed()["clear"]:
+                return
+            p = printer_state()
+            if not p.get("online") or p.get("state") not in IDLE_STATES:
+                return
+            if any(j["state"] in ("queued", "sending") for j in all_jobs()):
+                return
+            now = time.time()
+            nxt = next((j for j in q if not j.get("not_before") or j["not_before"] <= now), None)
+            if not nxt:
+                return
+            nxt.update(state="queued", queued_at=now, message="Aus der Warteschlange – wartet auf die Druckmonitor-App …")
+            save(nxt)
+
+    hooks["advance_queue"] = advance_queue
+
+    def on_print(kind: str, info: dict):
+        """Druck zu Ende (Druckmonitor meldet): Auftrag abschließen, Druckbett muss abgeräumt werden."""
+        if kind == "started":
+            return
+        if kind not in ("finished", "failed", "cancelled"):
+            return
+        with lock:
+            for j in all_jobs():
+                if j["state"] == "printing" and job_file_name(j["name"]).lower() == (info.get("file") or "").lower():
+                    j.update(state="done" if kind == "finished" else "error",
+                             message="Fertig gedruckt" if kind == "finished" else ("Druck abgebrochen" if kind == "cancelled" else (info.get("error") or "Druckfehler")),
+                             finished_at=time.time())
+                    save(j)
+            if info.get("duration_s", 0) > 60:  # nur wenn wirklich etwas gedruckt wurde
+                set_bed(False, info.get("name", ""))
+                q = queue()
+                if (al := hooks.get("alerts")):
+                    nxt = f" Danach startet „{q[0]['name']}“ aus der Warteschlange." if q else ""
+                    al.raise_("bed_clear", "Druckbett abräumen",
+                              f"„{info.get('name', '3D-Druck')}“ ist vom Drucker zu nehmen. Bitte danach bestätigen, dass das Druckbett frei ist.{nxt}",
+                              key="bed", data={"action": "bed_clear"})
+
+    hooks.setdefault("print_listeners", []).append(on_print)
+
+    def queue_loop():
+        while True:
+            time.sleep(15)
+            try:
+                advance_queue()
+            except Exception:  # noqa: BLE001
+                pass
+
+    threading.Thread(target=queue_loop, daemon=True).start()
 
     def slice_to(job: dict, values: dict, out: Path) -> tuple[bool, str]:
         """Modell des Auftrags mit [values] slicen und nach [out] schreiben; prüft das Ergebnis."""
@@ -519,7 +598,7 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
         expire_queued()
         p = printer_state()
         return {"jobs": all_jobs()[:50], "materials": {k: {"name": v["name"], "enclosure": v.get("enclosure", False)} for k, v in MATERIALS.items()},
-                "qualities": QUALITIES, "printer": p}
+                "qualities": QUALITIES, "printer": p, "bed": bed(), "queue": [j["id"] for j in queue()]}
 
     @r.post("/api/admin/druck/jobs/{job_id}/slice", dependencies=[Depends(require_viewer)])
     def reslice(job_id: str, body: SliceOptions):
@@ -579,21 +658,63 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
             raise HTTPException(409, "Die Druckmonitor-App ist nicht verbunden")
         if p.get("state") not in IDLE_STATES:
             raise HTTPException(409, f"Der Drucker ist gerade nicht bereit ({p.get('status') or p.get('state') or 'unbekannt'})")
+        if not bed()["clear"]:
+            raise HTTPException(409, "Auf dem Druckbett liegt noch der letzte Druck. Bitte abräumen und „Druckbett ist frei“ bestätigen.")
         with lock:
             busy = [j for j in all_jobs() if j["state"] in ("queued", "sending")]
             if busy:
                 raise HTTPException(409, f"„{busy[0]['name']}“ wird gerade schon an den Drucker geschickt")
             job = load(job_id)
-            if job["state"] not in ("ready", "error", "printing", "done"):
+            if job["state"] not in ("ready", "error", "printing", "done", "waiting"):
                 raise HTTPException(409, "Der Auftrag ist noch nicht fertig geslict")
             job.update(state="queued", queued_at=time.time(), leveling=body.leveling, message="Wartet auf die Druckmonitor-App …")
             save(job)
         return job
 
+    @r.post("/api/admin/druck/jobs/{job_id}/queue", dependencies=[Depends(require_viewer)])
+    def queue_job(job_id: str, body: QueueRequest):
+        with lock:
+            job = load(job_id)
+            if job["state"] not in ("ready", "error", "done", "printing", "waiting"):
+                raise HTTPException(409, "Der Auftrag ist noch nicht fertig geslict")
+            pos = max([j.get("queue_pos", 0) for j in queue()] + [0]) + 1 if job["state"] != "waiting" else job.get("queue_pos", 0)
+            job.update(state="waiting", queue_pos=pos, leveling=body.leveling,
+                       not_before=body.not_before if body.not_before and body.not_before > time.time() else None,
+                       message="In der Warteschlange")
+            save(job)
+        advance_queue()
+        return load(job_id)
+
+    @r.put("/api/admin/druck/queue", dependencies=[Depends(require_viewer)])
+    def reorder_queue(body: QueueOrder):
+        with lock:
+            for i, jid in enumerate(body.order):
+                try:
+                    j = load(jid)
+                except HTTPException:
+                    continue
+                if j["state"] == "waiting":
+                    j["queue_pos"] = i + 1
+                    save(j)
+        return {"queue": [j["id"] for j in queue()]}
+
+    @r.post("/api/admin/druck/bed-clear", dependencies=[Depends(require_viewer)])
+    def bed_clear():
+        set_bed(True)
+        if (al := hooks.get("alerts")):
+            al.resolve("bed")
+        advance_queue()
+        started = next((j["name"] for j in all_jobs() if j["state"] == "queued"), None)
+        return {"ok": True, "bed": bed(), "started": started, "next": (queue() or [{}])[0].get("name")}
+
     @r.post("/api/admin/druck/jobs/{job_id}/cancel", dependencies=[Depends(require_viewer)])
     def cancel_job(job_id: str):
         with lock:
             job = load(job_id)
+            if job["state"] == "waiting":
+                job.update(state="ready", message="Aus der Warteschlange genommen")
+                save(job)
+                return job
             if job["state"] != "queued":
                 raise HTTPException(409, "Nur wartende Aufträge lassen sich zurückholen")
             job.update(state="ready", message="Zurückgeholt")
@@ -606,6 +727,8 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
             job = load(job_id)
             if job["state"] in ("slicing", "queued", "sending"):
                 raise HTTPException(409, "Gerade beschäftigt – bitte kurz warten")
+            if job["state"] == "waiting":
+                raise HTTPException(409, "Bitte erst aus der Warteschlange nehmen")
             shutil.rmtree(jobs_dir / job["id"], ignore_errors=True)
         return {"ok": True}
 

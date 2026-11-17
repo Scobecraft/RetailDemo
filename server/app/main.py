@@ -32,6 +32,10 @@ from .druck import make_router as make_druck_router
 from .druckjobs import make_jobs_router
 from .editor import make_editor_router
 from .scobetube import make_scobetube_router
+from .alerts import Alerts, make_alerts_router
+from .activity import Activity, install as install_activity, make_activity_router
+from .backup import make_backup_router
+from .stats import make_stats_router
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 MEDIA_DIR = DATA_DIR / "media"
@@ -578,7 +582,7 @@ class UploadInit(BaseModel):
     filename: str
     size: int
     mime: str = ""
-    kind: str = "media"  # "media", "apk" (Demo-App), "druck" (Druckmonitor-Installer), "druckjob" (3D-Druck), "druckmodel" (Modell für den Druckmonitor)
+    kind: str = "media"  # "media", "apk" (Demo-App), "druck" (Druckmonitor-Installer), "druckjob" (3D-Druck), "druckmodel" (Modell für den Druckmonitor), "backup"
     options: dict = {}  # bei "druckjob": Slicer-Einstellungen
 
 
@@ -604,6 +608,9 @@ def upload_init(body: UploadInit):
     elif body.kind in ("druckjob", "druckmodel"):
         if body.size > 500 * 1024 * 1024:
             raise HTTPException(400, "Datei zu groß (max. 500 MB)")
+    elif body.kind == "backup":
+        if not body.filename.lower().endswith((".tar.gz", ".tgz")):
+            raise HTTPException(400, "Bitte eine Backup-Datei (retaildemo-backup-….tar.gz) auswählen")
     elif body.kind == "druck":
         if not body.filename.lower().endswith(".exe"):
             raise HTTPException(400, "Bitte den Installer Druckmonitor-Setup-….exe auswählen")
@@ -647,6 +654,9 @@ def upload_complete(upload_id: str, body: UploadComplete):
         release = register_druck_release(part)
         meta.unlink(missing_ok=True)
         return release
+    if info.get("kind") == "backup":
+        meta.unlink(missing_ok=True)
+        return register_backup_upload(part, info["filename"])
     if info.get("kind") == "audio":
         meta.unlink(missing_ok=True)
         return register_editor_audio(part, info["filename"])
@@ -1198,7 +1208,7 @@ def web_me(request: Request):
     return {"user": user, "managed_by_env": from_env}
 
 
-WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube")
+WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube", "ops")
 
 
 @app.get("/", include_in_schema=False)
@@ -1529,7 +1539,7 @@ druck_router, register_druck_release = make_druck_router(DATA_DIR, require_devic
 app.include_router(druck_router)
 jobs_router, register_druck_job, _pending_job, _jobs_hooks = make_jobs_router(
     DATA_DIR, require_device, require_admin, lambda: _druck_hooks["printer_state"](),
-    lambda path, name: _druck_hooks["set_model"](path, name))
+    lambda path, name: _druck_hooks["set_model"](path, name), _druck_hooks)
 _druck_hooks["pending_job"] = _pending_job
 _druck_hooks.update(_jobs_hooks)
 app.include_router(jobs_router)
@@ -1547,3 +1557,32 @@ def _editor_media(media_id: str):
 editor_router, register_editor_audio = make_editor_router(DATA_DIR, require_admin, _editor_media, _register_media, _add_to_playlists)
 app.include_router(editor_router)
 app.include_router(make_scobetube_router(DATA_DIR, require_admin, _register_media, _add_to_playlists, register_editor_audio))
+
+
+# ------------------------------------------------------------------ Alarme, Protokoll, Backup, Statistik
+alerts = Alerts(db, DATA_DIR)
+app.include_router(make_alerts_router(alerts, require_admin, db, get_settings, DATA_DIR, ONLINE_WINDOW_S))
+activity = Activity(db)
+install_activity(app, activity, _client_ip)
+app.include_router(make_activity_router(activity, require_admin))
+backup_router, register_backup_upload = make_backup_router(DATA_DIR, DB_PATH, _db_lock, require_admin, alerts)
+app.include_router(backup_router)
+app.include_router(make_stats_router(db, require_device, require_admin, get_settings))
+_druck_hooks["alerts"] = alerts
+_druck_hooks["register_media"] = _register_media
+_druck_hooks["add_to_playlists"] = _add_to_playlists
+
+
+def _print_alerts(kind: str, info: dict):
+    mins = int((info.get("duration_s") or 0) // 60)
+    dur = f"{mins // 60} Std. {mins % 60} Min." if mins >= 60 else f"{mins} Min."
+    if kind == "finished":
+        alerts.raise_("print_done", f"3D-Druck fertig: {info.get('name')}", f"Gedruckt in {dur}", level="info")
+    elif kind == "failed":
+        alerts.raise_("print_error", f"3D-Druck mit Fehler beendet: {info.get('name')}",
+                      info.get("error") or "Der Drucker meldet einen Fehler.", level="error")
+    elif kind == "cancelled" and (info.get("duration_s") or 0) > 60:
+        alerts.raise_("print_error", f"3D-Druck abgebrochen: {info.get('name')}", f"Nach {dur} abgebrochen.", level="warn")
+
+
+_druck_hooks.setdefault("print_listeners", []).append(_print_alerts)

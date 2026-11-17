@@ -396,6 +396,10 @@ func (a *App) routes() http.Handler {
 		_, _ = w.Write(frame)
 	})
 
+	// Zeitraffer vom Server (Abspielen, solange nicht gedruckt wird)
+	mux.HandleFunc("/api/timelapses", a.handleTimelapses)
+	mux.HandleFunc("/api/timelapse/", a.handleTimelapseFile)
+
 	// Druckerdaten (live) + Angaben aus der Slicer-Datei
 	mux.HandleFunc("/api/printer", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.printerState())

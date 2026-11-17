@@ -174,7 +174,7 @@ function dkBuild() {
     el("div", { class: "dk-head" },
       el("div", {}, el("h2", {}, "3D-Drucker"), el("div", { class: "dk-headline" }, R.live, R.sub)),
       el("div", { class: "dk-actions" }, fullBtn, progBtn)),
-    el("div", { class: "dk-grid" }, hero, camCard, modelCard, tempCard, nowCard, progCard, detailCard),
+    el("div", { class: "dk-grid" }, hero, camCard, modelCard, tempCard, nowCard, progCard, detailCard, dkTimelapseCard()),
     el("div", { class: "dk-head dk-pc-head" }, el("div", {}, R.pcTitle, el("div", { class: "dk-headline" }, R.pcSub))),
     R.pcHint, R.pcGrid, R.foot,
     el("p", { class: "muted druck-help" }, "Die Daten kommen von der Druckmonitor-App auf dem PC beim Drucker (Einstellungen → „Webseite (Retail-Demo-Server)“: Adresse dieses Servers und Geräte-Token). Das Kamerabild läuft flüssig, solange diese Seite offen ist.")));
@@ -662,4 +662,67 @@ async function dkModelFromSlicer() {
     toast(`„${r.name}“ wird angezeigt – der Druckmonitor übernimmt es gleich`);
     dkLoad();
   } catch (err) { toast(err.message); }
+}
+
+// ---------------------------------------------------------------- Zeitraffer
+// Am Ende jedes Drucks entsteht aus einem Bild pro Schicht ein kurzes Video. Es kann automatisch in die
+// Medien/Playlists der Handys und läuft in der Druckmonitor-App, solange nicht gedruckt wird.
+function dkTimelapseCard() {
+  const R = DK.refs;
+  R.tlList = el("div", { class: "dk-tl-list" });
+  R.tlInfo = el("span", { class: "muted" });
+  const card = dkCard("span-12 dk-tl", "Zeitraffer",
+    el("div", { class: "dk-tl-bar" }, R.tlInfo, el("div", { class: "spacer" }),
+      el("button", { class: "btn small", onclick: dkTlSettings }, "⚙ Einstellungen")),
+    R.tlList);
+  dkTlLoad();
+  return card;
+}
+
+async function dkTlLoad() {
+  const R = DK.refs;
+  try {
+    const d = await api("/api/admin/timelapse");
+    DK.tl = d;
+    R.tlInfo.textContent = d.recording ? `● Aufnahme läuft – ${d.frames} Bilder bisher` : d.building ? "Video wird erstellt …"
+      : !d.config.enabled ? "Zeitraffer ist ausgeschaltet" : "Wird bei jedem Druck automatisch aufgenommen (ein Bild pro Schicht).";
+    R.tlList.replaceChildren(...(d.items.length ? d.items.map(t => el("div", { class: "dk-tl-item" },
+      el("video", { src: `/api/admin/timelapse/${t.id}/file`, poster: `/api/admin/timelapse/${t.id}/poster`, muted: true, loop: true, playsinline: true, preload: "metadata",
+        onmouseenter: e => e.target.play().catch(() => {}), onmouseleave: e => e.target.pause(),
+        onclick: e => { const v = e.target; v.muted = false; (v.requestFullscreen || v.webkitRequestFullscreen)?.call(v); v.play(); } }),
+      el("div", { class: "dk-tl-meta" }, el("b", { title: t.name }, t.name),
+        el("small", { class: "muted" }, `${new Date(t.created * 1000).toLocaleDateString("de-DE")} · ${dkNum(t.duration_s, 0)} s Video · Druck ${dkDur(t.print_s)}`),
+        el("small", { class: "muted" }, t.media_id ? "In den Medien ✓" : "Nicht in den Medien")),
+      el("div", { class: "row" },
+        el("a", { class: "btn small", href: `/api/admin/timelapse/${t.id}/file`, download: `Zeitraffer ${t.name}.mp4` }, "Herunterladen"),
+        el("button", { class: "btn small danger", onclick: async () => {
+          if (!await confirmDlg("Zeitraffer löschen?", `„${t.name}“ verschwindet aus der Liste und der Druckmonitor-App. Ein Eintrag in den Medien bleibt.`)) return;
+          await api(`/api/admin/timelapse/${t.id}`, { method: "DELETE" }); dkTlLoad();
+        } }, "Löschen"))))
+      : [el("p", { class: "muted" }, "Noch keine Zeitraffer – nach dem nächsten Druck erscheint hier das Video.")]));
+  } catch (e) { R.tlInfo.textContent = e.message; }
+  clearTimeout(DK.tlTimer);
+  DK.tlTimer = setTimeout(() => { if (DK.visible) dkTlLoad(); }, DK.tl?.recording || DK.tl?.building ? 10000 : 60000);
+}
+
+async function dkTlSettings() {
+  const c = { ...DK.tl.config };
+  const cb = (k, label) => el("label", { class: "dkj-check" }, el("input", { type: "checkbox", checked: !!c[k], onchange: e => c[k] = e.target.checked }), label);
+  const pls = el("div", { class: "target" }, ...state.playlists.map(p => el("label", { class: "chip" },
+    el("input", { type: "checkbox", checked: c.playlist_ids.includes(p.id), onchange: e => c.playlist_ids = e.target.checked ? [...c.playlist_ids, p.id] : c.playlist_ids.filter(x => x !== p.id) }),
+    (p.is_default ? "★ " : "") + p.name)));
+  const len = el("input", { type: "number", min: 5, max: 60, value: c.target_s, style: "width:90px" });
+  const cnt = el("input", { type: "number", min: 1, max: 10, value: c.monitor_count, style: "width:90px" });
+  const v = await dialog("Zeitraffer", [
+    cb("enabled", "Bei jedem Druck einen Zeitraffer aufnehmen"),
+    cb("to_media", "Fertiges Video in die Medien übernehmen"),
+    el("label", {}, "… und gleich in diese Playlists (Demo-Handys):"), pls,
+    cb("show_on_monitor", "In der Druckmonitor-App abspielen, solange nicht gedruckt wird"),
+    el("label", {}, "So viele der letzten Zeitraffer abwechselnd zeigen"), cnt,
+    el("label", {}, "Länge des Videos (Sekunden)"), len,
+  ], [["Abbrechen", ""], ["Speichern", "ok", "primary"]]);
+  if (v !== "ok") return;
+  c.target_s = +len.value || 15; c.monitor_count = +cnt.value || 3;
+  try { await api("/api/admin/timelapse/config", json("PUT", c)); toast("Gespeichert"); } catch (e) { toast(e.message); }
+  dkTlLoad();
 }

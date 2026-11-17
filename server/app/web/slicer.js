@@ -15,7 +15,7 @@ const SL = {
 const SL_STATE = {
   slicing: ["Wird geslict …", "warm"], ready: ["Bereit", "ok"], failed: ["Slicen fehlgeschlagen", "bad"],
   queued: ["Wartet auf Druckmonitor …", "warm"], sending: ["Wird übertragen …", "run"], printing: ["An den Drucker geschickt", "ok"],
-  error: ["Fehler", "bad"],
+  error: ["Fehler", "bad"], waiting: ["In der Warteschlange", "warm"], done: ["Fertig gedruckt", "ok"],
 };
 const SL_QUALITY = { fein: "Fein · 0,12 mm", standard: "Standard · 0,20 mm", schnell: "Schnell · 0,28 mm" };
 // Beim Materialwechsel aus der Materialvorlage übernommen
@@ -68,6 +68,7 @@ function slBuild() {
   R.drop.addEventListener("drop", e => { e.preventDefault(); R.drop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) slUpload(f); });
   R.progress = el("div", { class: "progress", hidden: true }, el("div"));
   R.printer = el("div", { class: "sl-printer" });
+  R.bedQueue = el("div", { class: "sl-bedqueue" });
   R.jobs = el("div", { class: "sl-jobs" });
   R.viewHost = el("div", { class: "sl-view-host" });
   R.viewTop = el("div", { class: "sl-view-top" });
@@ -77,7 +78,7 @@ function slBuild() {
   page.replaceChildren(el("div", { class: "sl ov" },
     el("aside", { class: "sl-side" },
       el("div", { class: "sl-side-head" }, el("h2", {}, "3D-Slicer"), el("p", { class: "sub" }, "Flashforge Adventurer 5M · 220 × 220 × 220 mm")),
-      R.drop, R.tv, R.progress, R.printer, el("div", { class: "sl-label" }, "Aufträge"), R.jobs),
+      R.drop, R.tv, R.progress, R.printer, R.bedQueue, el("div", { class: "sl-label" }, "Aufträge"), R.jobs),
     el("section", { class: "sl-view" }, R.viewTop, R.viewHost, R.empty),
     el("aside", { class: "sl-panel" }, R.panel, R.actions)));
   SL.built = true;
@@ -96,7 +97,7 @@ async function slLoad() {
       SL.section = SL.schema.sections[0];
     }
     const d = await api("/api/admin/druck/jobs");
-    SL.jobs = d.jobs; SL.printer = d.printer || {};
+    SL.jobs = d.jobs; SL.printer = d.printer || {}; SL.bed = d.bed || { clear: true }; SL.queue = d.queue || [];
     if (!SL.built) slBuild();
     const key = JSON.stringify(d);
     if (key !== SL.last) {
@@ -123,6 +124,7 @@ function slPrinterReady() {
   if (!p.can_upload) return [false, "Seriennummer/Prüfcode fehlen in der Druckmonitor-App"];
   if (!p.online) return [false, "Drucker nicht erreichbar"];
   if (!["idle", "done"].includes(p.state)) return [false, `Drucker beschäftigt (${p.status || p.state})`];
+  if (SL.bed && !SL.bed.clear) return [false, "Druckbett erst abräumen"];
   return [true, "Drucker bereit"];
 }
 
@@ -130,6 +132,7 @@ function slRenderJobs() {
   const R = SL.r;
   const [ready, why] = slPrinterReady();
   R.printer.replaceChildren(el("span", { class: "dot" + (ready ? " on" : "") }), why);
+  slRenderBedQueue();
   if (!SL.jobs.length) { R.jobs.replaceChildren(el("div", { class: "muted sl-nojobs" }, "Noch keine Aufträge.")); return; }
   R.jobs.replaceChildren(...SL.jobs.map(j => {
     const [label, cls] = SL_STATE[j.state] || [j.state, "idle"];
@@ -140,7 +143,7 @@ function slRenderJobs() {
       el("div", { class: "sl-job-meta" }, el("span", { class: `dk-state ${cls}` }, el("i"), el("span", {}, label)), facts ? el("span", { class: "muted" }, facts) : null),
       j.origin ? el("div", { class: "sl-origin" }, `${j.origin.site}${j.origin.creator ? " · " + j.origin.creator : ""}${j.origin.license ? " · " + j.origin.license : ""}`) : null,
       j.message && ["failed", "error"].includes(j.state) ? el("div", { class: "dkj-msg bad" }, j.message) : null,
-      !["slicing", "queued", "sending"].includes(j.state) ? el("button", { class: "sl-job-del", title: "Auftrag löschen", onclick: async e => {
+      !["slicing", "queued", "sending", "waiting"].includes(j.state) ? el("button", { class: "sl-job-del", title: "Auftrag löschen", onclick: async e => {
         e.stopPropagation();
         if (!await confirmDlg("Auftrag löschen?", `„${j.name}“ wird vom Server gelöscht.`)) return;
         await api(`/api/admin/druck/jobs/${j.id}`, { method: "DELETE" });
@@ -148,6 +151,59 @@ function slRenderJobs() {
         SL.last = ""; slLoad();
       } }, "×") : null);
   }));
+}
+
+// Druckbett abräumen + Warteschlange (links über den Aufträgen)
+function slRenderBedQueue() {
+  const R = SL.r, bed = SL.bed || { clear: true };
+  const bedBox = bed.clear ? null : el("div", { class: "sl-bed" },
+    el("b", {}, "Druckbett abräumen"),
+    el("span", {}, bed.job ? `„${bed.job}“ liegt noch auf dem Drucker.` : "Der letzte Druck liegt noch auf dem Drucker."),
+    el("button", { class: "btn small primary", onclick: async () => {
+      try { const r = await api("/api/admin/druck/bed-clear", json("POST", {})); toast(r.started ? `Druckbett frei – „${r.started}“ startet` : "Druckbett frei ✓"); }
+      catch (e) { toast(e.message); }
+      SL.last = ""; slLoad();
+    } }, "✓ Druckbett ist frei"));
+  const q = SL.queue.map(id => SL.jobs.find(j => j.id === id)).filter(Boolean);
+  const move = async (i, d) => {
+    const ids = q.map(j => j.id); [ids[i], ids[i + d]] = [ids[i + d], ids[i]];
+    await api("/api/admin/druck/queue", json("PUT", { order: ids })); SL.last = ""; slLoad();
+  };
+  const qBox = !q.length ? null : el("div", { class: "sl-queue" },
+    el("div", { class: "sl-label" }, `Warteschlange (${q.length})`),
+    ...q.map((j, i) => el("div", { class: "sl-qitem" },
+      el("span", { class: "sl-qn" }, String(i + 1)),
+      el("span", { class: "sl-qname", title: j.name, onclick: () => slSelect(j.id) }, j.name,
+        j.not_before ? el("small", {}, ` · ab ${new Date(j.not_before * 1000).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })}`) : null),
+      el("button", { class: "sl-qbtn", title: "Nach oben", disabled: i === 0, onclick: () => move(i, -1) }, "↑"),
+      el("button", { class: "sl-qbtn", title: "Nach unten", disabled: i === q.length - 1, onclick: () => move(i, 1) }, "↓"),
+      el("button", { class: "sl-qbtn", title: "Aus der Warteschlange nehmen", onclick: async () => {
+        await api(`/api/admin/druck/jobs/${j.id}/cancel`, json("POST", {})); SL.last = ""; slLoad();
+      } }, "×"))),
+    el("small", { class: "muted" }, "Startet automatisch, sobald der Drucker frei und das Druckbett abgeräumt ist."));
+  R.bedQueue.replaceChildren(...[bedBox, qBox].filter(Boolean));
+}
+
+async function slQueue(j) {
+  const when = el("select", {}, el("option", { value: "" }, "Sobald der Drucker frei ist"), el("option", { value: "at" }, "Frühestens um …"));
+  const at = el("input", { type: "datetime-local", hidden: true });
+  const d0 = new Date(Date.now() + 3600e3); d0.setMinutes(0, 0, 0);
+  at.value = new Date(d0 - d0.getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
+  when.onchange = () => { at.hidden = when.value !== "at"; };
+  const lev = el("input", { type: "checkbox", checked: true });
+  const v = await dialog("In die Warteschlange", [
+    el("p", {}, `„${j.name}“ wird automatisch gedruckt, wenn der Drucker frei ist und das Druckbett als abgeräumt bestätigt wurde.`),
+    el("label", {}, "Start"), when, at,
+    el("label", { class: "dkj-check" }, lev, "Vor dem Druck das Bett vermessen (empfohlen)"),
+    el("p", { class: "muted" }, "Tipp: Für mehrere Aufträge nacheinander sollte genug Filament eingelegt sein."),
+  ], [["Abbrechen", ""], ["Einreihen", "ok", "primary"]]);
+  if (v !== "ok") return;
+  const nb = when.value === "at" && at.value ? new Date(at.value).getTime() / 1000 : null;
+  try {
+    await api(`/api/admin/druck/jobs/${j.id}/queue`, json("POST", { leveling: lev.checked, not_before: nb }));
+    toast("In die Warteschlange eingereiht");
+  } catch (e) { toast(e.message); }
+  SL.last = ""; slLoad();
 }
 
 function slSelect(id) {
@@ -318,7 +374,8 @@ function slRenderActions() {
   const j = slJob();
   const dirty = j && !j.sliced_by_user && SL.saved && !slSame(SL.values, SL.saved);
   const [ready, why] = slPrinterReady();
-  const canPrint = j && !dirty && ready && ["ready", "error", "printing"].includes(j.state);
+  const canPrint = j && !dirty && ready && ["ready", "error", "printing", "done"].includes(j.state);
+  const canQueue = j && !dirty && ["ready", "error", "printing", "done"].includes(j.state);
   const status = !j ? "Einstellungen gelten für das nächste hochgeladene Modell."
     : dirty ? (SL.live.state === "error" ? "Mit diesen Einstellungen geht es nicht: " + SL.live.error : "Geänderte Einstellungen – „Übernehmen“ speichert sie für den Druck.")
     : j.state === "slicing" ? "Wird geslict …" : j.state === "failed" ? j.message : !ready ? why : "Bereit zum Drucken.";
@@ -330,6 +387,7 @@ function slRenderActions() {
         await api("/api/admin/druck/slicer/defaults", json("PUT", { values: SL.values })); toast("Als Standard gespeichert");
       } }, "Als Standard"),
       j && dirty ? el("button", { class: "btn small primary", disabled: SL.live.state === "error", onclick: slCommit }, "Übernehmen") : null,
+      j ? el("button", { class: "btn small", disabled: !canQueue, title: canQueue ? "Automatisch drucken, sobald der Drucker frei ist" : "Erst slicen/übernehmen", onclick: () => slQueue(j) }, "In Warteschlange") : null,
       j ? el("button", { class: "btn primary", disabled: !canPrint, title: canPrint ? "" : dirty ? "Erst übernehmen" : why, onclick: () => slPrint(j) }, "Drucken") : null));
 }
 

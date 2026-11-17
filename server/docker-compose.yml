@@ -9,8 +9,12 @@ services:
     ports:
       - "8080:8080"
     env_file: .env
+    environment:
+      # Backups außerhalb von ./data ablegen (Pfad links z. B. auf ein NAS-Laufwerk ändern)
+      BACKUP_DIR: /backups
     volumes:
       - ./data:/data
+      - ./backups:/backups
       # Auslastung des Proxmox-Containers für die Übersicht (nur lesend)
       - /proc/meminfo:/host/proc/meminfo:ro
       - /proc/stat:/host/proc/stat:ro

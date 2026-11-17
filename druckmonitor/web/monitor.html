@@ -85,6 +85,15 @@
   .spinner { width: 54px; height: 54px; border-radius: 50%; border: 4px solid rgba(255,122,0,.2); border-top-color: var(--orange);
     animation: rot 1s linear infinite; }
   @keyframes rot { to { transform: rotate(360deg); } }
+  /* Zeitraffer (läuft, solange nicht gedruckt wird) */
+  .tl { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity .8s; pointer-events: none; }
+  .tl.on { opacity: 1; }
+  .tl video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .tl .tlLabel { position: absolute; left: 18px; top: 16px; display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    border-radius: 10px; background: rgba(14,15,18,.75); backdrop-filter: blur(6px); font-size: 18px; max-width: calc(100% - 36px); }
+  .tl .tlLabel b { color: var(--orange); letter-spacing: 3px; font-size: 14px; white-space: nowrap; }
+  .tl .tlLabel span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tl .tlBar { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--orange); width: 0; }
   .badge { position: absolute; left: 18px; bottom: 16px; padding: 6px 12px; border-radius: 8px; font-size: 14px; color: var(--muted);
     background: rgba(14,15,18,.72); backdrop-filter: blur(6px); font-variant-numeric: tabular-nums; }
 
@@ -181,6 +190,8 @@
     <canvas id="cam"></canvas>
     <div class="pages" id="pages"></div>
     <div id="camMsg"><div class="spinner"></div><b id="camMsgTitle">Verbinde mit dem Drucker …</b><span id="camMsgText"></span></div>
+    <div class="tl" id="tl"><video id="tlVideo" muted playsinline preload="auto"></video>
+      <div class="tlLabel"><b>ZEITRAFFER</b><span id="tlName"></span></div><div class="tlBar" id="tlBar"></div></div>
     <div class="badge" id="badge">–</div>
     <div class="camprog" id="camprog"></div>
     <div class="camline" id="camline"></div>
@@ -312,6 +323,41 @@ async function statusLoop() {
   }
 }
 
+// ---------- Zeitraffer ----------
+// Solange nicht gedruckt wird, laufen die letzten Zeitraffer-Videos (vom Retail-Demo-Server) im Kamerafeld.
+const TL = { items: [], i: 0, printing: true, known: false, on: false };
+const tlVideo = $('tlVideo');
+async function tlLoad() {
+  try {
+    const d = await (await fetch('api/timelapses', { cache: 'no-store' })).json();
+    TL.items = d.show ? (d.items || []) : [];
+  } catch (e) {}
+  tlApply();
+}
+function tlPlay() {
+  if (!TL.items.length) return;
+  const it = TL.items[TL.i % TL.items.length];
+  $('tlName').textContent = `${it.name} · ${new Date(it.created * 1000).toLocaleDateString('de-DE')}`;
+  tlVideo.src = `api/timelapse/${it.id}.mp4`;
+  tlVideo.play().catch(() => {});
+}
+tlVideo.addEventListener('ended', () => { TL.i++; tlPlay(); });
+tlVideo.addEventListener('error', () => { TL.i++; if (TL.on) setTimeout(tlPlay, 3000); });
+tlVideo.addEventListener('timeupdate', () => { $('tlBar').style.width = (tlVideo.duration ? 100 * tlVideo.currentTime / tlVideo.duration : 0) + '%'; });
+// Druckerzustand bekannt und kein Druck aktiv -> Zeitraffer zeigen
+function tlApply() {
+  const show = TL.known && !TL.printing && TL.items.length > 0 && !pageMode;
+  if (show === TL.on) return;
+  TL.on = show;
+  $('tl').classList.toggle('on', show);
+  if (show) tlPlay(); else { tlVideo.pause(); tlVideo.removeAttribute('src'); tlVideo.load(); }
+}
+function tlSetPrinter(known, printing) {
+  if (TL.known === known && TL.printing === printing) return;
+  TL.known = known; TL.printing = printing; tlApply();
+}
+tlLoad(); setInterval(tlLoad, 60000);
+
 // Notbremse: falls die Oberfläche selbst hängen sollte, komplett neu laden
 setInterval(() => { if (Date.now() - lastServerOk > 30000) location.reload(); }, 5000);
 
@@ -393,6 +439,7 @@ function renderPrinter(d) {
   const L = d.live || {}, F = d.file || {};
   const hasLive = d.kind === 'flashforge' && L.online;
   const active = ['printing', 'paused', 'heating'].includes(L.state);
+  tlSetPrinter(d.kind === 'flashforge', hasLive && active);
 
   // Status
   const chip = $('pchip');

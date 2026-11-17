@@ -22,6 +22,8 @@ from typing import Callable, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 
+from .timelapse import FRAME_EVERY_S, PrintTracker, make_timelapse_router
+
 # Ohne neue Daten so lange gilt die Desktop-App als offline
 OFFLINE_AFTER_S = 15
 # So lange nach der letzten Bildabfrage "schaut jemand zu" (dann schickt die App flüssig Bilder)
@@ -107,6 +109,9 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
     st = DruckState(data_dir)
     web = _web_dir()
     r = APIRouter()
+    tracker = PrintTracker(st.dir, hooks)
+    hooks["tracker"] = tracker
+    r.include_router(make_timelapse_router(tracker, require_device, require_viewer))  # vor /druck/api/{rest}
     release_file = st.dir / "Druckmonitor-Setup.exe"
     release_json = st.dir / "release.json"
 
@@ -156,9 +161,14 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
             st.pc_info = data["pcInfo"]
         st.state, st.state_at = data, time.time()
         _record_history(st)
+        tracker.on_state(True, (data.get("printer") or {}).get("live") or {}, st.frame, st.frame_at, st.model.get("name", ""))
+        if (advance := hooks.get("advance_queue")):
+            advance()
         pending = hooks.get("pending_job")
         return {"ok": True, "watching": time.time() - st.last_view < WATCHING_S, "needInfo": st.pc_info is None,
                 "update": update_for(str(data.get("appVersion") or "")),
+                # Zeitraffer: während des Drucks regelmäßig Bilder schicken (auch wenn niemand zuschaut)
+                "timelapse": tracker.wants_frames(), "frame_every_s": FRAME_EVERY_S,
                 "print_job": pending() if pending else None,
                 "model_override": ({"id": o["id"], "name": o["name"], "url": "/api/druck/override/file"}
                                    if (o := model_override()) else None)}

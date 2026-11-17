@@ -38,6 +38,9 @@ type Pusher struct {
 	msg      string
 	lastOK   time.Time
 	watching bool
+	// Zeitraffer: Server möchte während des Drucks alle frameEvery Bilder (auch ohne Zuschauer)
+	timelapse  bool
+	frameEvery time.Duration
 }
 
 func (p *Pusher) set(state, msg string) {
@@ -158,9 +161,12 @@ func (a *App) frameLoop() {
 			continue
 		}
 		a.pusher.mu.Lock()
-		watching := a.pusher.watching
+		watching, timelapse, tlEvery := a.pusher.watching, a.pusher.timelapse, a.pusher.frameEvery
 		a.pusher.mu.Unlock()
 		every := pushFrameIdle
+		if timelapse && tlEvery > 0 {
+			every = tlEvery
+		}
 		if watching {
 			every = pushFrameLive
 		}
@@ -257,9 +263,16 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		Update   *UpdateInfo    `json:"update"`
 		PrintJob *PrintJob      `json:"print_job"`
 		Model    *ModelOverride `json:"model_override"`
+		// Zeitraffer läuft: alle frame_every_s Sekunden ein Bild schicken
+		Timelapse  bool    `json:"timelapse"`
+		FrameEvery float64 `json:"frame_every_s"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&r)
 	a.serverNeedsInfo = r.NeedInfo && pcInfo == nil
+	a.pusher.mu.Lock()
+	a.pusher.timelapse = r.Timelapse
+	a.pusher.frameEvery = time.Duration(r.FrameEvery * float64(time.Second))
+	a.pusher.mu.Unlock()
 	if r.Update != nil && !versionLess(version, r.Update.Version) {
 		r.Update = nil
 	}
