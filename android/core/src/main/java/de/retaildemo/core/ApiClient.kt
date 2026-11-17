@@ -154,6 +154,9 @@ class ApiClient(baseUrl: String, private val token: String) {
 
     suspend fun appUpdate(): AppRelease = JSON.decodeFromString(call("GET", "/api/device/app-update"))
 
+    /** Admin-App-Update auf dem Server (leer = keins). */
+    suspend fun adminAppRelease(): AppRelease = JSON.decodeFromString(call("GET", "/api/admin/admin-app/release"))
+
     /** Läuft gerade ein 3D-Druck? watch = true: Einblendung beginnt gleich (Druckmonitor schickt dann flüssig Bilder). */
     suspend fun druckStatus(watch: Boolean = false): DruckStatus =
         JSON.decodeFromString(call("GET", "/api/device/druck/status" + if (watch) "?watch=1" else ""))

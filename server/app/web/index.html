@@ -1980,7 +1980,7 @@ function cmpVer(a, b) {
 
 async function renderAppUpdate() {
   const box = $("#appUpdateSettings");
-  const rel = await api("/api/admin/app-release").catch(() => ({}));
+  const [rel, adm] = await Promise.all([api("/api/admin/app-release").catch(() => ({})), api("/api/admin/admin-app/release").catch(() => ({}))]);
   const input = el("input", { type: "file", accept: ".apk,application/vnd.android.package-archive", hidden: true });
   const bar = el("div"), status = el("span", { class: "meta" });
   const progress = el("div", { class: "progress", hidden: true }, bar);
@@ -1996,21 +1996,30 @@ async function renderAppUpdate() {
         off = r.received; bar.style.width = Math.round(off / f.size * 100) + "%";
       }
       const res = await api(`/api/admin/uploads/${id}/complete`, json("POST", {}));
-      toast(`Version ${res.version_name} bereitgestellt`); renderAppUpdate();
+      toast(`${res.app === "admin" ? "Admin-App" : "Demo-App"} ${res.version_name} bereitgestellt`); renderAppUpdate();
     } catch (err) { status.textContent = "Fehler: " + err.message; }
   });
   box.replaceChildren(
-    el("h3", {}, "App-Updates (Demo-App)"),
-    el("p", { class: "sub", style: "margin:0 0 12px" }, "Neue Demo-App-Version hier hochladen. Auf jedem Gerät steht sie dann in den Demo-Einstellungen unter „App-Version“ → „Jetzt aktualisieren“ bereit."),
+    el("h3", {}, "App-Updates (Demo-App und Admin-App)"),
+    el("p", { class: "sub", style: "margin:0 0 12px" }, "Neue APK hier hochladen – der Server erkennt selbst, ob es die Demo-App oder die Admin-App ist. Demo-App: in den Demo-Einstellungen unter „App-Version“ → „Jetzt aktualisieren“ bzw. unten verteilen. Admin-App: meldet sich auf dem Handy mit „Update verfügbar“."),
     el("div", { class: "release" },
       rel.version_name
-        ? el("div", {}, el("div", { class: "ver" }, `Version ${rel.version_name}`),
+        ? el("div", {}, el("div", { class: "ver" }, `Demo-App ${rel.version_name}`),
             el("div", { class: "meta" }, `${size(rel.size)} · hochgeladen ${new Date(rel.uploaded_at * 1000).toLocaleString("de-DE")}`))
-        : el("div", { class: "meta" }, "Noch keine Version hochgeladen."),
+        : el("div", { class: "meta" }, "Noch keine Demo-App hochgeladen."),
       el("div", { class: "spacer" }),
       el("button", { class: rel.version_name ? "btn" : "btn primary", onclick: () => input.click() }, "APK hochladen"), input),
     progress, status,
-    rel.version_name ? rolloutBox(rel) : null);
+    rel.version_name ? rolloutBox(rel) : null,
+    el("div", { class: "release", style: "margin-top:14px" },
+      el("div", {}, el("div", { class: "ver" }, "Admin-App" + (adm.version_name ? ` ${adm.version_name}` : "")),
+        el("div", { class: "meta" }, adm.version_name ? `${size(adm.size)} · hochgeladen ${new Date(adm.uploaded_at * 1000).toLocaleString("de-DE")} · die App bietet das Update selbst an (Einstellungen → App-Version)`
+          : "Noch keine Admin-App hochgeladen – einfach RetailDemo-Admin-….apk über „APK hochladen“ auswählen.")),
+      el("div", { class: "spacer" }),
+      adm.version_name ? el("button", { class: "btn small danger", onclick: async () => {
+        if (!await confirmDlg("Admin-App-Update löschen?", `Version ${adm.version_name} wird vom Server entfernt.`)) return;
+        await api("/api/admin/admin-app/release", { method: "DELETE" }); renderAppUpdate();
+      } }, "Löschen") : null));
 }
 
 // ---------------------------------------------------------------- Start

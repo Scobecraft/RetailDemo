@@ -446,6 +446,11 @@ Das klappt nur, wenn die neue APK mit **demselben Signaturschlüssel** gebaut wu
 Ohne diesen Schlüssel bricht der Build absichtlich ab. In einer neuen Sitzung mit Claude die ZIP-Datei
 deshalb immer mitgeben.
 
+
+**Admin-App:** Die neue `RetailDemo-Admin-….apk` ebenfalls auf der Webseite unter Einstellungen → App-Updates
+hochladen – der Server erkennt selbst, welche App es ist. Die Admin-App (ab 1.9) prüft regelmäßig, meldet
+„Admin-App-Update verfügbar“ (Benachrichtigung bzw. beim Öffnen) und installiert unter Einstellungen → App-Version →
+„Jetzt aktualisieren“. Beim ersten Mal fragt Android, ob die Admin-App Apps installieren darf.
 ## APKs selbst bauen
 
 ```bash

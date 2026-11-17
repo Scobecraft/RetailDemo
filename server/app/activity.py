@@ -34,6 +34,7 @@ ACTIONS = [
     ("POST", r"^/api/admin/app-release/install-now$", "Demo-App-Update sofort installieren"),
     ("DELETE", r"^/api/admin/app-release/rollout$", "Demo-App-Update gestoppt"),
     ("DELETE", r"^/api/admin/app-release$", "Demo-App-Update gelöscht"),
+    ("DELETE", r"^/api/admin/admin-app/release$", "Admin-App-Update gelöscht"),
     ("POST", r"^/api/admin/druck/release/install-now$", "Druckmonitor-Update installieren"),
     ("DELETE", r"^/api/admin/druck/release$", "Druckmonitor-Update gelöscht"),
     ("POST", r"^/api/admin/druck/jobs/[^/]+/print$", "3D-Druck gestartet"),

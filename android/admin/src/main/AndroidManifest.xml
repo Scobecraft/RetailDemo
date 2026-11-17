@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Updates der Admin-App vom eigenen Server installieren -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="false"
@@ -34,6 +36,7 @@
                 android:value="Hält die Verbindung zum eigenen Server für sofortige Alarm-Benachrichtigungen (ohne Google-Dienste)." />
         </service>
         <receiver android:name=".AlertActionReceiver" android:exported="false" />
+        <receiver android:name=".AdminUpdateReceiver" android:exported="false" />
         <receiver android:name=".AdminBootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

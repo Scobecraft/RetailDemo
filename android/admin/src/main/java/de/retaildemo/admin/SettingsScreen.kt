@@ -101,12 +101,48 @@ fun SettingsScreen(vm: AdminViewModel, modifier: Modifier) {
             }
 
             if (vm.isConfigured) {
+                AppVersionCard()
                 NotificationsCard(vm)
                 StoreCard(vm, settings) { vm.saveSettings(it) }
                 WebFilterCard(settings) { vm.saveSettings(it) }
                 ScheduleCard(settings) { vm.saveSettings(settings.copy(schedule = it)) }
                 ServerSettingsCard(settings) { vm.saveSettings(it) }
             }
+        }
+    }
+}
+
+@Composable
+private fun AppVersionCard() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val st by AdminUpdater.state.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) { if (st is AdminUpdater.State.Idle) AdminUpdater.check(ctx) }
+    Card {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("App-Version", style = MaterialTheme.typography.titleMedium)
+            Text("Installiert: ${AdminUpdater.installedName}")
+            when (val s = st) {
+                is AdminUpdater.State.Checking -> Text("Suche nach Updates …")
+                is AdminUpdater.State.UpToDate -> Text("✅ Aktuell – neue Versionen auf der Webseite unter Einstellungen → App-Updates hochladen.", style = MaterialTheme.typography.bodySmall)
+                is AdminUpdater.State.Available -> {
+                    Text("Neue Version ${s.release.versionName} verfügbar", color = MaterialTheme.colorScheme.primary)
+                    if (!AdminUpdater.canInstall(ctx)) {
+                        Text("Einmalig erlauben: „Unbekannte Apps installieren“ für die Admin-App.", style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = {
+                            ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                android.net.Uri.parse("package:" + ctx.packageName)))
+                        }) { Text("Erlauben") }
+                    }
+                    Button(onClick = { scope.launch { AdminUpdater.install(ctx, s.release) } }) { Text("Jetzt aktualisieren") }
+                }
+                is AdminUpdater.State.Downloading -> Text("Wird heruntergeladen …")
+                is AdminUpdater.State.Installing -> Text("Wird installiert – bitte im Android-Dialog „Aktualisieren“ antippen.")
+                is AdminUpdater.State.Failed -> Text("❌ ${s.message}", color = MaterialTheme.colorScheme.error)
+                else -> {}
+            }
+            if (st !is AdminUpdater.State.Available && st !is AdminUpdater.State.Downloading && st !is AdminUpdater.State.Installing)
+                OutlinedButton(onClick = { scope.launch { AdminUpdater.check(ctx) } }) { Text("Nach Updates suchen") }
         }
     }
 }

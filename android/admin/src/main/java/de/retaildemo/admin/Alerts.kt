@@ -179,6 +179,7 @@ class AlertWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
     override suspend fun doWork(): Result {
         if (!Alerts.enabled(applicationContext)) return Result.success()
         runCatching { Alerts.poll(applicationContext, wait = false) }
+        runCatching { AdminUpdater.checkInBackground(applicationContext) }
         if (Alerts.instant(applicationContext)) runCatching { Alerts.start(applicationContext) }
         return Result.success()
     }

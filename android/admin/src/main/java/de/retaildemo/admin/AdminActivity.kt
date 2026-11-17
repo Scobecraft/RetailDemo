@@ -65,7 +65,14 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 
 @Composable
 private fun AdminRoot(vm: AdminViewModel) {
-    var tab by rememberSaveable { mutableIntStateOf(if (vm.isConfigured) 0 else Tab.Settings.ordinal) }
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    val openSettings = activity?.intent?.getBooleanExtra("open_settings", false) == true
+    var tab by rememberSaveable { mutableIntStateOf(if (vm.isConfigured && !openSettings) 0 else Tab.Settings.ordinal) }
+    // Beim Start nach einem Admin-App-Update sehen
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        if (vm.isConfigured) AdminUpdater.check(ctx)?.let { vm.messages.value = "Admin-App-Update ${it.versionName} verfügbar – Einstellungen → App-Version" }
+    }
     val snackbar = remember { SnackbarHostState() }
     val message by vm.messages.collectAsState()
     LaunchedEffect(message) {

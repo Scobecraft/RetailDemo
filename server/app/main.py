@@ -55,6 +55,8 @@ WEB_DIR = Path(__file__).parent / "web"
 APP_DIR = DATA_DIR / "app"
 APP_APK = APP_DIR / "demo-latest.apk"
 DEMO_PACKAGE = "de.retaildemo.demo"
+ADMIN_PACKAGE = "de.retaildemo.admin"
+ADMIN_APK = APP_DIR / "admin-latest.apk"
 # Werte des Proxmox-Containers (per docker-compose eingebunden); sonst die von Docker selbst
 HOST_PROC = Path("/host/proc") if Path("/host/proc/meminfo").exists() else Path("/proc")
 
@@ -1250,10 +1252,11 @@ def _register_app_release(tmp: Path) -> dict:
     except Exception:
         tmp.unlink(missing_ok=True)
         raise HTTPException(400, "Die Datei ist keine gültige APK")
-    if info.get("package") != DEMO_PACKAGE:
+    if info.get("package") not in (DEMO_PACKAGE, ADMIN_PACKAGE):
         tmp.unlink(missing_ok=True)
-        raise HTTPException(400, f"Das ist nicht die Demo-App (Paket: {info.get('package')}). "
-                                 "Bitte RetailDemo-Demo-….apk hochladen.")
+        raise HTTPException(400, f"Das ist weder die Demo-App noch die Admin-App (Paket: {info.get('package')}). "
+                                 "Bitte RetailDemo-Demo-….apk oder RetailDemo-Admin-….apk hochladen.")
+    is_admin = info.get("package") == ADMIN_PACKAGE
     sha = hashlib.sha256()
     with open(tmp, "rb") as f:
         while chunk := f.read(1024 * 1024):
@@ -1265,10 +1268,41 @@ def _register_app_release(tmp: Path) -> dict:
         "sha256": sha.hexdigest(),
         "uploaded_at": time.time(),
     }
-    shutil.move(str(tmp), APP_APK)
+    shutil.move(str(tmp), ADMIN_APK if is_admin else APP_APK)
     with db() as c:
-        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_release', ?)", (json.dumps(release),))
-    return release
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                  ("admin_release" if is_admin else "app_release", json.dumps(release),))
+    return {**release, "app": "admin" if is_admin else "demo"}
+
+
+def _admin_release() -> Optional[dict]:
+    with db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='admin_release'").fetchone()
+    if not row or not ADMIN_APK.exists():
+        return None
+    return json.loads(row["value"])
+
+
+# Admin-App: Updates über den Server (die App prüft selbst und bietet „Jetzt aktualisieren“ an)
+@app.get("/api/admin/admin-app/release", dependencies=[Depends(require_admin)])
+def admin_app_admin_release():
+    rel = _admin_release()
+    return {**rel, "url": "/api/admin/admin-app/apk"} if rel else {}
+
+
+@app.get("/api/admin/admin-app/apk", dependencies=[Depends(require_admin)])
+def admin_app_admin_apk():
+    if not _admin_release():
+        raise HTTPException(404, "Kein Admin-App-Update vorhanden")
+    return FileResponse(ADMIN_APK, media_type="application/vnd.android.package-archive", filename="RetailDemo-Admin.apk")
+
+
+@app.delete("/api/admin/admin-app/release", dependencies=[Depends(require_admin)])
+def admin_app_admin_delete():
+    ADMIN_APK.unlink(missing_ok=True)
+    with db() as c:
+        c.execute("DELETE FROM settings WHERE key='admin_release'")
+    return {"ok": True}
 
 
 def _rollout() -> Optional[int]:
