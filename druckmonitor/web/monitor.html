@@ -484,7 +484,7 @@ async function printerLoop() {
         await loadModel();
       }
       modelRev = pdata.modelRev;
-      document.querySelector('.mhead').textContent = pdata.modelSource ? 'AKTUELLES MODELL · AUTOMATISCH GELADEN' : 'AKTUELLES MODELL';
+      document.querySelector('.mhead').textContent = !pdata.modelSource ? 'AKTUELLES MODELL' : /Webseite/.test(pdata.modelSource) ? 'AKTUELLES MODELL · VON DER WEBSEITE' : 'AKTUELLES MODELL · AUTOMATISCH GELADEN';
       renderPrinter(pdata);
     } catch (e) {}
     await sleep(2000);

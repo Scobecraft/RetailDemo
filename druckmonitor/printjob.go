@@ -110,6 +110,13 @@ func (a *App) runPrintJob(job *PrintJob) {
 	}
 	log.Printf("Druckauftrag „%s“ an den Drucker übergeben", job.Name)
 	a.reportJob(job.ID, "printing", "Druck gestartet")
+	// Die Datei liegt nicht auf dem PC (die automatische Suche fände sie nicht) –
+	// deshalb gleich als aktuelles Modell übernehmen: Vorschau, Slicer-Angaben, Webseite.
+	if f, err := os.Open(path); err == nil {
+		err = a.storeModel(job.Name+".gcode", f, "von der Retail-Demo-Webseite")
+		f.Close()
+		log.Printf("Modell „%s“ aus dem Druckauftrag übernommen: %v", job.Name, err)
+	}
 }
 
 func (a *App) downloadJob(job *PrintJob) (string, error) {

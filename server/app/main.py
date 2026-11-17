@@ -699,6 +699,27 @@ def delete_media(media_id: str):
     return {"ok": True}
 
 
+class BulkDelete(BaseModel):
+    ids: list[str]
+
+
+@app.post("/api/admin/media/bulk-delete", dependencies=[Depends(require_admin)])
+def bulk_delete_media(body: BulkDelete):
+    """Mehrere Medien auf einmal löschen (Mehrfachauswahl auf der Webseite)."""
+    ids = list(dict.fromkeys(body.ids))[:1000]
+    files = []
+    with db() as c:
+        for media_id in ids:
+            row = c.execute("SELECT filename FROM media WHERE id=?", (media_id,)).fetchone()
+            if row:
+                c.execute("DELETE FROM media WHERE id=?", (media_id,))
+                files.append((row["filename"], media_id))
+    for filename, media_id in files:
+        (MEDIA_DIR / filename).unlink(missing_ok=True)
+        (THUMB_DIR / f"{media_id}.jpg").unlink(missing_ok=True)
+    return {"ok": True, "deleted": len(files)}
+
+
 class PlaylistBody(BaseModel):
     name: Optional[str] = None
     media_ids: Optional[list[str]] = None

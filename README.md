@@ -287,7 +287,8 @@ PrusaSlicer und dem Profil `server/app/slicer/adventurer5m.ini` für den Flashfo
 
 **Drucken** (nach dem Abhaken „Druckbett leer“ und „Filament eingelegt“) übergibt den Auftrag an die
 Druckmonitor-App; sie lädt den G-Code und schickt ihn über die Schnittstelle des Druckers (Port 8898) mit
-„sofort drucken“. Voraussetzungen: Druckmonitor ab 1.2.0, Seriennummer und Prüfcode in der App eingetragen,
+„sofort drucken“. Danach zeigt sie die gedruckte Datei als aktuelles Modell an (Vorschau in der App und im
+Reiter 3D-Drucker, mit Druckzeit und Filament). Voraussetzungen: Druckmonitor ab 1.2.0, Seriennummer und Prüfcode in der App eingetragen,
 Drucker bereit (nicht schon am Drucken). Den ersten Druck mit dem Server-Profil bitte beaufsichtigen.
 
 ### Übergang zwischen den Medien

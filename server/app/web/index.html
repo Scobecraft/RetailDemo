@@ -125,6 +125,20 @@
   .tile .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tile .meta { color: var(--muted); font-size: 13px; }
   .tile .actions { display: flex; gap: 4px; margin-top: 8px; }
+  .tile { position: relative; transition: border-color .15s, box-shadow .15s; }
+  .tile.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .tile .sel { position: absolute; top: 8px; right: 8px; z-index: 2; width: 26px; height: 26px; border-radius: 7px; border: 2px solid #fff;
+               background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; font-size: 15px; font-weight: 700;
+               opacity: 0; transition: opacity .15s, background .15s; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+  .tile:hover .sel, .grid.selecting .tile .sel, .tile.selected .sel { opacity: 1; }
+  .tile.selected .sel { background: var(--accent); border-color: var(--accent); }
+  @media (hover: none) { .tile .sel { opacity: 1; } }
+  .selbar { position: sticky; bottom: 16px; z-index: 20; margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+            background: var(--text); color: var(--card); padding: 10px 14px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); animation: dk-in .25s ease both; }
+  .selbar b { margin-right: 6px; }
+  .selbar .btn { background: transparent; color: inherit; border-color: rgba(127,127,127,.5); }
+  .selbar .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .selbar .spacer { flex: 1; }
   .empty { text-align: center; color: var(--muted); padding: 48px 16px; }
 
   /* ---------- Playlists ---------- */
@@ -606,6 +620,7 @@
       <div class="target" id="uploadTargets"></div>
       <div class="queue" id="queue"></div>
       <div class="grid" id="mediaGrid"></div>
+      <div class="selbar" id="mediaSelBar" hidden></div>
     </div>
 
     <!-- Playlists -->
@@ -875,17 +890,80 @@ document.addEventListener("keydown", e => {
   e.preventDefault(); $("#mediaSearch").focus();
 });
 
+// Mehrfachauswahl: Kästchen auf jeder Kachel, Shift-Klick wählt einen Bereich
+state.mediaSel = new Set();
+let mediaSelLast = null;
+function toggleMediaSel(id, e, list) {
+  if (e?.shiftKey && mediaSelLast && list) {
+    const ids = list.map(m => m.id), a = ids.indexOf(mediaSelLast), b = ids.indexOf(id);
+    if (a >= 0 && b >= 0) { const [x, y] = a < b ? [a, b] : [b, a]; for (const i of ids.slice(x, y + 1)) state.mediaSel.add(i); }
+  } else if (state.mediaSel.has(id)) state.mediaSel.delete(id);
+  else state.mediaSel.add(id);
+  mediaSelLast = id;
+  renderMedia();
+}
+
+function renderMediaSelBar(list) {
+  const bar = $("#mediaSelBar");
+  // nur noch vorhandene Medien in der Auswahl behalten
+  for (const id of [...state.mediaSel]) if (!mediaById(id)) state.mediaSel.delete(id);
+  const n = state.mediaSel.size;
+  $("#mediaGrid").classList.toggle("selecting", n > 0);
+  if (!n) { bar.hidden = true; return; }
+  const sel = [...state.mediaSel].map(mediaById).filter(Boolean);
+  const allVisible = list.length && list.every(m => state.mediaSel.has(m.id));
+  bar.hidden = false;
+  bar.replaceChildren(
+    el("b", {}, `${n} ausgewählt`),
+    el("span", { style: "opacity:.7;font-size:13px" }, size(sel.reduce((a, m) => a + (m.size || 0), 0))),
+    el("span", { class: "spacer" }),
+    !allVisible ? el("button", { class: "btn small", onclick: () => { list.forEach(m => state.mediaSel.add(m.id)); renderMedia(); } }, list.length < state.media.length ? `Alle ${list.length} gefundenen` : "Alle auswählen") : null,
+    el("button", { class: "btn small", onclick: () => { state.mediaSel.clear(); renderMedia(); } }, "Auswahl aufheben"),
+    state.playlists.length ? el("button", { class: "btn small", onclick: () => bulkPlaylist(sel, true) }, "Zur Playlist …") : null,
+    state.playlists.length ? el("button", { class: "btn small", onclick: () => bulkPlaylist(sel, false) }, "Aus Playlist …") : null,
+    el("button", { class: "btn small danger", onclick: () => bulkDeleteMedia(sel) }, `${n} löschen`));
+}
+
+async function bulkDeleteMedia(sel) {
+  const names = sel.slice(0, 5).map(m => `„${m.title}“`).join(", ") + (sel.length > 5 ? ` und ${sel.length - 5} weitere` : "");
+  if (!await confirmDlg(`${sel.length} Medien löschen?`, `${names} werden vom Server und beim nächsten Abgleich von allen Geräten gelöscht.`, `${sel.length} löschen`)) return;
+  const r = await api("/api/admin/media/bulk-delete", json("POST", { ids: sel.map(m => m.id) }));
+  state.mediaSel.clear();
+  await loadAll(); toast(`${r.deleted} Medien gelöscht`);
+}
+
+async function bulkPlaylist(sel, add) {
+  const pick = el("select", {}, ...state.playlists.map(p => el("option", { value: p.id }, `${p.name} (${p.media_ids.length})`)));
+  const res = await dialog(add ? `${sel.length} Medien zu einer Playlist hinzufügen` : `${sel.length} Medien aus einer Playlist entfernen`,
+    [el("label", {}, "Playlist"), pick], [["Abbrechen", ""], [add ? "Hinzufügen" : "Entfernen", "ok", "primary"]]);
+  if (res !== "ok") return;
+  const p = state.playlists.find(x => String(x.id) === pick.value);
+  const ids = sel.map(m => m.id);
+  const media_ids = add ? [...p.media_ids, ...ids.filter(id => !p.media_ids.includes(id))] : p.media_ids.filter(id => !ids.includes(id));
+  const changed = Math.abs(media_ids.length - p.media_ids.length);
+  await api(`/api/admin/playlists/${p.id}`, json("PUT", { media_ids }));
+  await loadAll();
+  toast(add ? `${changed} zu „${p.name}“ hinzugefügt` + (changed < ids.length ? ` (${ids.length - changed} waren schon drin)` : "")
+            : `${changed} aus „${p.name}“ entfernt`);
+}
+
 function renderMedia() {
   const grid = $("#mediaGrid");
   const words = searchWords($("#mediaSearch").value);
   const list = state.media.filter(m => mediaMatches(m.title, words));
   $("#mediaCount").textContent = words.length ? `${list.length} von ${state.media.length}` : state.media.length ? `${state.media.length} Medien` : "";
+  renderMediaSelBar(list);
   if (!state.media.length) { grid.replaceChildren(el("div", { class: "empty", style: "grid-column:1/-1" }, "Noch keine Medien – zieh deine ersten Videos oder Bilder oben in das Feld.")); return; }
   if (!list.length) { grid.replaceChildren(el("div", { class: "empty", style: "grid-column:1/-1" }, `Keine Medien gefunden für „${$("#mediaSearch").value.trim()}“.`)); return; }
+  const selecting = state.mediaSel.size > 0;
   grid.replaceChildren(...list.map(m => {
     const used = state.playlists.filter(p => p.media_ids.includes(m.id)).map(p => p.name);
-    return el("div", { class: "tile" },
-      el("div", { class: "thumb", style: `background-image:url('${thumbUrl(m.id)}')`, onclick: () => preview(m) },
+    const selected = state.mediaSel.has(m.id);
+    return el("div", { class: "tile" + (selected ? " selected" : "") },
+      el("button", { class: "sel", type: "button", title: selected ? "Abwählen" : "Auswählen (Shift: Bereich)", "aria-pressed": selected,
+        onclick: e => { e.stopPropagation(); toggleMediaSel(m.id, e, list); } }, selected ? "✓" : ""),
+      // Während einer Auswahl wählt ein Klick aufs Bild aus statt die Vorschau zu öffnen
+      el("div", { class: "thumb", style: `background-image:url('${thumbUrl(m.id)}')`, onclick: e => selecting ? toggleMediaSel(m.id, e, list) : preview(m) },
         el("span", { class: "badge" }, m.type === "video" ? "Video" : "Bild"),
         m.type === "video" ? el("div", { class: "play" }, "▶") : null),
       el("div", { class: "info" },
@@ -897,6 +975,12 @@ function renderMedia() {
           el("button", { class: "btn small danger", onclick: () => deleteMedia(m) }, "Löschen"))));
   }));
 }
+// Esc hebt die Auswahl auf
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && state.mediaSel.size && !$("[data-page=media]").hidden && !$("#dlg").open && document.activeElement?.id !== "mediaSearch") {
+    state.mediaSel.clear(); renderMedia();
+  }
+});
 function preview(m) {
   const d = $("#preview");
   const src = `/api/media/${m.id}/file`;
