@@ -1238,11 +1238,14 @@ function renderSettings() {
     numberField("Bilder werden standardmäßig … Sekunden gezeigt", "image_duration_s"),
     numberField("Handys: Kundenfotos löschen & Hintergrund zurücksetzen alle … Stunden (0 = aus)", "cleanup_interval_h", 0),
   ];
+  const transition = el("input", { type: "checkbox", checked: !!s.media_transition, style: "accent-color:var(--accent);width:16px;height:16px" });
   $("#behaviourSettings").replaceChildren(
     el("h3", {}, "Demo-Verhalten"),
     el("p", { class: "sub" }, "Für Handys und Laptops, soweit nicht anders angegeben."),
     ...fields.flatMap(f => f.nodes),
-    el("button", { class: "btn primary block", onclick: () => saveSettings(Object.fromEntries(fields.map(f => [f.key, f.input.value === "" ? s[f.key] : +f.input.value]))) }, "Speichern"));
+    el("label", { style: "display:flex;gap:10px;align-items:center;color:var(--text);cursor:pointer;margin-top:14px" }, transition,
+      "Handys: Übergang mit Logo-Animation zwischen Videos und Bildern"),
+    el("button", { class: "btn primary block", onclick: () => saveSettings({ ...Object.fromEntries(fields.map(f => [f.key, f.input.value === "" ? s[f.key] : +f.input.value])), media_transition: transition.checked ? 1 : 0 }) }, "Speichern"));
 
   // 3D-Druck-Einblendung in der Handy-Demo
   const promoN = numberField("Einblendung nach jedem … Video/Bild (0 = aus)", "druck_promo_every_n", 0);

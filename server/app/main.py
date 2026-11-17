@@ -65,6 +65,8 @@ DEFAULT_SETTINGS = {
     "cleanup_interval_h": 2,
     # Laptops: Kunden lesen/tippen länger, daher eigene Wartezeit bis zur Rückkehr der Demo
     "laptop_idle_timeout_s": 60,
+    # Handys: Übergang mit Logo zwischen Videos/Bildern (0/1)
+    "media_transition": 1,
     # Handys: nach jedem … Medium die Einblendung "3D-Druck live" (nur während eines Drucks; 0 = aus)
     "druck_promo_every_n": 8,
     "druck_promo_duration_s": 10,
@@ -111,8 +113,8 @@ def clean_domains(text: str) -> list[str]:
                 break
     return out
 # Einstellungen, bei denen 0 "aus" bedeutet
-ZERO_ALLOWED = {"cleanup_interval_h", "remove_bloatware", "druck_promo_every_n"}
-BOOL_SETTINGS = {"remove_bloatware"}
+ZERO_ALLOWED = {"cleanup_interval_h", "remove_bloatware", "druck_promo_every_n", "media_transition"}
+BOOL_SETTINGS = {"remove_bloatware", "media_transition"}
 PACKAGE_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$")
 
 
@@ -419,6 +421,8 @@ def build_manifest(c, device_row) -> dict:
         "cleanup_interval_h": s["cleanup_interval_h"],
         "heartbeat_interval_s": HEARTBEAT_INTERVAL_S,
     }
+    if s["media_transition"]:
+        manifest["transition"] = "logo"
     if s["druck_promo_every_n"] > 0:
         manifest["druck_promo"] = {"every_n": s["druck_promo_every_n"], "duration_s": s["druck_promo_duration_s"],
                                    "title": s["druck_promo_title"], "subtitle": s["druck_promo_subtitle"]}

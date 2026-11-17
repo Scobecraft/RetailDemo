@@ -169,7 +169,7 @@ private fun PromoIntro(promo: DruckPromo, logo: ImageBitmap?) {
             AnimatedVisibility(show, enter = fadeIn(tween(400)) + scaleIn(tween(500), initialScale = 0.7f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (logo != null) Box(
-                        Modifier.clip(RoundedCornerShape((14 * scale).dp)).background(Color.White)
+                        Modifier.clip(RoundedCornerShape((14 * scale).dp)).background(Ink) // Logo hat weiße Schrift
                             .padding(horizontal = (14 * scale).dp, vertical = (8 * scale).dp)
                     ) {
                         Image(logo, null, Modifier.height((34 * scale).dp), contentScale = ContentScale.Fit)
@@ -294,7 +294,7 @@ private fun LiveHeader(logo: ImageBitmap?, scale: Float) {
         Text("Gerade in unserem 3D-Drucker", color = Color.White, fontWeight = FontWeight.Bold,
             fontSize = (16 * scale).sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         if (logo != null) Box(
-            Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White).padding(horizontal = 8.dp, vertical = 4.dp)
+            Modifier.clip(RoundedCornerShape(8.dp)).background(Ink).padding(horizontal = 8.dp, vertical = 4.dp)
         ) { Image(logo, null, Modifier.height((20 * scale).dp), contentScale = ContentScale.Fit) }
     }
 }

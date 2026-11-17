@@ -151,6 +151,8 @@ data class Manifest(
     @SerialName("remove_bloatware") val removeBloatware: Boolean = false,
     /** Paketnamen, die trotzdem bleiben sollen. */
     @SerialName("bloatware_keep") val bloatwareKeep: List<String> = emptyList(),
+    /** Übergang zwischen den Medien: "logo" = Logo-Animation, sonst einfacher Wechsel. */
+    val transition: String = "",
     /** Einblendung "3D-Druck live" zwischen den Medien (null = aus). */
     @SerialName("druck_promo") val druckPromo: DruckPromo? = null,
 )

@@ -290,6 +290,13 @@ Druckmonitor-App; sie lädt den G-Code und schickt ihn über die Schnittstelle d
 „sofort drucken“. Voraussetzungen: Druckmonitor ab 1.2.0, Seriennummer und Prüfcode in der App eingetragen,
 Drucker bereit (nicht schon am Drucken). Den ersten Druck mit dem Server-Profil bitte beaufsichtigen.
 
+### Übergang zwischen den Medien
+
+Zwischen Videos, Bildern und der Spec-Seite läuft auf den Handys ein kurzer Übergang (ca. 1,5 s): eine
+orangefarbene Fläche mit dunklem Streifen fährt schräg ins Bild, in der Mitte erscheint das Laden-Logo, dahinter
+wechselt der Inhalt und die Fläche fährt auf der anderen Seite hinaus. Das Logo lädt die Demo-App einmal vom
+Server und speichert es (funktioniert auch offline). Ein-/ausschalten: Webseite → Einstellungen → Demo-Verhalten.
+
 ### 3D-Druck in der Handy-Demo
 
 Läuft gerade ein Druck, zeigt die Demo-App nach jedem 8. Video/Bild eine animierte Einblendung im

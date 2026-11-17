@@ -184,13 +184,24 @@ private fun DemoScreen(app: DemoApp, onCustomerTouch: () -> Unit, onAdminGesture
     val promo = manifest?.druckPromo?.takeIf { it.everyN > 0 }
     var showPromo by remember { mutableStateOf(false) }
     var mediaCount by remember { mutableIntStateOf(0) }
+    // Übergang mit Logo-Animation: Wechsel passiert erst, wenn das Bild ganz verdeckt ist
+    val withTransition = manifest?.transition == "logo"
+    var transitionKey by remember { mutableIntStateOf(0) }
+    var pendingSwitch by remember { mutableStateOf<(() -> Unit)?>(null) }
+    fun switchTo(change: () -> Unit) {
+        if (pendingSwitch != null) return // Übergang läuft schon
+        if (withTransition && slides.size > 1) { pendingSwitch = change; transitionKey++ } else change()
+    }
     val next = {
-        if (slide is Slide.Media) mediaCount++
-        if (promo != null && mediaCount >= promo.everyN) {
-            mediaCount = 0
-            if (app.druck.active.value) showPromo = true
+        val current = slide
+        switchTo {
+            if (current is Slide.Media) mediaCount++
+            if (promo != null && mediaCount >= promo.everyN) {
+                mediaCount = 0
+                if (app.druck.active.value) showPromo = true
+            }
+            index = (index + 1) % maxOf(1, slides.size)
         }
-        index = (index + 1) % maxOf(1, slides.size)
     }
 
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -210,7 +221,7 @@ private fun DemoScreen(app: DemoApp, onCustomerTouch: () -> Unit, onAdminGesture
     ) {
         if (showPromo && promo != null) {
             LaunchedEffect(Unit) { player.stop() }
-            DruckPromoSlide(app, promo) { showPromo = false }
+            DruckPromoSlide(app, promo) { switchTo { showPromo = false } }
         } else when (slide) {
             null -> WaitingScreen(app)
             is Slide.Specs -> {
@@ -255,6 +266,11 @@ private fun DemoScreen(app: DemoApp, onCustomerTouch: () -> Unit, onAdminGesture
                     }
                 }
             }
+        }
+        // Übergang (über dem Inhalt, unter der Berührungs-Ebene)
+        if (transitionKey > 0) LogoTransition(transitionKey, app.druck.logo) {
+            pendingSwitch?.invoke()
+            pendingSwitch = null
         }
         // Unsichtbare Ebene über allem, die jede Berührung erkennt (auch über dem Video)
         Box(
