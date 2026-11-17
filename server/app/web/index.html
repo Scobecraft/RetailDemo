@@ -288,7 +288,22 @@
   .autospecs div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* ---------- Einstellungen ---------- */
-  .settings { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-items: start; }
+  .set-layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .set-nav { position: sticky; top: 84px; display: grid; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+  .set-group { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; padding: 10px 10px 4px; }
+  .set-group:first-child { padding-top: 2px; }
+  .set-nav button { display: grid; grid-template-columns: 26px 1fr; column-gap: 8px; align-items: center; text-align: left; border: 0; background: none;
+    color: var(--text); padding: 8px 10px; border-radius: 8px; cursor: pointer; font: inherit; }
+  .set-nav button .set-ic { grid-row: span 2; font-size: 16px; text-align: center; }
+  .set-nav button b { font-size: 14px; font-weight: 600; }
+  .set-nav button small { font-size: 12px; color: var(--muted); }
+  .set-nav button:hover { background: var(--bg); }
+  .set-nav button.active { background: var(--accent-soft); }
+  .set-nav button.active b { color: var(--accent); }
+  .settings { display: block; max-width: 760px; }
+  .settings .panel[hidden] { display: none; }
+  .settings .panel { animation: setIn .2s ease both; }
+  @keyframes setIn { from { opacity: 0; transform: translateY(4px); } }
   .settings .panel { padding: 20px; }
   .settings h3 { margin: 0 0 4px; font-size: 17px; }
   .settings .panel > p.sub { margin-bottom: 8px; font-size: 14px; }
@@ -770,7 +785,13 @@
     #changePw { display: none; }
     .device { flex-wrap: wrap; }
     .device .actions { width: 100%; justify-content: flex-start; padding-left: 40px; }
-    .settings { grid-template-columns: 1fr; }
+    .set-layout { grid-template-columns: 1fr; gap: 14px; }
+    .set-nav { position: static; display: flex; overflow-x: auto; gap: 6px; padding: 6px; scrollbar-width: none; }
+    .set-nav::-webkit-scrollbar { display: none; }
+    .set-group { display: none; }
+    .set-nav button { display: flex; gap: 6px; white-space: nowrap; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; }
+    .set-nav button small { display: none; }
+    .set-nav button.active { border-color: var(--accent); }
     nav.menu { order: 3; width: 100%; flex: none; margin-left: 0; }
     .menu-toggle { width: 100%; justify-content: flex-start; }
     .menu-caret { margin-left: auto; }
@@ -927,15 +948,31 @@
     <div data-page="settings" hidden>
       <h2>Einstellungen</h2>
       <p class="sub">Gelten für alle Geräte. Änderungen kommen beim nächsten Abgleich an – unter „Geräte“ → „Alle jetzt aktualisieren“ geht es schneller.</p>
-      <div class="settings">
-        <div class="panel" id="storeSettings"></div>
-        <div class="panel" id="behaviourSettings"></div>
-        <div class="panel" id="bloatSettings"></div>
-        <div class="panel" id="promoSettings"></div>
-        <div class="panel" id="scheduleSettings"></div>
-        <div class="panel" id="filterSettings"></div>
-        <div class="panel" id="appUpdateSettings"></div>
-        <div class="panel" id="druckUpdateSettings"></div>
+      <div class="set-layout">
+        <nav class="set-nav" id="setNav" aria-label="Bereiche der Einstellungen">
+          <div class="set-group">Allgemein</div>
+          <button data-set="storeSettings"><span class="set-ic">🏪</span><b>Laden & Logo</b><small>Name, Logo, Laptop-Demo</small></button>
+          <button data-set="behaviourSettings"><span class="set-ic">▶</span><b>Demo-Verhalten</b><small>Zeiten, Gerätedaten, Übergänge</small></button>
+          <button data-set="scheduleSettings"><span class="set-ic">🕘</span><b>Betriebszeiten</b><small>Wann die Demo läuft</small></button>
+          <div class="set-group">Handys</div>
+          <button data-set="promoSettings"><span class="set-ic">🖨</span><b>3D-Druck-Einblendung</b><small>Live-Bild zwischen den Videos</small></button>
+          <button data-set="bloatSettings"><span class="set-ic">🧹</span><b>Bloatware entfernen</b><small>Fremde Apps löschen</small></button>
+          <div class="set-group">Laptops</div>
+          <button data-set="filterSettings"><span class="set-ic">🛡</span><b>Kindersicherung</b><small>Webseiten sperren</small></button>
+          <div class="set-group">Updates</div>
+          <button data-set="appUpdateSettings"><span class="set-ic">📱</span><b>Demo- & Admin-App</b><small>APK hochladen und verteilen</small></button>
+          <button data-set="druckUpdateSettings"><span class="set-ic">💻</span><b>Druckmonitor</b><small>Installer für den PC</small></button>
+        </nav>
+        <div class="settings">
+          <div class="panel" id="storeSettings"></div>
+          <div class="panel" id="behaviourSettings" hidden></div>
+          <div class="panel" id="scheduleSettings" hidden></div>
+          <div class="panel" id="promoSettings" hidden></div>
+          <div class="panel" id="bloatSettings" hidden></div>
+          <div class="panel" id="filterSettings" hidden></div>
+          <div class="panel" id="appUpdateSettings" hidden></div>
+          <div class="panel" id="druckUpdateSettings" hidden></div>
+        </div>
       </div>
     </div>
   </main>
@@ -1970,13 +2007,26 @@ async function renderDruckUpdate() {
           : el("div", { class: "meta" }, "Noch kein Installer hochgeladen. " + pcLine),
       el("div", { class: "spacer" }),
       el("button", { class: rel ? "btn" : "btn primary", onclick: () => input.click() }, "Installer hochladen"), input),
-    progress, status, actions);
+    progress, status, actions || "");
 }
 function cmpVer(a, b) {
   const pa = String(a).match(/\d+/g) || [], pb = String(b).match(/\d+/g) || [];
   for (let i = 0; i < 4; i++) { const d = (+pa[i] || 0) - (+pb[i] || 0); if (d) return d; }
   return 0;
 }
+
+// Einstellungen: immer nur einen Bereich zeigen (Auswahl links, wird gemerkt)
+function showSetSection(id) {
+  if (!document.getElementById(id)) id = "storeSettings";
+  document.querySelectorAll("#setNav [data-set]").forEach(b => b.classList.toggle("active", b.dataset.set === id));
+  document.querySelectorAll(".settings > .panel").forEach(p => p.hidden = p.id !== id);
+  try { localStorage.setItem("setSection", id); } catch (e) {}
+}
+document.querySelectorAll("#setNav [data-set]").forEach(b => b.addEventListener("click", () => {
+  showSetSection(b.dataset.set);
+  if (matchMedia("(max-width: 640px)").matches) b.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+}));
+try { showSetSection(localStorage.getItem("setSection") || "storeSettings"); } catch (e) { showSetSection("storeSettings"); }
 
 async function renderAppUpdate() {
   const box = $("#appUpdateSettings");
@@ -2010,7 +2060,7 @@ async function renderAppUpdate() {
       el("div", { class: "spacer" }),
       el("button", { class: rel.version_name ? "btn" : "btn primary", onclick: () => input.click() }, "APK hochladen"), input),
     progress, status,
-    rel.version_name ? rolloutBox(rel) : null,
+    rel.version_name ? rolloutBox(rel) : "",
     el("div", { class: "release", style: "margin-top:14px" },
       el("div", {}, el("div", { class: "ver" }, "Admin-App" + (adm.version_name ? ` ${adm.version_name}` : "")),
         el("div", { class: "meta" }, adm.version_name ? `${size(adm.size)} · hochgeladen ${new Date(adm.uploaded_at * 1000).toLocaleString("de-DE")} · die App bietet das Update selbst an (Einstellungen → App-Version)`
