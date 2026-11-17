@@ -215,6 +215,29 @@ npm run dist:win     # -> dist/RetailDemo-Laptop-Setup-1.0.0.exe
 Zum Ausprobieren ohne Installer: `npm start`. Für Updates in `laptop/package.json` die `version` erhöhen und die
 neue Setup-Datei einfach über die alte installieren (Einstellungen bleiben erhalten).
 
+## Navigation
+
+Alle Bereiche der Webseite stecken in einem Menü oben links (☰), gruppiert nach Demo-Geräte, Werkzeuge,
+3D-Druck und System. Die Webseite merkt sich den zuletzt geöffneten Bereich.
+
+## Video-Schnitt
+
+Menü → **Video-Schnitt**: kleines Schnittprogramm für Werbevideos im Hochformat (1080 × 1920), Querformat
+(1920 × 1080) oder Quadrat. Links die Bibliothek (Videos/Bilder aus den Medien, hochgeladene Musik,
+Text-Vorlagen), in der Mitte die Vorschau, rechts die Eigenschaften, unten die Zeitleiste mit Video-, Text- und
+Tonspur.
+
+- Clips anklicken fügt sie hinzu; in der Zeitleiste verschieben (Reihenfolge), Ränder ziehen (kürzen),
+  **S** schneidet an der Abspielposition, **Entf** löscht, **Strg+Z** macht rückgängig, Leertaste spielt ab
+- Clip: Ausschnitt, Bild einpassen (füllen, Balken oder unscharfer Hintergrund – ideal für Querformat im
+  Hochformat), langsamer Zoom, Übergang zum vorigen Clip (Überblenden, über Schwarz, Schieben, Wischen, Kreis),
+  Ton stumm/Lautstärke
+- Text: mehrzeilig, Schrift, Größe, Farbe, Hintergrund-Balken oder Schatten, Position (auch in der Vorschau
+  ziehen), Animation, Start/Ende
+- Musik: hochladen (MP3, M4A, WAV, OGG, FLAC), Lage, Ausschnitt, Lautstärke, Ein-/Ausblenden
+- **Video erstellen** rendert auf dem Server (ffmpeg, H.264/AAC) und legt das MP4 in den Medien ab –
+  auf Wunsch gleich in Playlists. Projekte werden automatisch gespeichert.
+
 ## Übersicht
 
 Webseite und Admin-App starten mit einer **Übersicht**: wie viele Geräte verbunden sind, auf wie vielen die

@@ -82,9 +82,26 @@
   .bar { max-width: 1200px; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 16px; height: 60px; }
   .bar img { height: 34px; }
   .bar .brand { font-weight: 700; }
-  nav { display: flex; gap: 4px; margin-left: 16px; flex: 1; overflow-x: auto; }
-  nav button { white-space: nowrap; border: 0; background: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; color: var(--muted); font-weight: 500; }
-  nav button.active { background: var(--accent-soft); color: var(--accent); }
+  /* Navigation als Dropdown-Menü */
+  nav.menu { position: relative; margin-left: 12px; flex: 1; }
+  .menu-toggle { display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text);
+                 padding: 7px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 15px; }
+  .menu-toggle:hover, .menu-toggle[aria-expanded=true] { border-color: var(--accent); }
+  .menu-ic { color: var(--accent); font-size: 17px; line-height: 1; }
+  .menu-caret { color: var(--muted); font-size: 12px; transition: transform .2s; }
+  .menu-toggle[aria-expanded=true] .menu-caret { transform: rotate(180deg); }
+  .menu-panel { position: absolute; top: calc(100% + 8px); left: 0; z-index: 50; width: 320px; max-height: calc(100vh - 90px); overflow: auto;
+                background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.18); padding: 8px;
+                animation: menu-in .16s ease both; }
+  @keyframes menu-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  .menu-group { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding: 10px 10px 4px; }
+  .menu-panel button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; border: 0; background: none; text-align: left;
+                       padding: 8px 10px; border-radius: 9px; cursor: pointer; color: var(--text); }
+  .menu-panel button b { font-weight: 600; font-size: 14px; }
+  .menu-panel button small { color: var(--muted); font-size: 12px; }
+  .menu-panel button:hover { background: var(--bg); }
+  .menu-panel button.active { background: var(--accent-soft); }
+  .menu-panel button.active b { color: var(--accent); }
   main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
   h2 { font-size: 22px; margin: 0 0 4px; }
   .sub { color: var(--muted); margin: 0 0 20px; }
@@ -402,8 +419,93 @@
   .dkj-in input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
   .dkj-in .muted { font-size: 12px; white-space: nowrap; }
   .dkj-reset { border: 0; background: none; cursor: pointer; color: var(--accent); font-size: 16px; padding: 0; }
+  /* ---------- Video-Schnitt ---------- */
+  .ed { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto; gap: 10px; height: calc(100vh - 100px); min-height: 680px; }
+  .ed-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ed-top .spacer, .ed-transport .spacer { flex: 1; }
+  .ed-top .ed-projsel { width: auto; max-width: 220px; }
+  .ed-top .ed-name { width: 240px; font-weight: 600; }
+  .ed-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .ed-segbtn { border: 0; background: var(--card); color: var(--muted); padding: 7px 12px; cursor: pointer; font-size: 13px; }
+  .ed-segbtn.on { background: var(--accent); color: #fff; font-weight: 600; }
+  .ed-saved { font-size: 12px; }
+  .ed-render { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: var(--accent-soft); border-radius: 10px; padding: 8px 12px; font-size: 14px; }
+  .ed-render .progress { flex: 1; min-width: 160px; margin: 0; }
+  .ed-main { display: grid; grid-template-columns: 240px minmax(0, 1fr) 290px; gap: 10px; min-height: 0; }
+  .ed-lib, .ed-side, .ed-view { background: var(--card); border: 1px solid var(--line); border-radius: 14px; min-height: 0; }
+  .ed-lib { display: flex; flex-direction: column; overflow: hidden; }
+  .ed-libtabs { display: flex; border-bottom: 1px solid var(--line); }
+  .ed-libtab { flex: 1; border: 0; background: none; padding: 10px 4px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 13px; border-bottom: 2px solid transparent; }
+  .ed-libtab.on { color: var(--accent); border-bottom-color: var(--accent); }
+  .ed-lib-body { overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .ed-libsearch { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+  .ed-hint { font-size: 12px; margin: 0; }
+  .ed-libgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ed-libitem { border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 0; cursor: pointer; overflow: hidden; text-align: left; color: var(--text); }
+  .ed-libitem:hover { border-color: var(--accent); }
+  .ed-libthumb { display: block; aspect-ratio: 16/10; background: #111 center/cover; position: relative; }
+  .ed-libthumb i { position: absolute; left: 5px; bottom: 4px; color: #fff; font-style: normal; font-size: 11px; text-shadow: 0 1px 2px #000; }
+  .ed-libname { display: block; font-size: 12px; padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ed-audioitem { display: flex; align-items: center; gap: 4px; }
+  .ed-audioadd { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 6px 8px; cursor: pointer; color: var(--text); }
+  .ed-audioadd b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .ed-audioadd:hover { border-color: var(--accent); }
+  .ed-textpreset { justify-content: center; }
+  .ed-view { display: flex; flex-direction: column; overflow: hidden; background: #0e1014; }
+  .ed-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 10px; }
+  .ed-canvas { background: #000; box-shadow: 0 0 0 1px #2c313b; border-radius: 4px; cursor: default; }
+  .ed-transport { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-top: 1px solid #2c313b; background: #16181d; }
+  .ed-transport .btn { background: #22262e; color: #e8eaf0; border-color: #2c313b; }
+  .ed-time { color: #e8eaf0; font-variant-numeric: tabular-nums; font-size: 14px; }
+  .ed-side { overflow: auto; }
+  .ed-insp { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .ed-insp h3 { margin: 0; font-size: 16px; }
+  .ed-insp h4 { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+  .ed-insp-sub { margin: -4px 0 4px; font-size: 13px; overflow-wrap: anywhere; }
+  .ed-field { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: 13px; color: var(--muted); }
+  .ed-in { display: flex; align-items: center; gap: 6px; }
+  .ed-in input[type=number], .ed-in select, .ed-field select, .ed-field textarea { width: 100%; padding: 6px 8px; }
+  .ed-field textarea { font: inherit; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); resize: vertical; }
+  .ed-in input[type=range] { flex: 1; accent-color: var(--accent); }
+  .ed-in input[type=color] { width: 48px; height: 30px; border: 1px solid var(--line); border-radius: 6px; padding: 2px; background: var(--card); }
+  .ed-rv { width: 46px; text-align: right; }
+  .ed-pos { display: flex; gap: 6px; }
+  .ed-tl-head { display: flex; align-items: center; gap: 16px; }
+  .ed-tracknames { display: none; }
+  .ed-zoom { margin: 0 0 0 auto; display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+  .ed-zoom input { accent-color: var(--accent); }
+  .ed-tl { overflow-x: auto; overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; max-height: 260px; min-height: 160px; position: relative; }
+  .ed-ruler { position: sticky; top: 0; z-index: 4; background: var(--card); }
+  .ed-tl-inner { position: relative; min-width: 100%; padding-bottom: 6px; }
+  .ed-ruler { position: relative; height: 24px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 11px; color: var(--muted); user-select: none; }
+  .ed-ruler span { position: absolute; top: 5px; padding-left: 4px; border-left: 1px solid var(--line); height: 19px; }
+  .ed-endmark { position: absolute; top: 0; height: 1000px; border-left: 2px dashed var(--muted); opacity: .5; pointer-events: none; z-index: 3; }
+  .ed-track { position: relative; height: 52px; border-bottom: 1px solid var(--line); }
+  .ed-track-t, .ed-track-a { height: 38px; }
+  .ed-track::before { position: absolute; left: 6px; top: 2px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; pointer-events: none; z-index: 0; }
+  .ed-track-v::before { content: "Video"; } .ed-track-t::before { content: "Text"; } .ed-track-a::before { content: "Ton"; }
+  .ed-clip, .ed-tblock, .ed-ablock { position: absolute; top: 14px; bottom: 4px; border-radius: 7px; cursor: grab; overflow: hidden; user-select: none; touch-action: none; z-index: 1;
+                                     border: 2px solid transparent; box-sizing: border-box; display: flex; align-items: center; }
+  .ed-clip { background: #3b4252 center/auto 100% repeat-x; }
+  .ed-clipname { font-size: 11px; color: #fff; background: rgba(0,0,0,.55); padding: 1px 6px; border-radius: 4px; margin: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ed-tblock { background: #7c3aed; color: #fff; font-size: 12px; bottom: auto; }
+  .ed-ablock { background: #0d9488; color: #fff; font-size: 12px; bottom: auto; }
+  .ed-tblock span, .ed-ablock span { padding: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ed-clip.sel, .ed-tblock.sel, .ed-ablock.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .ed-h { position: absolute; top: 0; bottom: 0; width: 9px; cursor: ew-resize; background: rgba(255,255,255,.25); }
+  .ed-hl { left: 0; } .ed-hr { right: 0; }
+  .ed-clip:hover .ed-h, .sel .ed-h { background: var(--accent); }
+  .ed-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #e5484d; pointer-events: none; z-index: 5; }
+  .ed-playhead::before { content: ""; position: absolute; top: 0; left: -6px; border: 7px solid transparent; border-top-color: #e5484d; }
+  @media (max-width: 1100px) {
+    .ed { height: auto; }
+    .ed-main { grid-template-columns: 1fr; }
+    .ed-view { height: 60vh; }
+    .ed-lib { max-height: 320px; }
+  }
+
   /* ---------- 3D-Slicer ---------- */
-  main:has([data-page=slicer]:not([hidden])) { max-width: none; }
+  main:has([data-page=slicer]:not([hidden])), main:has([data-page=editor]:not([hidden])) { max-width: none; }
   .sl { display: grid; grid-template-columns: 270px minmax(0, 1fr) 400px; gap: 14px; height: calc(100vh - 110px); min-height: 620px; }
   .sl-side, .sl-panel, .sl-view { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); min-height: 0; }
   .sl-side { display: flex; flex-direction: column; padding: 16px; gap: 10px; overflow: hidden; }
@@ -526,8 +628,10 @@
     .device { flex-wrap: wrap; }
     .device .actions { width: 100%; justify-content: flex-start; padding-left: 40px; }
     .settings { grid-template-columns: 1fr; }
-    nav { order: 3; width: 100%; flex: none; margin-left: 0; }
-    nav button { flex: 1; }
+    nav.menu { order: 3; width: 100%; flex: none; margin-left: 0; }
+    .menu-toggle { width: 100%; justify-content: flex-start; }
+    .menu-caret { margin-left: auto; }
+    .menu-panel { width: 100%; }
     main { padding-top: 16px; }
     .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .tile .info { padding: 8px 10px 10px; }
@@ -580,14 +684,24 @@
     <div class="bar">
       <img src="/logo.svg" alt="">
       <span class="brand">Retail Demo</span>
-      <nav>
-        <button data-tab="overview" class="active">Übersicht</button>
-        <button data-tab="media">Medien</button>
-        <button data-tab="playlists">Playlists</button>
-        <button data-tab="devices">Geräte</button>
-        <button data-tab="settings">Einstellungen</button>
-        <button data-tab="druck">3D-Drucker</button>
-        <button data-tab="slicer">3D-Slicer</button>
+      <nav class="menu">
+        <button type="button" class="menu-toggle" id="menuToggle" aria-haspopup="true" aria-expanded="false">
+          <span class="menu-ic" aria-hidden="true">☰</span><span id="menuLabel">Übersicht</span><span class="menu-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="menu-panel" id="menuPanel" hidden>
+          <div class="menu-group">Demo-Geräte</div>
+          <button data-tab="overview" class="active"><b>Übersicht</b><small>Geräte und Server live</small></button>
+          <button data-tab="media"><b>Medien</b><small>Videos und Bilder hochladen</small></button>
+          <button data-tab="playlists"><b>Playlists</b><small>Was auf welchem Gerät läuft</small></button>
+          <button data-tab="devices"><b>Geräte</b><small>Handys und Laptops</small></button>
+          <div class="menu-group">Werkzeuge</div>
+          <button data-tab="editor"><b>Video-Schnitt</b><small>Werbevideos schneiden, Text und Musik</small></button>
+          <div class="menu-group">3D-Druck</div>
+          <button data-tab="druck"><b>3D-Drucker</b><small>Live-Kamera, Druck und PC</small></button>
+          <button data-tab="slicer"><b>3D-Slicer</b><small>Modelle slicen und drucken</small></button>
+          <div class="menu-group">System</div>
+          <button data-tab="settings"><b>Einstellungen</b><small>Demo, Updates, Kindersicherung</small></button>
+        </div>
       </nav>
       <button class="btn small theme-btn" id="themeBtn" type="button"></button>
       <button class="btn small" id="changePw">Passwort ändern</button>
@@ -608,6 +722,8 @@
     <div data-page="druck" hidden></div>
     <!-- 3D-Slicer (Inhalt baut slicer.js) -->
     <div data-page="slicer" hidden></div>
+    <!-- Video-Schnitt (Inhalt baut editor.js) -->
+    <div data-page="editor" hidden></div>
 
     <div data-page="media" hidden>
       <h2>Medien</h2>
@@ -769,6 +885,9 @@ async function showApp() {
   $("#login").hidden = true; $("#app").hidden = false;
   $("#changePw").hidden = managedByEnv;
   await loadAll();
+  // zuletzt geöffneten Reiter wieder zeigen
+  let tab = null; try { tab = localStorage.getItem("tab"); } catch (e) {}
+  if (tab && tab !== "overview") document.querySelector(`nav [data-tab="${tab}"]`)?.click();
 }
 $("#loginForm").addEventListener("submit", async e => {
   e.preventDefault();
@@ -833,14 +952,27 @@ $("#changePw").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------- Navigation
-document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => {
-  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("active", x === b));
+// Menü auf-/zuklappen
+function setMenu(open) {
+  $("#menuPanel").hidden = !open;
+  $("#menuToggle").setAttribute("aria-expanded", open);
+}
+$("#menuToggle").addEventListener("click", e => { e.stopPropagation(); setMenu($("#menuPanel").hidden); });
+document.addEventListener("click", e => { if (!$("#menuPanel").hidden && !e.target.closest("nav.menu")) setMenu(false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#menuPanel").hidden) { setMenu(false); $("#menuToggle").focus(); } });
+
+document.querySelectorAll("nav [data-tab]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav [data-tab]").forEach(x => x.classList.toggle("active", x === b));
+  $("#menuLabel").textContent = b.querySelector("b")?.textContent || b.textContent;
+  setMenu(false);
+  try { localStorage.setItem("tab", b.dataset.tab); } catch (e) {}
   document.querySelectorAll("[data-page]").forEach(p => p.hidden = p.dataset.page !== b.dataset.tab);
   if (b.dataset.tab === "devices") loadDevices();
   if (b.dataset.tab === "settings") { renderSettings(); renderAppUpdate(); renderDruckUpdate(); }
   if (b.dataset.tab === "overview") loadOverview();
   showDruck(b.dataset.tab === "druck");
   showSlicer(b.dataset.tab === "slicer");
+  showEditor(b.dataset.tab === "editor");
 }));
 
 async function loadAll() {
@@ -1729,5 +1861,6 @@ api("/api/web/me").then(me => { managedByEnv = !!me.managed_by_env; showApp(); }
 </script>
 <script src="/druck-dashboard.js"></script>
 <script src="/slicer.js"></script>
+<script src="/editor.js"></script>
 </body>
 </html>

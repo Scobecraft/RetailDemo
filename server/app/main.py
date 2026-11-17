@@ -30,6 +30,7 @@ from pydantic import BaseModel
 from .apkinfo import read_apk_info
 from .druck import make_router as make_druck_router
 from .druckjobs import make_jobs_router
+from .editor import make_editor_router
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 MEDIA_DIR = DATA_DIR / "media"
@@ -596,6 +597,9 @@ def upload_init(body: UploadInit):
     if body.kind == "apk":
         if not body.filename.lower().endswith(".apk"):
             raise HTTPException(400, "Bitte eine .apk-Datei auswählen")
+    elif body.kind == "audio":
+        if body.size > 300 * 1024 * 1024:
+            raise HTTPException(400, "Audiodatei zu groß (max. 300 MB)")
     elif body.kind in ("druckjob", "druckmodel"):
         if body.size > 500 * 1024 * 1024:
             raise HTTPException(400, "Datei zu groß (max. 500 MB)")
@@ -642,6 +646,9 @@ def upload_complete(upload_id: str, body: UploadComplete):
         release = register_druck_release(part)
         meta.unlink(missing_ok=True)
         return release
+    if info.get("kind") == "audio":
+        meta.unlink(missing_ok=True)
+        return register_editor_audio(part, info["filename"])
     if info.get("kind") == "druckmodel":
         try:
             return _druck_hooks["set_model"](part, info["filename"])
@@ -1198,7 +1205,7 @@ def web_index():
 @app.get("/{name}.js", include_in_schema=False)
 def web_script(name: str):
     """Skripte der Webseite (3D-Drucker, 3D-Slicer, G-Code-Vorschau)."""
-    if name not in ("druck-dashboard", "slicer", "gcode-preview"):
+    if name not in ("druck-dashboard", "slicer", "gcode-preview", "editor"):
         raise HTTPException(404, "Nicht gefunden")
     return FileResponse(WEB_DIR / f"{name}.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
@@ -1517,3 +1524,16 @@ jobs_router, register_druck_job, _pending_job, _jobs_hooks = make_jobs_router(
 _druck_hooks["pending_job"] = _pending_job
 _druck_hooks.update(_jobs_hooks)
 app.include_router(jobs_router)
+
+
+# ------------------------------------------------------------------ Video-Schnitt
+def _editor_media(media_id: str):
+    with db() as c:
+        row = c.execute("SELECT * FROM media WHERE id=?", (media_id,)).fetchone()
+    if not row:
+        return None
+    return {"id": row["id"], "type": row["type"], "title": row["title"], "path": str(MEDIA_DIR / row["filename"])}
+
+
+editor_router, register_editor_audio = make_editor_router(DATA_DIR, require_admin, _editor_media, _register_media, _add_to_playlists)
+app.include_router(editor_router)
