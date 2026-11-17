@@ -341,6 +341,11 @@ Druckmonitor-App; sie lädt den G-Code und schickt ihn über die Schnittstelle d
 Reiter 3D-Drucker, mit Druckzeit und Filament). Voraussetzungen: Druckmonitor ab 1.2.0, Seriennummer und Prüfcode in der App eingetragen,
 Drucker bereit (nicht schon am Drucken). Den ersten Druck mit dem Server-Profil bitte beaufsichtigen.
 
+**Größe und Messen:** In der Vorschau zeigt der Kasten oben links Breite, Tiefe und Höhe des fertigen Teils
+(ohne Stützen, Rand und Reinigungslinie) – umschaltbar zwischen mm und cm, mit Maßlinien am Modell und einer
+Warnung, wenn das Teil nicht aufs Druckbett passt. **📏 Messen**: zwei Punkte am Modell oder auf dem Druckbett
+anklicken, dann erscheint der Abstand (auch einzeln in X, Y und Z). Die Werte passen sich beim Skalieren live an.
+
 ### Übergang zwischen den Medien
 
 Zwischen Videos, Bildern und der Spec-Seite läuft auf den Handys ein kurzer Übergang (ca. 1,5 s): eine

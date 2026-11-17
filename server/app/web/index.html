@@ -595,6 +595,26 @@
   .gp { position: relative; width: 100%; height: 100%; }
   .gp canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
   .gp canvas:active { cursor: grabbing; }
+  .gp canvas.measuring { cursor: crosshair; }
+  .gp-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .gp-labels span { position: absolute; left: 0; top: 0; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+  .gp-labels span.dim { background: rgba(14,16,20,.85); color: #7dd3fc; border: 1px solid #0c4a6e; }
+  .gp-labels span.meas { background: #facc15; color: #111; }
+  .gp-dims { position: absolute; left: 12px; top: 12px; z-index: 2; background: rgba(14,16,20,.85); border: 1px solid #2c313b; border-radius: 10px; padding: 8px 10px; color: #e8eaf0; font-size: 12px; min-width: 170px; }
+  .gp-dims-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+  .gp-dims-rows { display: grid; grid-template-columns: auto auto; gap: 2px 12px; }
+  .gp-dims-rows span { color: #9ca3af; }
+  .gp-dims-rows b { text-align: right; font-variant-numeric: tabular-nums; }
+  .gp-seg { display: inline-flex; border: 1px solid #3b4250; border-radius: 6px; overflow: hidden; }
+  .gp-seg button, .gp-dims-tools button, .gp-measure button { border: 0; background: transparent; color: #cbd5e1; font: inherit; padding: 2px 8px; cursor: pointer; }
+  .gp-seg button.on { background: var(--accent); color: #fff; }
+  .gp-dims-tools { display: flex; gap: 6px; margin-top: 8px; }
+  .gp-dims-tools button { border: 1px solid #3b4250; border-radius: 6px; padding: 3px 8px; }
+  .gp-dims-tools button.on { border-color: var(--accent); color: #fff; background: rgba(238,127,0,.25); }
+  .gp-warn { margin-top: 6px; color: #fca5a5; }
+  .gp-measure { margin-top: 8px; padding-top: 8px; border-top: 1px solid #3b4250; display: grid; gap: 3px; color: #fde68a; max-width: 230px; }
+  .gp-measure b { color: #facc15; font-size: 14px; }
+  .gp-measure button { border: 1px solid #a16207; border-radius: 6px; color: #fde68a; justify-self: start; margin-top: 3px; }
   .gp-legend { position: absolute; left: 12px; bottom: 12px; display: grid; gap: 3px; background: rgba(14,16,20,.82); border: 1px solid #2c313b; border-radius: 10px; padding: 8px 10px; font-size: 12px; color: #e8eaf0; max-height: 60%; overflow: auto; }
   .gp-legend label { display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; color: #e8eaf0; font-size: 12px; white-space: nowrap; }
   .gp-legend input { accent-color: var(--accent); margin: 0; }

@@ -18,6 +18,17 @@ const TYPES = [
   ['other', 'Sonstiges', '#64748b', /./],
 ];
 const TRAVEL = ['travel', 'Leerfahrten', '#38bdf8'];
+// gehören nicht zum fertigen Teil (Abmessungen ohne Stützen, Rand und Reinigungslinie)
+const NOT_PART = new Set(['support', 'interface', 'brim', 'other', 'travel']);
+
+// Längen in mm oder cm (Einheit wird im Browser gemerkt)
+let UNIT = 'mm';
+try { if (localStorage.getItem('gpUnit') === 'cm') UNIT = 'cm'; } catch (e) {}
+export function fmtLen(mm, unit = UNIT) {
+  const v = unit === 'cm' ? mm / 10 : mm;
+  const d = unit === 'cm' ? (v < 10 ? 2 : 1) : (v < 100 ? 1 : 0);
+  return v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' ' + unit;
+}
 
 function typeOf(name) {
   // "Support material interface" vor "Support" prüfen
@@ -97,7 +108,11 @@ export class GcodePreview {
     this.layerLabel = Object.assign(document.createElement('div'), { className: 'gp-layer' });
     this.sliderBox.append(this.slider, this.layerLabel);
     this.help = Object.assign(document.createElement('div'), { className: 'gp-help', textContent: 'Ziehen: drehen · Rechts/Shift: verschieben · Rad: zoomen · Doppelklick: zurück' });
-    host.append(this.canvas, this.legend, this.sliderBox, this.busy, this.msg, this.help);
+    // Abmessungen + Messwerkzeug
+    this.labels = Object.assign(document.createElement('div'), { className: 'gp-labels' });
+    this.dims = Object.assign(document.createElement('div'), { className: 'gp-dims', hidden: true });
+    this.measureInfo = Object.assign(document.createElement('div'), { className: 'gp-measure', hidden: true });
+    host.append(this.canvas, this.labels, this.legend, this.sliderBox, this.dims, this.busy, this.msg, this.help);
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
@@ -106,6 +121,13 @@ export class GcodePreview {
     this.group = new THREE.Group();
     this.scene.add(this.group);
     this._bed();
+    this.dimGroup = new THREE.Group();
+    this.measureGroup = new THREE.Group();
+    this.scene.add(this.dimGroup, this.measureGroup);
+    this.showDims = true;
+    this.measuring = false;
+    this.points = [];
+    this.raycaster = new THREE.Raycaster();
     this.hidden = new Set(['travel']);
     this.view = { theta: -0.6, phi: 1.0, dist: 420, target: new THREE.Vector3(0, 0, 0) };
     this._controls();
@@ -133,8 +155,12 @@ export class GcodePreview {
     let drag = null;
     const c = this.canvas;
     c.addEventListener('contextmenu', e => e.preventDefault());
-    c.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey }; c.setPointerCapture(e.pointerId); });
-    c.addEventListener('pointerup', () => { drag = null; });
+    c.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, pan: e.button === 2 || e.shiftKey }; c.setPointerCapture(e.pointerId); });
+    c.addEventListener('pointerup', e => {
+      // Klick ohne Ziehen im Messmodus: Messpunkt setzen
+      if (drag && this.measuring && e.button === 0 && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 5) this._pick(e);
+      drag = null;
+    });
     c.addEventListener('pointermove', e => {
       if (!drag) return;
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -155,7 +181,7 @@ export class GcodePreview {
       this.view.dist = Math.min(2000, Math.max(20, this.view.dist * (1 + Math.sign(e.deltaY) * 0.1)));
       this._render();
     }, { passive: false });
-    c.addEventListener('dblclick', () => this.fit());
+    c.addEventListener('dblclick', () => { if (!this.measuring) this.fit(); });
   }
 
   _resize() {
@@ -177,7 +203,9 @@ export class GcodePreview {
         v.target.y + v.dist * Math.cos(v.phi),
         v.target.z + v.dist * Math.sin(v.phi) * Math.cos(v.theta));
       this.camera.lookAt(v.target);
+      this.camera.updateMatrixWorld();
       this.renderer.render(this.scene, this.camera);
+      this._placeLabels();
     });
   }
 
@@ -195,7 +223,15 @@ export class GcodePreview {
     this.legend.replaceChildren();
     this.slider.max = 0;
     this.layerLabel.textContent = '';
+    this.box = null; this.partBox = null;
+    this._clearGroup(this.dimGroup);
+    this.dims.hidden = true;
     this._render();
+  }
+
+  _clearGroup(g) {
+    for (const o of [...g.children]) { o.geometry?.dispose(); o.material?.dispose(); }
+    g.clear();
   }
 
   async loadUrl(url) {
@@ -211,20 +247,24 @@ export class GcodePreview {
     const d = parseGcode(text);
     this.data = d;
     this.meshes = {};
-    const box = new THREE.Box3();
+    const box = new THREE.Box3(), part = new THREE.Box3();
     for (const [k, , color] of [...TYPES, TRAVEL]) {
       const s = d.segs[k];
       if (!s.pos.length) continue;
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(s.pos, 3));
-      if (k !== 'travel') { g.computeBoundingBox(); box.union(g.boundingBox); }
+      if (k !== 'travel') { g.computeBoundingBox(); box.union(g.boundingBox); if (!NOT_PART.has(k)) part.union(g.boundingBox); }
       const m = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color, transparent: k === 'travel', opacity: k === 'travel' ? 0.35 : 1 }));
       m.visible = !this.hidden.has(k);
       this.group.add(m);
       this.meshes[k] = m;
     }
     this.box = box;
+    this.partBox = part.isEmpty() ? box.clone() : part;
     this._legend();
+    this._buildDims();
+    // Messpunkte passen nach neuem Slicen meist nicht mehr
+    if (!firstLoad) this.clearMeasure();
     this.slider.max = Math.max(0, d.layers - 1);
     if (firstLoad || keepLayer || +this.slider.value > +this.slider.max) this.slider.value = this.slider.max;
     this._applyLayer();
@@ -258,6 +298,166 @@ export class GcodePreview {
     const z = this.data.layerZ[L] ?? 0;
     this.layerLabel.textContent = `Schicht ${L + 1} / ${this.data.layers}` + (z ? ` · ${z.toFixed(2).replace('.', ',')} mm` : '');
     this._render();
+  }
+
+  // ------------------------------------------------ Abmessungen und Messen
+  // Größe des Teils (ohne Stützen und Rand) in mm: { x: Breite, y: Tiefe, z: Höhe }
+  size() {
+    const b = this.partBox;
+    if (!b || b.isEmpty()) return null;
+    const s = b.getSize(new THREE.Vector3());
+    // Höhe ab Druckbett (die erste Schicht liegt bei Schichthöhe, beginnt aber bei 0)
+    return { x: s.x, y: s.z, z: b.max.y };
+  }
+
+  setUnit(u) {
+    UNIT = u === 'cm' ? 'cm' : 'mm';
+    try { localStorage.setItem('gpUnit', UNIT); } catch (e) {}
+    this._updateDimsText(); this._updateMeasureText(); this._render();
+  }
+
+  _line(a, b, color, opts = {}) {
+    const g = new THREE.BufferGeometry().setFromPoints([a, b]);
+    const m = opts.dashed ? new THREE.LineDashedMaterial({ color, dashSize: 2, gapSize: 1.5, depthTest: false, transparent: true, opacity: opts.opacity ?? 1 })
+      : new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: opts.opacity ?? 1 });
+    const l = new THREE.Line(g, m);
+    if (opts.dashed) l.computeLineDistances();
+    l.renderOrder = 10;
+    return l;
+  }
+
+  // Maßlinien am Modell: Breite vorne, Tiefe rechts, Höhe vorne rechts + Umriss
+  _buildDims() {
+    this._clearGroup(this.dimGroup);
+    this.dimLabels = [];
+    const b = this.partBox;
+    if (!b || b.isEmpty()) { this.dims.hidden = true; return; }
+    const x0 = b.min.x, x1 = b.max.x, z0 = b.min.z, z1 = b.max.z, h = b.max.y;
+    const off = Math.max(4, Math.min(15, (x1 - x0 + z1 - z0) * 0.06));
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const col = 0x38bdf8, G = this.dimGroup;
+    // Umriss (gestrichelt)
+    const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(x1 - x0, h, z1 - z0)),
+      new THREE.LineDashedMaterial({ color: col, dashSize: 2, gapSize: 2, transparent: true, opacity: 0.45, depthTest: false }));
+    box.position.set((x0 + x1) / 2, h / 2, (z0 + z1) / 2); box.computeLineDistances(); box.renderOrder = 9;
+    G.add(box);
+    const dim = (a, b, ext1a, ext1b, ext2a, ext2b, key) => {
+      G.add(this._line(a, b, col), this._line(ext1a, ext1b, col, { opacity: 0.5 }), this._line(ext2a, ext2b, col, { opacity: 0.5 }));
+      this.dimLabels.push({ pos: a.clone().add(b).multiplyScalar(0.5), key });
+    };
+    // Breite (X) vor dem Modell
+    dim(V(x0, 0, z1 + off), V(x1, 0, z1 + off), V(x0, 0, z1), V(x0, 0, z1 + off * 1.3), V(x1, 0, z1), V(x1, 0, z1 + off * 1.3), 'x');
+    // Tiefe (Y) rechts neben dem Modell
+    dim(V(x1 + off, 0, z0), V(x1 + off, 0, z1), V(x1, 0, z0), V(x1 + off * 1.3, 0, z0), V(x1, 0, z1), V(x1 + off * 1.3, 0, z1), 'y');
+    // Höhe (Z) vorne links
+    dim(V(x0 - off, 0, z1 + off), V(x0 - off, h, z1 + off), V(x0, 0, z1), V(x0 - off, 0, z1 + off), V(x0, h, z1), V(x0 - off * 1.3, h, z1 + off * 1.3), 'z');
+    this.dimGroup.visible = this.showDims;
+    this._updateDimsText();
+  }
+
+  _updateDimsText() {
+    const s = this.size();
+    if (!s) { this.dims.hidden = true; return; }
+    this.dims.hidden = false;
+    const mk = (tag, cls, text, on) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; if (on) e.addEventListener('click', on); return e; };
+    const head = mk('div', 'gp-dims-head');
+    head.append(mk('b', '', 'Größe'));
+    const units = mk('div', 'gp-seg');
+    for (const u of ['mm', 'cm']) { const btn = mk('button', u === UNIT ? 'on' : '', u, () => this.setUnit(u)); btn.type = 'button'; units.append(btn); }
+    head.append(units);
+    const rows = mk('div', 'gp-dims-rows');
+    for (const [k, label] of [['x', 'Breite (X)'], ['y', 'Tiefe (Y)'], ['z', 'Höhe (Z)']]) rows.append(mk('span', '', label), mk('b', '', fmtLen(s[k])));
+    const tools = mk('div', 'gp-dims-tools');
+    const tDims = mk('button', this.showDims ? 'on' : '', 'Maßlinien', () => { this.showDims = !this.showDims; this.dimGroup.visible = this.showDims; this._updateDimsText(); this._render(); });
+    const tMeasure = mk('button', this.measuring ? 'on' : '', '📏 Messen', () => this.setMeasuring(!this.measuring));
+    tDims.type = tMeasure.type = 'button';
+    tools.append(tDims, tMeasure);
+    const fits = s.x <= 220 && s.y <= 220 && s.z <= 220;
+    this.dims.replaceChildren(head, rows, ...(fits ? [] : [mk('div', 'gp-warn', 'Größer als das Druckbett (220 × 220 × 220 mm)')]), tools, this.measureInfo);
+  }
+
+  setMeasuring(on) {
+    this.measuring = on;
+    this.canvas.classList.toggle('measuring', on);
+    if (!on) this.clearMeasure();
+    else { this.measureInfo.hidden = false; this._updateMeasureText(); }
+    this._updateDimsText();
+  }
+
+  clearMeasure() {
+    this.points = [];
+    this._clearGroup(this.measureGroup);
+    this.measureLabel = null;
+    this._updateMeasureText();
+    this._render();
+  }
+
+  // Punkt unter dem Mauszeiger: nächster sichtbarer Druckweg, sonst Druckbett
+  _pick(e) {
+    const r = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    this.raycaster.params.Line.threshold = Math.max(0.3, this.view.dist / 400);
+    const targets = Object.entries(this.meshes || {}).filter(([k, m]) => k !== 'travel' && m.visible).map(([, m]) => m);
+    let p = this.raycaster.intersectObjects(targets, false)[0]?.point;
+    if (!p) { // Druckbett (Höhe 0)
+      const hit = new THREE.Vector3();
+      if (this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit) && Math.abs(hit.x) <= 115 && Math.abs(hit.z) <= 115) p = hit;
+    }
+    if (!p) return;
+    if (this.points.length >= 2) this.clearMeasure();
+    this.points.push(p.clone());
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.6, this.view.dist / 300), 12, 8), new THREE.MeshBasicMaterial({ color: 0xfacc15, depthTest: false }));
+    dot.position.copy(p); dot.renderOrder = 11;
+    this.measureGroup.add(dot);
+    if (this.points.length === 2) {
+      const [a, b] = this.points;
+      this.measureGroup.add(this._line(a, b, 0xfacc15));
+      this.measureLabel = a.clone().add(b).multiplyScalar(0.5);
+    }
+    this._updateMeasureText();
+    this._render();
+  }
+
+  _measureValues() {
+    if (this.points.length < 2) return null;
+    const [a, b] = this.points;
+    return { d: a.distanceTo(b), dx: Math.abs(b.x - a.x), dy: Math.abs(b.z - a.z), dz: Math.abs(b.y - a.y) };
+  }
+
+  _updateMeasureText() {
+    const box = this.measureInfo;
+    if (!this.measuring) { box.hidden = true; return; }
+    box.hidden = false;
+    const m = this._measureValues();
+    if (!m) {
+      box.textContent = this.points.length ? 'Zweiten Punkt anklicken …' : 'Messen: zwei Punkte am Modell oder auf dem Druckbett anklicken';
+      return;
+    }
+    box.replaceChildren();
+    const b = document.createElement('b'); b.textContent = 'Abstand ' + fmtLen(m.d);
+    const s = document.createElement('span'); s.textContent = `X ${fmtLen(m.dx)} · Y ${fmtLen(m.dy)} · Z ${fmtLen(m.dz)}`;
+    const again = document.createElement('button'); again.type = 'button'; again.textContent = 'Neu messen'; again.addEventListener('click', () => this.clearMeasure());
+    box.append(b, s, again);
+  }
+
+  // Beschriftungen der Maßlinien (HTML über dem Bild, an die 3D-Position projiziert)
+  _placeLabels() {
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight, s = this.size();
+    const items = [];
+    if (this.showDims && s && this.dimLabels) for (const l of this.dimLabels) items.push([l.pos, fmtLen(s[l.key]), 'dim']);
+    const m = this._measureValues();
+    if (m && this.measureLabel) items.push([this.measureLabel, fmtLen(m.d), 'meas']);
+    while (this.labels.children.length < items.length) this.labels.append(document.createElement('span'));
+    [...this.labels.children].forEach((span, i) => {
+      const it = items[i];
+      if (!it) { span.hidden = true; return; }
+      const v = it[0].clone().project(this.camera);
+      span.hidden = v.z > 1;
+      span.className = it[2];
+      span.textContent = it[1];
+      span.style.transform = `translate(${(v.x + 1) / 2 * w}px, ${(1 - v.y) / 2 * h}px) translate(-50%, -50%)`;
+    });
   }
 
   // Kamera auf das Modell (bzw. das Druckbett) ausrichten
