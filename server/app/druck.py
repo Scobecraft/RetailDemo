@@ -297,14 +297,26 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
     def admin_druck_live(since: float = 0):
         """Alles für den Reiter "3D-Drucker": aktuelle Werte und Verlauf (nur Punkte nach ?since)."""
         printer = st.state.get("printer") or {}
+        live = dict(printer.get("live") or {}) if st.online else None
+        file = dict(printer.get("file") or {})
+        # Druck von der Webseite: fehlende Slicer-Angaben aus dem Druckauftrag ergänzen
+        if live and not file.get("timeSec") and (lookup := hooks.get("stats_for_printing")):
+            file.update(lookup(live.get("fileName") or "") or {})
+        # Restzeit fehlt (ältere Druckmonitor-Version): aus Druckzeit laut Slicer hochrechnen
+        prog = live.get("progress", -1) if live else -1
+        if live and live.get("state") in ("printing", "paused") and (live.get("remainingSec") or 0) <= 0 and 0 <= prog < 0.999:
+            if file.get("timeSec"):
+                live.update(remainingSec=file["timeSec"] * (1 - prog), remainingEst=True)
+            elif (live.get("elapsedSec") or 0) > 60 and prog > 0.02:
+                live.update(remainingSec=live["elapsedSec"] * (1 - prog) / prog, remainingEst=True)
         return {
             "online": st.online,
             "server_time": time.time(),
             "last_update": st.state_at or None,
             "frame_at": st.frame_at or None,
             "config": {k: v for k, v in (st.state.get("config") or {}).items() if k in ("title", "subtitle", "modelColor")},
-            "live": printer.get("live") if st.online else None,
-            "file": printer.get("file") or {},
+            "live": live,
+            "file": file,
             "model": {"rev": st.model.get("rev", 0), "name": st.model.get("name", ""), "has_file": bool(st.model.get("file"))},
             "camera": {k: (st.state.get("status") or {}).get(k) for k in ("state", "fps", "error")} if st.online else None,
             "pc": st.state.get("pc") if st.online else None,

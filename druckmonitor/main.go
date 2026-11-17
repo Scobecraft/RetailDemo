@@ -131,8 +131,31 @@ func (a *App) printerState() map[string]any {
 	a.mu.Lock()
 	rev, src, mname := a.modelRev, a.modelSource, a.cfg.ModelName
 	a.mu.Unlock()
-	return map[string]any{"live": a.printer.Info(), "file": a.fileMeta(), "kind": a.config().PrinterKind,
+	live, meta := a.printer.Info(), a.fileMeta()
+	fillTimes(&live, meta)
+	return map[string]any{"live": live, "file": meta, "kind": a.config().PrinterKind,
 		"modelRev": rev, "modelName": mname, "modelSource": src}
+}
+
+// fillTimes ergänzt fehlende Zeiten: Manche Druckdateien (z. B. vom Slicer der Retail-Demo-Webseite)
+// enthalten keine Angaben, die der Drucker versteht – dann meldet er keine (oder 0) Restzeit.
+// Ersatz: Druckzeit laut Slicer × verbleibender Anteil, sonst aus dem bisherigen Drucktempo.
+func fillTimes(i *PrinterInfo, meta FileMeta) {
+	active := i.State == "printing" || i.State == "paused"
+	if !active || i.Progress < 0 || i.Progress >= 0.999 {
+		return
+	}
+	if i.RemainingSec > 0 {
+		return
+	}
+	switch {
+	case meta.TimeSec > 0:
+		i.RemainingSec, i.RemainingEst = meta.TimeSec*(1-i.Progress), true
+	case i.ElapsedSec > 60 && i.Progress > 0.02:
+		i.RemainingSec, i.RemainingEst = i.ElapsedSec*(1-i.Progress)/i.Progress, true
+	default:
+		i.RemainingSec = -1 // unbekannt statt "0 Minuten"
+	}
 }
 
 // fileMeta liest die Angaben aus der Modelldatei (zwischengespeichert).

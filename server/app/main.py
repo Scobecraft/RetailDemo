@@ -1511,8 +1511,9 @@ def admin_overview(history: bool = True):
 _druck_hooks: dict = {}
 druck_router, register_druck_release = make_druck_router(DATA_DIR, require_device, require_admin, _druck_hooks)
 app.include_router(druck_router)
-jobs_router, register_druck_job, _pending_job = make_jobs_router(
+jobs_router, register_druck_job, _pending_job, _jobs_hooks = make_jobs_router(
     DATA_DIR, require_device, require_admin, lambda: _druck_hooks["printer_state"](),
     lambda path, name: _druck_hooks["set_model"](path, name))
 _druck_hooks["pending_job"] = _pending_job
+_druck_hooks.update(_jobs_hooks)
 app.include_router(jobs_router)
