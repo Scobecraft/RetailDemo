@@ -200,6 +200,7 @@ func main() {
 	go app.watchIP()
 	go app.autoModelLoop()
 	go app.pushLoop()
+	go app.frameLoop()
 	// --autostart (Windows-Start, nach einem Update): gespeicherte Einstellungen übernehmen und
 	// direkt die Vollbildansicht zeigen
 	for _, arg := range os.Args[1:] {

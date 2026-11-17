@@ -314,7 +314,7 @@ func (s *Stream) pollSnapshots(ctx context.Context, url string, first *http.Resp
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(150 * time.Millisecond):
+		case <-time.After(60 * time.Millisecond):
 		}
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		resp, err := client.Do(req)

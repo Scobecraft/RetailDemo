@@ -498,28 +498,98 @@ async function dkModel(d) {
   }
 }
 
-// ---------------------------------------------------------------- Kamera (Einzelbilder vom Server)
-async function dkCamLoop(run) {
+// ---------------------------------------------------------------- Kamera (Bilder vom Server)
+// Bevorzugt ein durchgehender Stream (eine Verbindung, flüssig). Kommt darüber nichts an – etwa weil ein
+// Proxy die Antwort puffert –, wird auf Einzelabfragen umgeschaltet.
+const DK_CAM = { mode: "stream", streamFails: 0, shown: [], lastFrame: 0, drawing: false, pending: null };
+
+function dkCamShow(blob, seq) {
+  DK.camSeq = seq;
+  // Dekodieren dauert länger als ein neues Bild braucht? Dann nur das neueste zeichnen (keine Verzögerung)
+  if (DK_CAM.drawing) { DK_CAM.pending = blob; return; }
+  DK_CAM.drawing = true;
   const R = DK.refs, ctx = R.cam.getContext("2d");
-  let lastFrame = 0;
-  while (DK.camRun === run) {
-    try {
-      const r = await fetch(`/druck/api/frame?after=${DK.camSeq}`, { cache: "no-store", credentials: "same-origin" });
-      if (DK.camRun !== run) break;
-      if (r.status === 200) {
-        DK.camSeq = +r.headers.get("X-Seq");
-        const bmp = await createImageBitmap(await r.blob());
+  (async () => {
+    let b = blob;
+    while (b) {
+      try {
+        const bmp = await createImageBitmap(b);
         if (R.cam.width !== bmp.width || R.cam.height !== bmp.height) { R.cam.width = bmp.width; R.cam.height = bmp.height; }
         ctx.drawImage(bmp, 0, 0); bmp.close();
-        lastFrame = Date.now();
-      } else if (r.status === 401) { await new Promise(res => setTimeout(res, 5000)); }
-    } catch (e) { await new Promise(res => setTimeout(res, 1000)); }
-    const fresh = Date.now() - lastFrame < 5000;
-    const cam = DK.data?.camera;
-    R.camMsg.hidden = !!lastFrame;
-    if (!lastFrame) R.camMsg.textContent = DK.data && !DK.data.online ? "Druckmonitor-App offline" : cam?.error || "Warte auf Kamerabild …";
-    R.camBadge.textContent = fresh ? `LIVE${cam?.fps >= 1 ? " · " + dkNum(cam.fps) + " fps" : ""}` : lastFrame ? `Bild von ${new Date(lastFrame).toLocaleTimeString("de-DE")}` : "";
-    R.camBadge.classList.toggle("stale", !fresh);
+        const now = Date.now();
+        DK_CAM.lastFrame = now;
+        DK_CAM.shown.push(now);
+        while (DK_CAM.shown.length && now - DK_CAM.shown[0] > 2000) DK_CAM.shown.shift();
+      } catch (e) {}
+      b = DK_CAM.pending; DK_CAM.pending = null;
+    }
+    DK_CAM.drawing = false;
+  })();
+}
+
+function dkCamStatus() {
+  const R = DK.refs, last = DK_CAM.lastFrame;
+  const fresh = Date.now() - last < 5000;
+  const cam = DK.data?.camera;
+  const fps = DK_CAM.shown.length > 1 ? (DK_CAM.shown.length - 1) / ((DK_CAM.shown[DK_CAM.shown.length - 1] - DK_CAM.shown[0]) / 1000 || 1) : 0;
+  R.camMsg.hidden = !!last;
+  if (!last) R.camMsg.textContent = DK.data && !DK.data.online ? "Druckmonitor-App offline" : cam?.error || "Warte auf Kamerabild …";
+  R.camBadge.textContent = fresh ? `LIVE${fps >= 1 ? " · " + dkNum(fps) + " fps" : ""}` : last ? `Bild von ${new Date(last).toLocaleTimeString("de-DE")}` : "";
+  R.camBadge.classList.toggle("stale", !fresh);
+}
+
+async function dkCamStream(run) {
+  const ctl = new AbortController();
+  const stop = setInterval(() => { if (DK.camRun !== run) ctl.abort(); }, 300);
+  let got = false;
+  // kommt in 10 s gar nichts (auch kein Lebenszeichen), puffert unterwegs jemand → abbrechen
+  const watchdog = setTimeout(() => { if (!got) ctl.abort(); }, 10000);
+  try {
+    const r = await fetch(`/druck/api/stream?after=${DK.camSeq}`, { cache: "no-store", credentials: "same-origin", signal: ctl.signal });
+    if (!r.ok || !r.body) return false;
+    const reader = r.body.getReader();
+    let buf = new Uint8Array(0);
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      got = true;
+      const merged = new Uint8Array(buf.length + value.length); merged.set(buf); merged.set(value, buf.length); buf = merged;
+      while (buf.length >= 8) {
+        const dv = new DataView(buf.buffer, buf.byteOffset, 8);
+        const len = dv.getUint32(0), seq = dv.getUint32(4);
+        if (buf.length < 8 + len) break;
+        if (len) dkCamShow(new Blob([buf.slice(8, 8 + len)], { type: "image/jpeg" }), seq);
+        buf = buf.slice(8 + len);
+      }
+      dkCamStatus();
+    }
+    return got;
+  } catch (e) { return got; }
+  finally { clearInterval(stop); clearTimeout(watchdog); }
+}
+
+async function dkCamPoll(run) {
+  try {
+    const r = await fetch(`/druck/api/frame?after=${DK.camSeq}`, { cache: "no-store", credentials: "same-origin" });
+    if (DK.camRun !== run) return;
+    if (r.status === 200) dkCamShow(await r.blob(), +r.headers.get("X-Seq"));
+    else if (r.status === 401) await new Promise(res => setTimeout(res, 5000));
+  } catch (e) { await new Promise(res => setTimeout(res, 1000)); }
+}
+
+async function dkCamLoop(run) {
+  const tick = setInterval(() => { if (DK.camRun !== run) clearInterval(tick); else dkCamStatus(); }, 1000);
+  while (DK.camRun === run) {
+    if (DK_CAM.mode === "stream") {
+      const ok = await dkCamStream(run);
+      if (DK.camRun !== run) break;
+      if (ok) DK_CAM.streamFails = 0;
+      else if (++DK_CAM.streamFails >= 2) DK_CAM.mode = "poll"; // Stream klappt hier nicht → Einzelbilder
+      if (!ok) await new Promise(res => setTimeout(res, 1000));
+    } else {
+      await dkCamPoll(run);
+      dkCamStatus();
+    }
   }
 }
 

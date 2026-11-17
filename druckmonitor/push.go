@@ -27,7 +27,8 @@ import (
 const (
 	pushStateEvery   = 2 * time.Second
 	pushFrameIdle    = 30 * time.Second
-	pushFrameLive    = 200 * time.Millisecond // höchstens ca. 5 Bilder/s
+	pushFrameLive    = 66 * time.Millisecond // höchstens ca. 15 Bilder/s (so viele liefert die Kamera ohnehin selten)
+	pushFrameFlight  = 3                     // so viele Bilder dürfen gleichzeitig unterwegs sein (verdeckt die Laufzeit übers Internet)
 	pushMaxModelSize = 90 << 20               // Cloudflare lässt höchstens 100 MB pro Anfrage durch
 )
 
@@ -82,8 +83,7 @@ func (a *App) isRunning() bool {
 
 func (a *App) pushLoop() {
 	client := &http.Client{Timeout: 30 * time.Second}
-	var lastState, lastFrame time.Time
-	var frameSeq uint64
+	var lastState time.Time
 	pushedRev, pushedKey := -1, ""
 	for {
 		c := a.config()
@@ -132,6 +132,31 @@ func (a *App) pushLoop() {
 			pushedRev = rev // auch bei Fehler nicht endlos wiederholen
 		}
 
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// frameLoop schickt Kamerabilder in einer eigenen Schleife: flüssig, solange jemand zuschaut, sonst
+// selten. Mehrere Bilder dürfen gleichzeitig unterwegs sein; die Nummer im Kopf sorgt dafür, dass der
+// Server ein zu spät angekommenes älteres Bild verwirft.
+func (a *App) frameLoop() {
+	client := &http.Client{Timeout: 15 * time.Second, Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true, MaxIdleConnsPerHost: pushFrameFlight + 1,
+		IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: 10 * time.Second,
+	}}
+	session := strconv.FormatInt(time.Now().UnixNano(), 36) // neue Zählung nach jedem Start
+	slots := make(chan struct{}, pushFrameFlight)
+	var lastFrame time.Time
+	var frameSeq uint64
+	var sent uint64
+	for {
+		c := a.config()
+		base := serverBase(c.ServerURL)
+		token := strings.TrimSpace(c.ServerToken)
+		if base == "" || token == "" || !a.isRunning() {
+			time.Sleep(time.Second)
+			continue
+		}
 		a.pusher.mu.Lock()
 		watching := a.pusher.watching
 		a.pusher.mu.Unlock()
@@ -139,19 +164,52 @@ func (a *App) pushLoop() {
 		if watching {
 			every = pushFrameLive
 		}
-		if a.isRunning() && time.Since(lastFrame) >= every {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			frame, seq := a.stream.Wait(ctx, frameSeq, time.Second)
-			cancel()
-			if frame != nil && seq != frameSeq {
-				frameSeq, lastFrame = seq, time.Now()
-				if resp, err := post("/api/druck/frame", "image/jpeg", bytes.NewReader(frame), int64(len(frame))); err == nil {
-					io.Copy(io.Discard, resp.Body)
-					resp.Body.Close()
-				}
+		if wait := every - time.Since(lastFrame); wait > 0 {
+			if wait > 500*time.Millisecond { // ab und zu nachsehen, ob inzwischen jemand zuschaut
+				wait = 500 * time.Millisecond
 			}
+			time.Sleep(wait)
+			continue
 		}
-		time.Sleep(50 * time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		frame, seq := a.stream.Wait(ctx, frameSeq, time.Second)
+		cancel()
+		if frame == nil || seq == frameSeq {
+			continue
+		}
+		frameSeq, lastFrame = seq, time.Now()
+		select {
+		case slots <- struct{}{}:
+		default:
+			continue // Leitung voll: dieses Bild auslassen, das nächste ist ohnehin aktueller
+		}
+		sent++
+		go func(frame []byte, n uint64) {
+			defer func() { <-slots }()
+			req, err := http.NewRequest(http.MethodPost, base+"/api/druck/frame", bytes.NewReader(frame))
+			if err != nil {
+				return
+			}
+			req.ContentLength = int64(len(frame))
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Content-Type", "image/jpeg")
+			req.Header.Set("X-Frame-Session", session)
+			req.Header.Set("X-Frame-Seq", strconv.FormatUint(n, 10))
+			resp, err := client.Do(req)
+			if err != nil {
+				return
+			}
+			var r struct {
+				Watching *bool `json:"watching"`
+			}
+			if json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&r) == nil && r.Watching != nil {
+				a.pusher.mu.Lock()
+				a.pusher.watching = *r.Watching
+				a.pusher.mu.Unlock()
+			}
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}(frame, sent)
 	}
 }
 

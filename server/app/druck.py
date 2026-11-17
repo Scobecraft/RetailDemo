@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 
 # Ohne neue Daten so lange gilt die Desktop-App als offline
 OFFLINE_AFTER_S = 15
@@ -55,6 +55,8 @@ class DruckState:
         self.frame_seq = 0
         self.frame_at = 0.0
         self.frame_event = asyncio.Event()
+        self.frame_session = ""
+        self.frame_in_seq = 0  # Nummer des zuletzt übernommenen Bildes (vom Druckmonitor)
         self.last_view = 0.0
         self.model = self._load_model_info()
         self.pc_info: Optional[dict] = None
@@ -201,6 +203,16 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
         body = await request.body()
         if not body or len(body) > MAX_FRAME:
             raise HTTPException(413, "Bild zu groß")
+        # Der Druckmonitor schickt mehrere Bilder gleichzeitig: ein zu spät angekommenes älteres verwerfen
+        session = request.headers.get("x-frame-session", "")
+        try:
+            n = int(request.headers.get("x-frame-seq", "0"))
+        except ValueError:
+            n = 0
+        if session and n:
+            if session == st.frame_session and n <= st.frame_in_seq:
+                return {"ok": True, "watching": time.time() - st.last_view < WATCHING_S, "skipped": True}
+            st.frame_session, st.frame_in_seq = session, n
         st.frame, st.frame_at = body, time.time()
         st.frame_seq += 1
         ev, st.frame_event = st.frame_event, asyncio.Event()
@@ -360,6 +372,30 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
     @r.get("/druck/api/frame", dependencies=[Depends(require_viewer)])
     async def druck_frame(after: int = 0):
         return await next_frame(after)
+
+    # Durchgehender Bild-Stream für die Webseite: eine Verbindung statt einer Anfrage pro Bild.
+    # Aufbau je Bild: 4 Byte Länge + 4 Byte Nummer (Big Endian), dann das JPEG. Länge 0 = Lebenszeichen.
+    @r.get("/druck/api/stream", dependencies=[Depends(require_viewer)])
+    async def druck_stream(request: Request, after: int = 0):
+        async def gen():
+            seq, start = after, time.time()
+            while time.time() - start < 120:  # danach baut die Webseite neu auf
+                if await request.is_disconnected():
+                    break
+                st.last_view = time.time()
+                if st.frame is None or st.frame_seq <= seq:
+                    ev = st.frame_event
+                    try:
+                        await asyncio.wait_for(ev.wait(), timeout=4)
+                    except asyncio.TimeoutError:
+                        yield b"\0" * 8
+                        continue
+                if st.frame is None or st.frame_seq <= seq:
+                    continue
+                frame, seq = st.frame, st.frame_seq
+                yield len(frame).to_bytes(4, "big") + (seq & 0xFFFFFFFF).to_bytes(4, "big") + frame
+        return StreamingResponse(gen(), media_type="application/octet-stream",
+                                 headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"})
 
     async def next_frame(after: int):
         st.last_view = time.time()  # jemand schaut zu -> die App schickt flüssig Bilder
