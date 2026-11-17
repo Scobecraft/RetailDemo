@@ -125,6 +125,32 @@
   .job.done .progress div { background: var(--ok); }
   .job.failed .progress div { background: var(--danger); }
 
+  /* ---------- YouTube-Import ---------- */
+  .yt-panel { padding: 16px; margin-bottom: 16px; }
+  .yt-bar { display: flex; gap: 8px; }
+  .yt-bar input { flex: 1; min-width: 0; font-size: 16px; }
+  .yt-opts { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: flex-end; }
+  .yt-opts .yt-grow { flex: 1; min-width: 180px; }
+  .yt-opts .yt-grow input { width: 100%; }
+  .yt-sb { margin-bottom: 4px; }
+  .yt-note { font-size: 12px; margin: 12px 0 0; }
+  .yt-err { color: var(--danger); }
+  .yt-h { margin: 24px 0 0; font-size: 16px; }
+  .yt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .yt-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; animation: ytIn .25s ease both; }
+  .yt-thumb { aspect-ratio: 16/9; background: var(--line) center/cover no-repeat; position: relative; }
+  .yt-thumb span { position: absolute; right: 6px; bottom: 6px; background: rgba(0,0,0,.75); color: #fff; font-size: 12px; padding: 1px 6px; border-radius: 4px; }
+  .yt-meta { padding: 10px 12px 0; display: grid; gap: 2px; flex: 1; }
+  .yt-meta b { font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .yt-actions { padding: 10px 12px 12px; justify-content: flex-end; }
+  .yt-actions a.btn { text-decoration: none; color: inherit; }
+  .yt-job { display: flex; gap: 12px; align-items: center; animation: ytIn .25s ease both; }
+  .yt-jthumb { width: 96px; aspect-ratio: 16/9; flex: none; border-radius: 6px; background: var(--line) center/cover no-repeat; }
+  .yt-jbody { flex: 1; min-width: 0; }
+  .yt-jfoot { margin-top: 6px; gap: 6px; }
+  @keyframes ytIn { from { opacity: 0; transform: translateY(6px); } }
+  @media (max-width: 600px) { .yt-jthumb { display: none; } .yt-bar { flex-direction: column; } }
+  @media (prefers-reduced-motion: reduce) { .yt-card, .yt-job { animation: none; } }
   /* ---------- Medien-Raster ---------- */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; margin-top: 24px; }
   .search { position: relative; display: flex; align-items: center; margin: 0 0 16px; }
@@ -696,6 +722,7 @@
           <button data-tab="devices"><b>Geräte</b><small>Handys und Laptops</small></button>
           <div class="menu-group">Werkzeuge</div>
           <button data-tab="editor"><b>Video-Schnitt</b><small>Werbevideos schneiden, Text und Musik</small></button>
+          <button data-tab="youtube"><b>YouTube-Import</b><small>Werbung laden, umwandeln, einplanen</small></button>
           <div class="menu-group">3D-Druck</div>
           <button data-tab="druck"><b>3D-Drucker</b><small>Live-Kamera, Druck und PC</small></button>
           <button data-tab="slicer"><b>3D-Slicer</b><small>Modelle slicen und drucken</small></button>
@@ -724,6 +751,8 @@
     <div data-page="slicer" hidden></div>
     <!-- Video-Schnitt (Inhalt baut editor.js) -->
     <div data-page="editor" hidden></div>
+    <!-- YouTube-Import über ScobeTube (Inhalt baut youtube.js) -->
+    <div data-page="youtube" hidden></div>
 
     <div data-page="media" hidden>
       <h2>Medien</h2>
@@ -973,6 +1002,7 @@ document.querySelectorAll("nav [data-tab]").forEach(b => b.addEventListener("cli
   showDruck(b.dataset.tab === "druck");
   showSlicer(b.dataset.tab === "slicer");
   showEditor(b.dataset.tab === "editor");
+  showYoutube(b.dataset.tab === "youtube");
 }));
 
 async function loadAll() {
@@ -1862,5 +1892,6 @@ api("/api/web/me").then(me => { managedByEnv = !!me.managed_by_env; showApp(); }
 <script src="/druck-dashboard.js"></script>
 <script src="/slicer.js"></script>
 <script src="/editor.js"></script>
+<script src="/youtube.js"></script>
 </body>
 </html>

@@ -31,6 +31,7 @@ from .apkinfo import read_apk_info
 from .druck import make_router as make_druck_router
 from .druckjobs import make_jobs_router
 from .editor import make_editor_router
+from .scobetube import make_scobetube_router
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 MEDIA_DIR = DATA_DIR / "media"
@@ -1205,7 +1206,7 @@ def web_index():
 @app.get("/{name}.js", include_in_schema=False)
 def web_script(name: str):
     """Skripte der Webseite (3D-Drucker, 3D-Slicer, G-Code-Vorschau)."""
-    if name not in ("druck-dashboard", "slicer", "gcode-preview", "editor"):
+    if name not in ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube"):
         raise HTTPException(404, "Nicht gefunden")
     return FileResponse(WEB_DIR / f"{name}.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
@@ -1537,3 +1538,4 @@ def _editor_media(media_id: str):
 
 editor_router, register_editor_audio = make_editor_router(DATA_DIR, require_admin, _editor_media, _register_media, _add_to_playlists)
 app.include_router(editor_router)
+app.include_router(make_scobetube_router(DATA_DIR, require_admin, _register_media, _add_to_playlists, register_editor_audio))

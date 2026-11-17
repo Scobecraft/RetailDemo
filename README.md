@@ -238,6 +238,29 @@ Tonspur.
 - **Video erstellen** rendert auf dem Server (ffmpeg, H.264/AAC) und legt das MP4 in den Medien ab –
   auf Wunsch gleich in Playlists. Projekte werden automatisch gespeichert.
 
+## YouTube-Import (über ScobeTube)
+
+Menü → **YouTube-Import**: Werbevideos per Link oder Suche direkt auf den Server laden. Die Demo-Webseite lädt
+dabei nicht selbst, sondern steuert euren [ScobeTube](https://github.com/Scobecraft/ScobeTube)-Server.
+
+- **Video → Medien**: MP4 in wählbarer Qualität (Standard 1080p), auf Wunsch zugeschnitten (von – bis), mit
+  SponsorBlock und gleich in Playlists. Danach **Im Video-Schnitt bearbeiten** (neues Projekt im passenden
+  Format) oder **Zur Playlist**.
+- **Nur Ton → Musik für den Video-Schnitt**: MP3 landet unter Video-Schnitt → Musik.
+- Nach der Übernahme wird die Datei in ScobeTube wieder entfernt. Laufende Importe laufen nach einem
+  Neustart des Servers weiter.
+
+Einrichten (einmalig):
+
+1. In ScobeTube (als Admin) ein eigenes Konto anlegen, z. B. `retaildemo`, mit den Rechten **Herunterladen** und
+   **Dateien**, **ohne** Zwei-Faktor-Anmeldung.
+2. Webseite → YouTube-Import → **⚙ ScobeTube-Zugang**: Adresse, Benutzername und Passwort eintragen.
+   Die Adresse muss vom Demo-Server-Container aus erreichbar sein, z. B. `http://192.168.1.10:8081`
+   (IP des Rechners, auf dem ScobeTube läuft – nicht `localhost`).
+   Das Passwort liegt nur auf dem Server (`/data/scobetube.json`, nur für root lesbar) und wird nie angezeigt.
+
+Bitte nur Videos verwenden, die ihr zeigen dürft (z. B. Hersteller-Werbung für die Vorführung im Markt).
+
 ## Übersicht
 
 Webseite und Admin-App starten mit einer **Übersicht**: wie viele Geräte verbunden sind, auf wie vielen die
