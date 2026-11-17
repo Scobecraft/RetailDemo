@@ -600,8 +600,23 @@
   .gp-labels span { position: absolute; left: 0; top: 0; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
   .gp-labels span.dim { background: rgba(14,16,20,.85); color: #7dd3fc; border: 1px solid #0c4a6e; }
   .gp-labels span.meas { background: #facc15; color: #111; }
+  .gp-labels span.rul { color: #f5f5f4; font-size: 10px; font-weight: 600; padding: 0 2px; text-shadow: 0 0 3px #000, 0 0 2px #000; }
+  .sl-view .gp-dims { top: 72px; }
+  @media (max-width: 600px) {
+    .sl-view-top { gap: 4px 12px; left: 10px; top: 8px; }
+    .sl-view-top b { font-size: 14px; }
+    .sl-view-top small { font-size: 9px; }
+    .sl-view-top .sl-note { display: none; }
+    .sl-view .gp-dims { top: 52px; left: 8px; min-width: 0; padding: 6px 8px; }
+    .gp .gp-dims-rows { display: none; }
+    .gp .gp-dims-sum { display: block; }
+    .gp-dims-head { margin-bottom: 2px; }
+    .gp .gp-slider { flex-direction: column; top: 52px; }
+  }
+  .gp-dims-tools { flex-wrap: wrap; }
   .gp-dims { position: absolute; left: 12px; top: 12px; z-index: 2; background: rgba(14,16,20,.85); border: 1px solid #2c313b; border-radius: 10px; padding: 8px 10px; color: #e8eaf0; font-size: 12px; min-width: 170px; }
   .gp-dims-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+  .gp-dims-sum { display: none; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
   .gp-dims-rows { display: grid; grid-template-columns: auto auto; gap: 2px 12px; }
   .gp-dims-rows span { color: #9ca3af; }
   .gp-dims-rows b { text-align: right; font-variant-numeric: tabular-nums; }

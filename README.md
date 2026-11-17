@@ -345,6 +345,10 @@ Drucker bereit (nicht schon am Drucken). Den ersten Druck mit dem Server-Profil 
 (ohne Stützen, Rand und Reinigungslinie) – umschaltbar zwischen mm und cm, mit Maßlinien am Modell und einer
 Warnung, wenn das Teil nicht aufs Druckbett passt. **📏 Messen**: zwei Punkte am Modell oder auf dem Druckbett
 anklicken, dann erscheint der Abstand (auch einzeln in X, Y und Z). Die Werte passen sich beim Skalieren live an.
+**📐 Lineal** legt Skalen mit mm- bzw. cm-Teilung an das Modell (Breite hinten, Tiefe links, Höhe senkrecht).
+
+**Filament:** Oben in der Vorschau stehen vor dem Druck Länge (m), Gewicht bei Standard-PLA (1,75 mm,
+1,24 g/cm³) und Anteil an einer 1-kg-Rolle – bei jeder Änderung der Einstellungen live neu berechnet.
 
 ### Übergang zwischen den Medien
 

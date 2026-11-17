@@ -24,6 +24,11 @@ const NOT_PART = new Set(['support', 'interface', 'brim', 'other', 'travel']);
 // Längen in mm oder cm (Einheit wird im Browser gemerkt)
 let UNIT = 'mm';
 try { if (localStorage.getItem('gpUnit') === 'cm') UNIT = 'cm'; } catch (e) {}
+// Zahl an der Linealskala (ohne Einheit, außer bei 0)
+function fmtTick(mm) {
+  const v = UNIT === 'cm' ? mm / 10 : mm;
+  return mm === 0 ? '0 ' + UNIT : v.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+}
 export function fmtLen(mm, unit = UNIT) {
   const v = unit === 'cm' ? mm / 10 : mm;
   const d = unit === 'cm' ? (v < 10 ? 2 : 1) : (v < 100 ? 1 : 0);
@@ -122,9 +127,12 @@ export class GcodePreview {
     this.scene.add(this.group);
     this._bed();
     this.dimGroup = new THREE.Group();
+    this.rulerGroup = new THREE.Group();
     this.measureGroup = new THREE.Group();
-    this.scene.add(this.dimGroup, this.measureGroup);
+    this.scene.add(this.dimGroup, this.rulerGroup, this.measureGroup);
     this.showDims = true;
+    this.showRuler = false;
+    try { this.showRuler = localStorage.getItem('gpRuler') === '1'; } catch (e) {}
     this.measuring = false;
     this.points = [];
     this.raycaster = new THREE.Raycaster();
@@ -225,6 +233,8 @@ export class GcodePreview {
     this.layerLabel.textContent = '';
     this.box = null; this.partBox = null;
     this._clearGroup(this.dimGroup);
+    this._clearGroup(this.rulerGroup);
+    this.rulerLabels = [];
     this.dims.hidden = true;
     this._render();
   }
@@ -313,7 +323,7 @@ export class GcodePreview {
   setUnit(u) {
     UNIT = u === 'cm' ? 'cm' : 'mm';
     try { localStorage.setItem('gpUnit', UNIT); } catch (e) {}
-    this._updateDimsText(); this._updateMeasureText(); this._render();
+    this._buildRuler(); this._updateDimsText(); this._updateMeasureText(); this._render();
   }
 
   _line(a, b, color, opts = {}) {
@@ -352,7 +362,54 @@ export class GcodePreview {
     // Höhe (Z) vorne links
     dim(V(x0 - off, 0, z1 + off), V(x0 - off, h, z1 + off), V(x0, 0, z1), V(x0 - off, 0, z1 + off), V(x0, h, z1), V(x0 - off * 1.3, h, z1 + off * 1.3), 'z');
     this.dimGroup.visible = this.showDims;
+    this._buildRuler();
     this._updateDimsText();
+  }
+
+  // Lineal am Modell: Skala hinten (Breite), links (Tiefe) und senkrecht (Höhe), Teilung in mm oder cm
+  _buildRuler() {
+    this._clearGroup(this.rulerGroup);
+    this.rulerLabels = [];
+    const b = this.partBox;
+    if (!b || b.isEmpty()) return;
+    const x0 = b.min.x, x1 = b.max.x, z0 = b.min.z, z1 = b.max.z, h = b.max.y;
+    const S = Math.max(x1 - x0, z1 - z0, h, 1);
+    // Hauptteilung so wählen, dass etwa 4–10 Zahlen pro Skala stehen
+    const steps = UNIT === 'cm' ? [5, 10, 20, 50, 100] : [1, 2, 5, 10, 20, 50, 100];
+    const major = steps.find(st => S / st <= 6) || 100;
+    const minor = major >= 5 ? major / (major === 20 ? 4 : 5) : major / 2;
+    const gap = Math.max(3, S * 0.06), tick = Math.max(1.2, S * 0.035);
+    const pos = [], V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const label = (p, mm) => this.rulerLabels.push({ pos: p, mm });
+    // eine Skala von a in Richtung dir, Länge len; Striche in Richtung out
+    const scale = (a, dir, len, out, labelOut, zeroLabel) => {
+      const end = Math.ceil(len / major - 1e-6) * major;
+      const e = a.clone().addScaledVector(dir, end);
+      pos.push(a.x, a.y, a.z, e.x, e.y, e.z);
+      for (let t = 0; t <= end + 1e-6; t += minor) {
+        const isMajor = Math.abs(t / major - Math.round(t / major)) < 1e-6;
+        const p = a.clone().addScaledVector(dir, t);
+        const q = p.clone().addScaledVector(out, isMajor ? tick : tick * 0.5);
+        pos.push(p.x, p.y, p.z, q.x, q.y, q.z);
+        if (isMajor && (t > 0 || zeroLabel)) label(p.clone().addScaledVector(labelOut, tick * 2.6), t);
+      }
+    };
+    scale(V(x0, 0, z0 - gap), V(1, 0, 0), x1 - x0, V(0, 0, 1), V(0, 0, -1));      // Breite hinten
+    scale(V(x0 - gap, 0, z0), V(0, 0, 1), z1 - z0, V(1, 0, 0), V(-1, 0, 0));      // Tiefe links
+    scale(V(x0 - gap, 0, z0 - gap), V(0, 1, 0), h, V(1, 0, 1).normalize(), V(-1, 0, -1).normalize(), true); // Höhe
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xf5f5f4, depthTest: false, transparent: true, opacity: 0.9 }));
+    lines.renderOrder = 10;
+    this.rulerGroup.add(lines);
+    this.rulerGroup.visible = this.showRuler;
+  }
+
+  setRuler(on) {
+    this.showRuler = on;
+    try { localStorage.setItem('gpRuler', on ? '1' : '0'); } catch (e) {}
+    this.rulerGroup.visible = on;
+    this._updateDimsText(); this._render();
   }
 
   _updateDimsText() {
@@ -367,13 +424,17 @@ export class GcodePreview {
     head.append(units);
     const rows = mk('div', 'gp-dims-rows');
     for (const [k, label] of [['x', 'Breite (X)'], ['y', 'Tiefe (Y)'], ['z', 'Höhe (Z)']]) rows.append(mk('span', '', label), mk('b', '', fmtLen(s[k])));
+    // kompakte Zeile fürs Handy: B × T × H
+    const n = v => fmtLen(v).replace(/ (mm|cm)$/, '');
+    const sum = mk('div', 'gp-dims-sum', `${n(s.x)} × ${n(s.y)} × ${n(s.z)} ${UNIT}`);
     const tools = mk('div', 'gp-dims-tools');
     const tDims = mk('button', this.showDims ? 'on' : '', 'Maßlinien', () => { this.showDims = !this.showDims; this.dimGroup.visible = this.showDims; this._updateDimsText(); this._render(); });
+    const tRuler = mk('button', this.showRuler ? 'on' : '', '📐 Lineal', () => this.setRuler(!this.showRuler));
     const tMeasure = mk('button', this.measuring ? 'on' : '', '📏 Messen', () => this.setMeasuring(!this.measuring));
-    tDims.type = tMeasure.type = 'button';
-    tools.append(tDims, tMeasure);
+    tDims.type = tRuler.type = tMeasure.type = 'button';
+    tools.append(tDims, tRuler, tMeasure);
     const fits = s.x <= 220 && s.y <= 220 && s.z <= 220;
-    this.dims.replaceChildren(head, rows, ...(fits ? [] : [mk('div', 'gp-warn', 'Größer als das Druckbett (220 × 220 × 220 mm)')]), tools, this.measureInfo);
+    this.dims.replaceChildren(head, rows, sum, ...(fits ? [] : [mk('div', 'gp-warn', 'Größer als das Druckbett (220 × 220 × 220 mm)')]), tools, this.measureInfo);
   }
 
   setMeasuring(on) {
@@ -446,14 +507,22 @@ export class GcodePreview {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight, s = this.size();
     const items = [];
     if (this.showDims && s && this.dimLabels) for (const l of this.dimLabels) items.push([l.pos, fmtLen(s[l.key]), 'dim']);
+    if (this.showRuler && this.rulerLabels) for (const l of this.rulerLabels) items.push([l.pos, fmtTick(l.mm), 'rul']);
     const m = this._measureValues();
     if (m && this.measureLabel) items.push([this.measureLabel, fmtLen(m.d), 'meas']);
     while (this.labels.children.length < items.length) this.labels.append(document.createElement('span'));
+    const placed = []; // Linealzahlen, die zu dicht stehen, auslassen
     [...this.labels.children].forEach((span, i) => {
       const it = items[i];
       if (!it) { span.hidden = true; return; }
       const v = it[0].clone().project(this.camera);
-      span.hidden = v.z > 1;
+      const sx = (v.x + 1) / 2 * w, sy = (1 - v.y) / 2 * h;
+      let crowded = false;
+      if (it[2] === 'rul') {
+        crowded = placed.some(([px, py]) => Math.abs(px - sx) < 26 && Math.abs(py - sy) < 13);
+        if (!crowded) placed.push([sx, sy]);
+      }
+      span.hidden = v.z > 1 || crowded;
       span.className = it[2];
       span.textContent = it[1];
       span.style.transform = `translate(${(v.x + 1) / 2 * w}px, ${(1 - v.y) / 2 * h}px) translate(-50%, -50%)`;

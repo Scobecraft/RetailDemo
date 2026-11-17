@@ -161,11 +161,24 @@ function slStatsBar(stats, note) {
   const st = stats || {};
   const parts = [
     st.time_s ? ["Druckzeit", dkDur(st.time_s)] : null,
-    st.filament_g ? ["Filament", `${dkNum(st.filament_g, 0)} g`] : st.filament_m ? ["Filament", `${dkNum(st.filament_m, 1)} m`] : null,
+    ...slFilament(st),
     st.layers ? ["Schichten", dkNum(st.layers)] : null,
   ].filter(Boolean);
   SL.r.viewTop.replaceChildren(...parts.map(([k, v]) => el("div", {}, el("small", {}, k), el("b", {}, v))),
     ...(note ? [el("div", { class: "sl-note" }, note)] : []));
+}
+
+// Filamentbedarf: Länge und Gewicht bei Standard-PLA (1,75 mm, 1,24 g/cm³), Anteil an einer 1-kg-Rolle
+const SL_PLA_G_PER_M = Math.PI * 0.0875 ** 2 * 100 * 1.24; // ≈ 2,98 g pro Meter
+function slFilament(st) {
+  let m = st.filament_m;
+  if (!m && st.filament_g) m = st.filament_g / SL_PLA_G_PER_M; // nur Gewicht bekannt → Länge schätzen
+  if (!m) return [];
+  const g = m * SL_PLA_G_PER_M;
+  const len = m < 1 ? `${dkNum(m * 100, 0)} cm` : `${dkNum(m, m < 10 ? 2 : 1)} m`;
+  const pct = g / 10;
+  return [["Filament", len], ["Gewicht (PLA)", `${dkNum(g, g < 10 ? 1 : 0)} g`],
+    ["1-kg-Rolle", pct < 0.1 ? "< 0,1 %" : `${dkNum(pct, pct < 10 ? 1 : 0)} %`]];
 }
 
 // Vorschau des gespeicherten G-Codes des Auftrags (sofern keine Live-Vorschau mit geänderten Werten läuft)
