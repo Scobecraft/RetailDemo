@@ -15,6 +15,7 @@ import shutil
 import mimetypes
 import os
 import time
+import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -156,7 +157,9 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
         pending = hooks.get("pending_job")
         return {"ok": True, "watching": time.time() - st.last_view < WATCHING_S, "needInfo": st.pc_info is None,
                 "update": update_for(str(data.get("appVersion") or "")),
-                "print_job": pending() if pending else None}
+                "print_job": pending() if pending else None,
+                "model_override": ({"id": o["id"], "name": o["name"], "url": "/api/druck/override/file"}
+                                   if (o := model_override()) else None)}
 
     # ------------------------------------------------ Programm-Updates
 
@@ -231,6 +234,48 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
         st.model = {"rev": int(st.model.get("rev", 0)) + 1, "name": name[:200], "file": stored}
         (st.dir / "model.json").write_text(json.dumps(st.model))
         return {"ok": True}
+
+    # ------------------------------------------------ Modell von der Webseite (falls der Druckmonitor es nicht findet)
+    override_json = st.dir / "override.json"
+
+    def model_override() -> Optional[dict]:
+        """Auf der Webseite gewähltes Modell, das die Druckmonitor-App übernehmen soll (24 h gültig)."""
+        try:
+            o = json.loads(override_json.read_text())
+        except (OSError, ValueError):
+            return None
+        if not (st.dir / o.get("file", "")).exists() or time.time() - o.get("at", 0) > 86400:
+            return None
+        return o
+
+    def set_model(src: Path, name: str) -> dict:
+        """Modell sofort auf der Webseite anzeigen und für die Druckmonitor-App bereitstellen."""
+        low = name.lower()
+        ext = ".3mf" if low.endswith(".gcode.3mf") else Path(low).suffix
+        if ext not in MODEL_EXT:
+            raise HTTPException(400, "Bitte eine STL-, 3MF-, OBJ-, GLB- oder G-Code-Datei wählen")
+        for old in st.dir.glob("override.*"):
+            if old.suffix != ".json":
+                old.unlink(missing_ok=True)
+        ofile = "override" + ext
+        shutil.copyfile(src, st.dir / ofile)
+        for old in st.dir.glob("modell.*"):
+            old.unlink(missing_ok=True)
+        shutil.copyfile(st.dir / ofile, st.dir / ("modell" + ext))
+        st.model = {"rev": int(st.model.get("rev", 0)) + 1, "name": Path(name).name[:200], "file": "modell" + ext}
+        (st.dir / "model.json").write_text(json.dumps(st.model))
+        o = {"id": uuid.uuid4().hex, "name": Path(name).name[:200], "file": ofile, "at": time.time()}
+        override_json.write_text(json.dumps(o))
+        return {"ok": True, "name": o["name"], "rev": st.model["rev"]}
+
+    hooks["set_model"] = set_model
+
+    @r.get("/api/druck/override/file", dependencies=[Depends(require_device)])
+    def override_file():
+        o = model_override()
+        if not o:
+            raise HTTPException(404, "Kein Modell bereitgestellt")
+        return FileResponse(st.dir / o["file"], media_type="application/octet-stream")
 
     # ------------------------------------------------ Webseite (angemeldet)
 

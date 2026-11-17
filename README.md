@@ -251,6 +251,10 @@ Das Dashboard zeigt live (alle 2 s) und mit Verlauf der letzten Stunde:
 
 Die alte Ansicht der App gibt es weiterhin über den Knopf „Programm-Ansicht“.
 
+Findet der Druckmonitor die Druckdatei nicht selbst, lässt sich das Modell auf der Webseite setzen: Karte
+„Aktuelles Modell“ → **Modell hochladen** (oder Datei auf die Ansicht ziehen) bzw. **Aus 3D-Slicer …**. Die Webseite
+zeigt es sofort, die Druckmonitor-App (ab 1.2.2) übernimmt es bei der nächsten Übertragung.
+
 Windows-App bauen (unter Linux/macOS mit Go 1.24):
 
 ```bash

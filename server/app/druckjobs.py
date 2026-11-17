@@ -183,7 +183,8 @@ def _parse_gcode_stats(path: Path) -> dict:
     return {k: v for k, v in stats.items() if v}
 
 
-def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: Callable, printer_state: Callable[[], dict]):
+def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: Callable, printer_state: Callable[[], dict],
+                     set_model: Optional[Callable[[Path, str], dict]] = None):
     jobs_dir = data_dir / "druck" / "jobs"
     jobs_dir.mkdir(parents=True, exist_ok=True)
     lock = threading.RLock()
@@ -579,6 +580,15 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
         name = job["name"] + (".gcode" if kind == "gcode" else Path(job["source"]).suffix)
         from urllib.parse import quote
         return FileResponse(jobs_dir / job_id / f, headers={"X-Model-Name": quote(name), "Cache-Control": "no-store"})
+
+    @r.post("/api/admin/druck/jobs/{job_id}/as-model", dependencies=[Depends(require_viewer)])
+    def job_as_model(job_id: str):
+        """Auftrag als aktuelles Modell im Druckmonitor anzeigen (G-Code mit Slicer-Angaben, sonst das Modell)."""
+        job = load(job_id)
+        f = job.get("gcode") or job.get("source")
+        if not f or not (jobs_dir / job_id / f).exists() or not set_model:
+            raise HTTPException(404, "Keine Datei vorhanden")
+        return set_model(jobs_dir / job_id / f, job["name"] + Path(f).suffix)
 
     # ------------------------------------------------ Druckmonitor-App
 

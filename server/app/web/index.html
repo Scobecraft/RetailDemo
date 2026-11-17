@@ -326,6 +326,11 @@
   .dk-cam-badge.stale { background: rgba(0,0,0,.6); font-weight: 500; letter-spacing: 0; }
   .dk-3d-box { aspect-ratio: 4 / 3; background: radial-gradient(circle at 50% 40%, #252830, #0e0f12 70%); }
   .dk-3d { width: 100%; height: 100%; display: block; }
+  .dk-3d-box.over { outline: 3px dashed var(--accent); outline-offset: -3px; }
+  .dk-pick { display: grid; gap: 6px; max-height: 50vh; overflow: auto; }
+  .dk-pick-row { display: flex; gap: 10px; align-items: center; margin: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; color: var(--text); }
+  .dk-pick-row input { accent-color: var(--accent); }
+  .dk-pick-row span { display: flex; flex-direction: column; }
   .dk-model-info { color: var(--muted); font-size: 13px; margin-top: 8px; overflow-wrap: anywhere; }
   .dk-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   .dk-mini { height: 6px; border-radius: 3px; background: var(--meter-track); margin-top: 6px; overflow: hidden; }

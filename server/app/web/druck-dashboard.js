@@ -106,7 +106,18 @@ function dkBuild() {
   R.modelCanvas = el("canvas", { class: "dk-3d" });
   R.modelMsg = el("div", { class: "dk-cam-msg" }, "Kein Modell");
   R.modelInfo = el("div", { class: "dk-model-info" });
-  const modelCard = dkCard("span-5", "Aktuelles Modell", el("div", { class: "dk-3d-box" }, R.modelCanvas, R.modelMsg), R.modelInfo);
+  // Modell von Hand setzen, falls der Druckmonitor die Druckdatei nicht selbst findet
+  const modelInput = el("input", { type: "file", accept: ".stl,.3mf,.obj,.glb,.gltf,.gcode,.gco,.g,.gx", hidden: true,
+    onchange: () => { const f = modelInput.files[0]; modelInput.value = ""; if (f) dkUploadModel(f); } });
+  const modelBox = el("div", { class: "dk-3d-box" }, R.modelCanvas, R.modelMsg);
+  modelBox.addEventListener("dragover", e => { e.preventDefault(); modelBox.classList.add("over"); });
+  modelBox.addEventListener("dragleave", () => modelBox.classList.remove("over"));
+  modelBox.addEventListener("drop", e => { e.preventDefault(); modelBox.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) dkUploadModel(f); });
+  R.modelProgress = el("div", { class: "progress", hidden: true }, el("div"));
+  const modelCard = dkCard("span-5", "Aktuelles Modell", modelBox, R.modelProgress, R.modelInfo);
+  modelCard.querySelector(".dk-card-head").append(el("div", { class: "dk-actions" },
+    el("button", { class: "btn small", title: "STL, 3MF, OBJ oder G-Code – oder Datei auf die Ansicht ziehen", onclick: () => modelInput.click() }, "Modell hochladen"),
+    el("button", { class: "btn small", onclick: dkModelFromSlicer }, "Aus 3D-Slicer …"), modelInput));
 
   // --- Temperaturen
   R.tempChart = el("div", { class: "chart-wrap" });
@@ -542,3 +553,43 @@ function showDruck(on) {
 }
 let dkResizeT;
 addEventListener("resize", () => { clearTimeout(dkResizeT); dkResizeT = setTimeout(() => { if (DK.visible && DK.data) dkUpdate(DK.data); }, 200); });
+
+// ---------------------------------------------------------------- Modell von Hand setzen
+// Wird sofort auf der Webseite angezeigt; die Druckmonitor-App übernimmt es bei der nächsten Übertragung.
+async function dkUploadModel(f) {
+  const R = DK.refs, bar = R.modelProgress.firstChild;
+  R.modelProgress.hidden = false; bar.style.width = "0%";
+  try {
+    const { id } = await api("/api/admin/uploads", json("POST", { filename: f.name, size: f.size, kind: "druckmodel" }));
+    let off = 0;
+    while (off < f.size) {
+      const r = await api(`/api/admin/uploads/${id}?offset=${off}`, { method: "PUT", body: f.slice(off, off + CHUNK), headers: { "Content-Type": "application/octet-stream" } });
+      off = r.received; bar.style.width = Math.round(off / f.size * 100) + "%";
+    }
+    const r = await api(`/api/admin/uploads/${id}/complete`, json("POST", {}));
+    toast(`„${r.name}“ wird angezeigt – der Druckmonitor übernimmt es gleich`);
+    dkLoad();
+  } catch (err) { toast("Fehler: " + err.message); }
+  R.modelProgress.hidden = true;
+}
+
+async function dkModelFromSlicer() {
+  const d = await api("/api/admin/druck/jobs").catch(() => ({ jobs: [] }));
+  const jobs = d.jobs.filter(j => j.gcode || j.source);
+  if (!jobs.length) { toast("Im 3D-Slicer gibt es noch keine Aufträge"); return; }
+  let chosen = null;
+  const list = el("div", { class: "dk-pick" }, ...jobs.map(j => {
+    const st = j.stats || {};
+    const row = el("label", { class: "dk-pick-row" }, el("input", { type: "radio", name: "dkpick", onchange: () => chosen = j }),
+      el("span", {}, el("b", {}, j.name), el("small", { class: "muted" },
+        [j.gcode ? "geslict" : "nur Modell", st.time_s ? dkDur(st.time_s) : null, st.filament_g ? `${dkNum(st.filament_g, 0)} g` : null].filter(Boolean).join(" · "))));
+    return row;
+  }));
+  if (await dialog("Modell aus dem 3D-Slicer", [el("p", { class: "muted", style: "font-size:13px" }, "Wird als aktuelles Modell angezeigt (mit Druckzeit und Filament, falls geslict) und an den Druckmonitor übergeben."), list],
+    [["Abbrechen", ""], ["Übernehmen", "ok", "primary"]]) !== "ok" || !chosen) return;
+  try {
+    const r = await api(`/api/admin/druck/jobs/${chosen.id}/as-model`, { method: "POST" });
+    toast(`„${r.name}“ wird angezeigt – der Druckmonitor übernimmt es gleich`);
+    dkLoad();
+  } catch (err) { toast(err.message); }
+}

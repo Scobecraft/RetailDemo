@@ -217,3 +217,52 @@ func ffUploadGcode(host, serial, code, path, fileName string, leveling bool) err
 	}
 	return fmt.Errorf("Drucker lehnt die Datei ab (Fehler %d: %s)", r.Code, r.Message)
 }
+
+// ModelOverride: Auf der Webseite hochgeladenes (oder aus dem 3D-Slicer gewähltes) Modell – für den Fall,
+// dass die automatische Suche die Druckdatei auf dem PC nicht findet.
+type ModelOverride struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+var modelOverrideBusy sync.Mutex
+
+func (a *App) onModelOverride(m *ModelOverride) {
+	if m == nil || m.ID == "" || m.ID == a.config().HandledModel || !modelOverrideBusy.TryLock() {
+		return
+	}
+	go func() {
+		defer modelOverrideBusy.Unlock()
+		f, err := os.CreateTemp("", "modell-*")
+		if err != nil {
+			return
+		}
+		defer os.Remove(f.Name())
+		c := a.config()
+		req, _ := http.NewRequest(http.MethodGet, serverBase(c.ServerURL)+m.URL, nil)
+		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(c.ServerToken))
+		resp, err := (&http.Client{Timeout: 10 * time.Minute}).Do(req)
+		if err != nil {
+			f.Close()
+			log.Println("Modell von der Webseite laden:", err)
+			return
+		}
+		_, err = io.Copy(f, resp.Body)
+		resp.Body.Close()
+		if err != nil || resp.StatusCode != http.StatusOK {
+			f.Close()
+			log.Println("Modell von der Webseite laden: HTTP", resp.StatusCode, err)
+			return
+		}
+		f.Seek(0, io.SeekStart)
+		err = a.storeModel(m.Name, f, "von der Webseite hochgeladen")
+		f.Close()
+		log.Printf("Modell „%s“ von der Webseite übernommen: %v", m.Name, err)
+		a.mu.Lock()
+		a.cfg.HandledModel = m.ID
+		cfg := a.cfg
+		a.mu.Unlock()
+		_ = a.saveConfig(cfg)
+	}()
+}

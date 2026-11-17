@@ -576,7 +576,7 @@ class UploadInit(BaseModel):
     filename: str
     size: int
     mime: str = ""
-    kind: str = "media"  # "media", "apk" (Demo-App), "druck" (Druckmonitor-Installer) oder "druckjob" (3D-Druck)
+    kind: str = "media"  # "media", "apk" (Demo-App), "druck" (Druckmonitor-Installer), "druckjob" (3D-Druck), "druckmodel" (Modell für den Druckmonitor)
     options: dict = {}  # bei "druckjob": Slicer-Einstellungen
 
 
@@ -596,7 +596,7 @@ def upload_init(body: UploadInit):
     if body.kind == "apk":
         if not body.filename.lower().endswith(".apk"):
             raise HTTPException(400, "Bitte eine .apk-Datei auswählen")
-    elif body.kind == "druckjob":
+    elif body.kind in ("druckjob", "druckmodel"):
         if body.size > 500 * 1024 * 1024:
             raise HTTPException(400, "Datei zu groß (max. 500 MB)")
     elif body.kind == "druck":
@@ -642,6 +642,12 @@ def upload_complete(upload_id: str, body: UploadComplete):
         release = register_druck_release(part)
         meta.unlink(missing_ok=True)
         return release
+    if info.get("kind") == "druckmodel":
+        try:
+            return _druck_hooks["set_model"](part, info["filename"])
+        finally:
+            part.unlink(missing_ok=True)
+            meta.unlink(missing_ok=True)
     if info.get("kind") == "druckjob":
         job = register_druck_job(part, info["filename"], info.get("options") or {})  # ZIP: mehrere Aufträge
         meta.unlink(missing_ok=True)
@@ -1506,6 +1512,7 @@ _druck_hooks: dict = {}
 druck_router, register_druck_release = make_druck_router(DATA_DIR, require_device, require_admin, _druck_hooks)
 app.include_router(druck_router)
 jobs_router, register_druck_job, _pending_job = make_jobs_router(
-    DATA_DIR, require_device, require_admin, lambda: _druck_hooks["printer_state"]())
+    DATA_DIR, require_device, require_admin, lambda: _druck_hooks["printer_state"](),
+    lambda path, name: _druck_hooks["set_model"](path, name))
 _druck_hooks["pending_job"] = _pending_job
 app.include_router(jobs_router)

@@ -51,6 +51,8 @@ type Config struct {
 	ServerToken string `json:"serverToken"` // Geräte-Token des Servers (DEVICE_TOKEN)
 	// zuletzt ausgeführte "Jetzt aktualisieren"-Anforderung der Webseite
 	HandledUpdate int64 `json:"handledUpdate"`
+	// zuletzt übernommenes Modell, das auf der Webseite hochgeladen wurde
+	HandledModel string `json:"handledModel"`
 }
 
 func defaultConfig() Config {

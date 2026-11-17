@@ -194,10 +194,11 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		return false, fmt.Errorf("Server antwortet mit %d (Server aktualisiert?)", resp.StatusCode)
 	}
 	var r struct {
-		Watching bool        `json:"watching"`
-		NeedInfo bool        `json:"needInfo"`
-		Update   *UpdateInfo `json:"update"`
-		PrintJob *PrintJob   `json:"print_job"`
+		Watching bool           `json:"watching"`
+		NeedInfo bool           `json:"needInfo"`
+		Update   *UpdateInfo    `json:"update"`
+		PrintJob *PrintJob      `json:"print_job"`
+		Model    *ModelOverride `json:"model_override"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&r)
 	a.serverNeedsInfo = r.NeedInfo && pcInfo == nil
@@ -206,6 +207,7 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 	}
 	a.onServerUpdate(r.Update)
 	a.onPrintJob(r.PrintJob)
+	a.onModelOverride(r.Model)
 	return r.Watching, nil
 }
 
