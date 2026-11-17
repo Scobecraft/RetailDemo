@@ -5,6 +5,8 @@
 // Nutzt $, el, api, json, toast, dialog, confirmDlg, CHUNK, normText (index.html) und dkNum, dkDur (druck-dashboard.js).
 "use strict";
 
+// Versionsnummer aus dem eigenen <script src="…?v=…"> – die Vorschau wird nach Updates frisch geladen
+const SL_V = new URL(document.currentScript?.src || location.href).searchParams.get("v") || Date.now();
 const SL = {
   built: false, visible: false, timer: null, schema: null, jobs: [], printer: {}, sel: null,
   values: null, saved: null, section: null, search: "", preview: null, previewKey: "",
@@ -79,7 +81,7 @@ function slBuild() {
     el("section", { class: "sl-view" }, R.viewTop, R.viewHost, R.empty),
     el("aside", { class: "sl-panel" }, R.panel, R.actions)));
   SL.built = true;
-  import("/gcode-preview.js").then(({ GcodePreview }) => {
+  import(`/gcode-preview.js?v=${SL_V}`).then(({ GcodePreview }) => {
     SL.preview = new GcodePreview(R.viewHost);
     slShowPreview(true);
   }).catch(e => { R.viewHost.textContent = "Vorschau nicht möglich: " + e.message; });

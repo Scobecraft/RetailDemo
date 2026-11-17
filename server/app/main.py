@@ -24,7 +24,7 @@ from typing import Optional
 from collections import deque
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from .apkinfo import read_apk_info
@@ -1198,15 +1198,23 @@ def web_me(request: Request):
     return {"user": user, "managed_by_env": from_env}
 
 
+WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube")
+
+
 @app.get("/", include_in_schema=False)
 def web_index():
-    return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+    # Skripte mit Versionsnummer einbinden, damit Browser und Cloudflare nach einem Update nie alte Stände nutzen
+    ver = hashlib.sha1("".join(f"{n}:{(WEB_DIR / f'{n}.js').stat().st_mtime_ns}" for n in WEB_SCRIPTS).encode()).hexdigest()[:10]
+    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    for n in WEB_SCRIPTS:
+        html = html.replace(f'src="/{n}.js"', f'src="/{n}.js?v={ver}"')
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/{name}.js", include_in_schema=False)
 def web_script(name: str):
     """Skripte der Webseite (3D-Drucker, 3D-Slicer, G-Code-Vorschau)."""
-    if name not in ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube"):
+    if name not in WEB_SCRIPTS:
         raise HTTPException(404, "Nicht gefunden")
     return FileResponse(WEB_DIR / f"{name}.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
