@@ -1210,7 +1210,7 @@ def web_me(request: Request):
     return {"user": user, "managed_by_env": from_env}
 
 
-WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube", "ops")
+WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube", "ops", "eggs")
 
 
 @app.get("/", include_in_schema=False)
