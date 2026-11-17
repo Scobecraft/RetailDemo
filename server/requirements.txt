@@ -1,3 +1,5 @@
 fastapi==0.162.0
 uvicorn[standard]==0.54.0
 python-multipart==0.0.32
+# Automatische Untertitel im Video-Schnitt (Spracherkennung, läuft auf dem Server)
+faster-whisper==1.2.1

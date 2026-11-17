@@ -12,6 +12,13 @@ const ED_FORMATS = { portrait: [1080, 1920, "Hochformat 9:16"], landscape: [1920
 const ED_FONTS = { "sans-bold": ["bold", "DejaVu Sans, Verdana, Arial, sans-serif", "Sans fett"], "sans": ["normal", "DejaVu Sans, Verdana, Arial, sans-serif", "Sans"],
   "serif-bold": ["bold", "DejaVu Serif, Georgia, serif", "Serif fett"], "mono": ["bold", "DejaVu Sans Mono, Consolas, monospace", "Mono fett"] };
 const ED_TRANS = { none: "Harter Schnitt", fade: "Überblenden", fadeblack: "Über Schwarz", slideleft: "Schieben", wipeleft: "Wischen", circleopen: "Kreis" };
+const ED_PRICE_PRESETS = [
+  ["Preis-Störer (orange)", { text: "Nur 499 €", size: 12, y: 0.72, bg_on: true, bg: "#ee7f00", bg_alpha: 1, anim: "pop", font: "sans-bold" }],
+  ["Aktion (rot)", { text: "AKTION", size: 9, y: 0.12, bg_on: true, bg: "#e30613", bg_alpha: 1, anim: "slide" }],
+  ["Rabatt", { text: "-20 %", size: 14, x: 0.78, y: 0.2, bg_on: true, bg: "#e30613", bg_alpha: 1, anim: "pop" }],
+  ["Statt-Preis", { text: "statt 599 €", size: 5, y: 0.82, bg_on: false, anim: "fade", color: "#ffffff" }],
+  ["Hinweis klein", { text: "Nur solange der Vorrat reicht. Abbildung ähnlich.", size: 2.6, y: 0.95, bg_on: false, anim: "fade" }],
+];
 const ED_TEXT_PRESETS = [
   ["Überschrift", { text: "Jetzt neu!", size: 9, y: 0.15, bg_on: false, anim: "slide" }],
   ["Preis", { text: "Nur 499 €", size: 11, y: 0.5, bg_on: true, bg: "#ee7f00", bg_alpha: 0.95, anim: "fade" }],
@@ -122,7 +129,8 @@ function edBuild() {
   page.replaceChildren(el("div", { class: "ed" },
     el("div", { class: "ed-top" }, E.projSel, E.name, E.format,
       tool("↶", "Rückgängig (Strg+Z)", () => edUndo(true)), tool("↷", "Wiederholen (Strg+Y)", () => edUndo(false)),
-      E.saved, el("span", { class: "spacer" }), tool("Projekt löschen", "", edDeleteProject), E.exportBtn),
+      E.saved, el("span", { class: "spacer" }), tool("Projekt löschen", "", edDeleteProject),
+      tool("💬 Untertitel", "Gesprochenes automatisch als Untertitel einfügen (Spracherkennung)", edSubtitles), E.exportBtn),
     E.renderBox,
     el("div", { class: "ed-main" },
       el("aside", { class: "ed-lib" }, E.libTabs, E.lib),
@@ -165,7 +173,7 @@ function edRenderAll() {
 // ---------------------------------------------------------------- Bibliothek (links)
 function edRenderLib() {
   const E = ED.els;
-  E.libTabs.replaceChildren(...[["media", "Medien"], ["audio", "Musik"], ["text", "Text"]].map(([k, l]) =>
+  E.libTabs.replaceChildren(...[["media", "Medien"], ["audio", "Musik"], ["text", "Text"], ["tpl", "Vorlagen"]].map(([k, l]) =>
     el("button", { class: "ed-libtab" + (ED.libTab === k ? " on" : ""), onclick: () => { ED.libTab = k; edRenderLib(); } }, l)));
   if (ED.libTab === "media") {
     const q = el("input", { type: "search", placeholder: "Suchen …", class: "ed-libsearch", value: ED.libQ || "", oninput: () => { ED.libQ = q.value; draw(); } });
@@ -192,10 +200,53 @@ function edRenderLib() {
           if (!await confirmDlg("Musik löschen?", `„${a.name}“ wird gelöscht. In Projekten verwendete Stellen fallen weg.`)) return;
           await api(`/api/admin/editor/audio/${a.id}`, { method: "DELETE" }); ED.audio = await api("/api/admin/editor/audio"); edRenderLib();
         } }, "×"))));
+  } else if (ED.libTab === "tpl") {
+    const busy = b => { b.disabled = true; b.dataset.label = b.textContent; b.textContent = "Wird vorbereitet …"; };
+    const done = b => { b.disabled = false; b.textContent = b.dataset.label; };
+    const tplBtn = (label, fn) => { const b = el("button", { class: "btn block ed-textpreset", onclick: async () => { busy(b); try { await fn(); } catch (e) { toast(e.message); } done(b); } }, label); return b; };
+    E.lib.replaceChildren(
+      el("p", { class: "muted ed-hint" }, "Expert-Vorlagen mit Logo und Ladenname (Einstellungen → Laden). Passen in jedes Format."),
+      tplBtn("★ Komplette Werbung", () => edTemplateAll()),
+      el("small", { class: "muted ed-hint" }, "Intro vorne, Outro hinten, Preis-Störer am Ende der Clips."),
+      tplBtn("Expert-Intro an den Anfang", () => edTemplateClip("intro")),
+      tplBtn("Expert-Outro ans Ende", () => edTemplateClip("outro")),
+      el("p", { class: "muted ed-hint" }, "Preis & Aktion an der Abspielposition:"),
+      ...ED_PRICE_PRESETS.map(([label, preset]) => el("button", { class: "btn block ed-textpreset", onclick: () => edAddText(preset) }, label)));
   } else {
     E.lib.replaceChildren(el("p", { class: "muted ed-hint" }, "Text an der Abspielposition einfügen:"),
       ...ED_TEXT_PRESETS.map(([label, preset]) => el("button", { class: "btn block ed-textpreset", onclick: () => edAddText(preset) }, label)));
   }
+}
+
+// Vorlage (Intro/Outro) vom Server holen bzw. erzeugen und als Clip einsetzen
+async function edTemplateMedia(kind) {
+  const t = await api(`/api/admin/editor/templates/${kind}`, json("POST", {}));
+  if (!mediaById(t.media_id)) await loadAll();
+  return mediaById(t.media_id) || { id: t.media_id, type: "video", title: t.title };
+}
+async function edTemplateClip(kind) {
+  const m = await edTemplateMedia(kind);
+  const info = await edMediaInfo(m.id);
+  const clip = { id: edId(), media_id: m.id, in: 0, out: +(info.duration || 3).toFixed(3), volume: 1, muted: true, fit: "cover",
+    transition: "fade", transition_s: 0.5, zoom: "none", template: kind };
+  edChange(p => {
+    p.clips = p.clips.filter(c => c.media_id !== m.id); // nicht doppelt
+    if (kind === "intro") { p.clips.unshift({ ...clip, transition: "none" }); if (p.clips[1]) p.clips[1].transition = p.clips[1].transition === "none" ? "fade" : p.clips[1].transition; }
+    else p.clips.push(clip);
+  });
+  ED.sel = { kind: "clip", id: clip.id }; edRenderAll();
+}
+async function edTemplateAll() {
+  await edTemplateClip("intro");
+  await edTemplateClip("outro");
+  // Preis-Störer über den letzten Clip vor dem Outro
+  const { starts } = edTimeline();
+  const i = ED.p.clips.length - 2;
+  if (i >= 1) {
+    const c = ED.p.clips[i], s = starts[i] + Math.max(0, edDur(c) - 4);
+    ED.t = s; edAddText(ED_PRICE_PRESETS[0][1]);
+  }
+  toast("Vorlage eingesetzt – Preis-Text anklicken und anpassen");
 }
 
 async function edAddClip(m) {
@@ -663,14 +714,19 @@ async function edExport() {
   await edSave();
   const title = el("input", { type: "text", value: p.name, maxlength: 120 });
   const pls = state.playlists.map(pl => ({ pl, cb: el("input", { type: "checkbox" }) }));
+  const fmts = Object.entries(ED_FORMATS).map(([k, [w, h, label]]) => ({ k, cb: el("input", { type: "checkbox", checked: k === p.format }), label: `${label} (${w}×${h})` }));
   const res = await dialog("Video erstellen", [
-    el("p", { class: "muted", style: "font-size:13px" }, `${ED_FORMATS[p.format][2]} · ${edFmtT(edTimeline().total)} · MP4. Der Server rendert das Video und legt es in den Medien ab.`),
+    el("p", { class: "muted", style: "font-size:13px" }, `${edFmtT(edTimeline().total)} · MP4. Der Server rendert das Video und legt es in den Medien ab.`),
+    el("label", {}, "Formate (eins oder mehrere – Texte und Bildausschnitt passen sich an)"),
+    ...fmts.map(x => el("label", { class: "dkj-check" }, x.cb, x.label)),
     el("label", {}, "Titel in den Medien"), title,
     ...(pls.length ? [el("label", {}, "Gleich zu Playlists hinzufügen"), ...pls.map(x => el("label", { class: "dkj-check" }, x.cb, x.pl.name))] : []),
   ], [["Abbrechen", ""], ["Erstellen", "ok", "primary"]]);
   if (res !== "ok") return;
   try {
-    await api(`/api/admin/editor/projects/${p.id}/render`, json("POST", { title: title.value, playlist_ids: pls.filter(x => x.cb.checked).map(x => x.pl.id) }));
+    const formats = fmts.filter(x => x.cb.checked).map(x => x.k);
+    if (!formats.length) { toast("Bitte mindestens ein Format wählen"); return; }
+    await api(`/api/admin/editor/projects/${p.id}/render`, json("POST", { title: title.value, formats, playlist_ids: pls.filter(x => x.cb.checked).map(x => x.pl.id) }));
     edPollRender();
   } catch (err) { toast(err.message); }
 }
@@ -682,7 +738,8 @@ function edPollRender() {
     if (!st || ED.p?.id !== pid) return;
     box.hidden = false;
     if (st.state === "rendering" || st.state === "saving") {
-      box.replaceChildren(el("span", {}, st.state === "saving" ? "Wird in den Medien gespeichert …" : `Video wird erstellt … ${Math.round(st.progress * 100)} %`),
+      const step = st.steps > 1 ? ` (${st.step}/${st.steps}: ${ED_FORMATS[st.format]?.[2] || ""})` : "";
+      box.replaceChildren(el("span", {}, st.state === "saving" ? `Wird in den Medien gespeichert …${step}` : `Video wird erstellt … ${Math.round(st.progress * 100)} %${step}`),
         el("div", { class: "progress" }, el("div", { style: `width:${Math.round(st.progress * 100)}%` })));
       ED.els.exportBtn.disabled = true;
       ED.renderTimer = setTimeout(tick, 1500);
@@ -691,13 +748,48 @@ function edPollRender() {
     ED.els.exportBtn.disabled = false;
     if (st.state === "done") {
       await loadAll();
-      box.replaceChildren(el("span", {}, "✓ Fertig – das Video liegt jetzt in den Medien."),
+      box.replaceChildren(el("span", {}, (st.media_ids?.length > 1 ? `✓ Fertig – ${st.media_ids.length} Videos` : "✓ Fertig – das Video") + " liegt jetzt in den Medien."),
         el("button", { class: "btn small", onclick: () => { const m = mediaById(st.media_id); if (m) preview(m); } }, "Ansehen"),
         el("button", { class: "btn small", onclick: () => { box.hidden = true; } }, "OK"));
       toast("Video erstellt");
     } else if (st.state === "error") {
       box.replaceChildren(el("span", { style: "color:var(--danger)" }, "Erstellen fehlgeschlagen: " + st.error), el("button", { class: "btn small", onclick: () => { box.hidden = true; } }, "OK"));
     } else box.hidden = true;
+  };
+  tick();
+}
+
+// ---------------------------------------------------------------- Untertitel (Spracherkennung auf dem Server)
+async function edSubtitles() {
+  const p = ED.p; if (!p) return;
+  if (!p.clips.length) { toast("Erst Clips mit Ton hinzufügen"); return; }
+  const src = el("select", {}, el("option", { value: "clips" }, "Ton der Videos"), el("option", { value: "all" }, "Ton der Videos und Musik-/Sprachspuren"));
+  const repl = el("input", { type: "checkbox", checked: true });
+  const v = await dialog("Untertitel erzeugen", [
+    el("p", {}, "Der Server hört sich das Gesprochene an (Deutsch) und legt passende Untertitel auf die Textspur. Danach lassen sich die Texte wie gewohnt korrigieren."),
+    el("label", {}, "Quelle"), src,
+    el("label", { class: "dkj-check" }, repl, "Bisherige automatische Untertitel ersetzen"),
+    el("p", { class: "muted" }, "Beim ersten Mal lädt der Server die Spracherkennung (ca. 500 MB) – das dauert einige Minuten."),
+  ], [["Abbrechen", ""], ["Erzeugen", "ok", "primary"]]);
+  if (v !== "ok") return;
+  await edSave();
+  try { await api(`/api/admin/editor/projects/${p.id}/subtitles`, json("POST", { source: src.value, replace: repl.checked })); }
+  catch (e) { toast(e.message); return; }
+  const box = ED.els.renderBox, pid = p.id;
+  const tick = async () => {
+    const st = await api(`/api/admin/editor/projects/${pid}/subtitles`).catch(() => null);
+    if (!st || ED.p?.id !== pid) return;
+    box.hidden = false;
+    if (st.state === "loading" || st.state === "running") {
+      box.replaceChildren(el("span", {}, st.note || `Untertitel werden erkannt … ${Math.round((st.progress || 0) * 100)} %`),
+        el("div", { class: "progress" }, el("div", { style: `width:${Math.round((st.progress || 0) * 100)}%` })));
+      setTimeout(tick, 1500);
+    } else if (st.state === "done") {
+      await edOpen(pid);
+      box.replaceChildren(el("span", {}, `✓ ${st.count} Untertitel eingefügt – zum Korrigieren auf der Textspur anklicken.`), el("button", { class: "btn small", onclick: () => { box.hidden = true; } }, "OK"));
+    } else if (st.state === "error") {
+      box.replaceChildren(el("span", { style: "color:var(--danger)" }, "Untertitel fehlgeschlagen: " + st.error), el("button", { class: "btn small", onclick: () => { box.hidden = true; } }, "OK"));
+    }
   };
   tick();
 }

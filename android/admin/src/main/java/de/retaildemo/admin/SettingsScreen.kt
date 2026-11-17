@@ -101,10 +101,68 @@ fun SettingsScreen(vm: AdminViewModel, modifier: Modifier) {
             }
 
             if (vm.isConfigured) {
+                NotificationsCard(vm)
                 StoreCard(vm, settings) { vm.saveSettings(it) }
                 WebFilterCard(settings) { vm.saveSettings(it) }
                 ScheduleCard(settings) { vm.saveSettings(settings.copy(schedule = it)) }
                 ServerSettingsCard(settings) { vm.saveSettings(it) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationsCard(vm: AdminViewModel) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf(Alerts.enabled(ctx)) }
+    var instant by remember { mutableStateOf(Alerts.instant(ctx)) }
+    var allowed by remember { mutableStateOf(Alerts.canNotify(ctx)) }
+    val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
+    var recent by remember { mutableStateOf<List<de.retaildemo.core.Alert>>(emptyList()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { recent = vm.api.alerts(limit = 5).alerts } }
+    Card {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Benachrichtigungen", style = MaterialTheme.typography.titleMedium)
+            Text("Alarme vom Server als Push: Demo-Gerät offline, 3D-Druck fertig oder mit Fehler, Druckbett abräumen, Speicher knapp, Backup fehlgeschlagen. Was gemeldet wird, stellst du auf der Webseite unter „Benachrichtigungen“ ein.",
+                style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(on, { on = it; Alerts.setEnabled(ctx, on, instant) })
+                Text("Benachrichtigungen erhalten")
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(instant, { instant = it; Alerts.setEnabled(ctx, on, instant) }, enabled = on)
+                Text("Sofort (dauerhafte Verbindung) – sonst alle 15 Minuten")
+            }
+            if (on && !allowed && android.os.Build.VERSION.SDK_INT >= 33) {
+                OutlinedButton(onClick = { perm.launch(android.Manifest.permission.POST_NOTIFICATIONS) }) { Text("Benachrichtigungen erlauben") }
+            }
+            if (on && instant) {
+                val pm = ctx.getSystemService(android.os.PowerManager::class.java)
+                if (!pm.isIgnoringBatteryOptimizations(ctx.packageName)) {
+                    OutlinedButton(onClick = {
+                        runCatching {
+                            ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                android.net.Uri.parse("package:" + ctx.packageName)))
+                        }
+                    }) { Text("Akku-Optimierung ausschalten (damit nichts verloren geht)") }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(enabled = on, onClick = { scope.launch { runCatching { vm.api.testAlert() }.onSuccess { vm.messages.value = "Test-Benachrichtigung verschickt" } } }) {
+                    Text("Test senden")
+                }
+            }
+            if (recent.isNotEmpty()) {
+                HorizontalDivider()
+                Text("Zuletzt", style = MaterialTheme.typography.labelLarge)
+                recent.forEach { a ->
+                    Column {
+                        Text(a.title, style = MaterialTheme.typography.bodyMedium)
+                        Text(java.text.SimpleDateFormat("dd.MM. HH:mm", java.util.Locale.GERMANY).format(java.util.Date((a.t * 1000).toLong())) +
+                            if (a.resolved) " · erledigt" else "", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         }
     }

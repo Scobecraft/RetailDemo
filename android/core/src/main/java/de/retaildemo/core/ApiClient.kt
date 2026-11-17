@@ -109,6 +109,19 @@ class ApiClient(baseUrl: String, private val token: String) {
     suspend fun syncNow(id: String) { call("POST", "/api/admin/devices/$id/sync-now", EMPTY) }
     suspend fun syncAll() { call("POST", "/api/admin/devices/sync-all", EMPTY) }
 
+    // ---------------------------------------------------------- Alarme (Push)
+    /** Neueste Alarme (after=0) bzw. alle nach der ID. */
+    suspend fun alerts(after: Long = 0, limit: Int = 30): AlertList =
+        JSON.decodeFromString(call("GET", "/api/admin/alerts?after=$after&limit=$limit"))
+
+    /** Wartet bis zu [timeoutS] Sekunden auf neue Alarme (lange Abfrage). */
+    suspend fun waitAlerts(after: Long, timeoutS: Int = 50): AlertList =
+        JSON.decodeFromString(call("GET", "/api/admin/alerts/wait?after=$after&timeout=$timeoutS"))
+
+    suspend fun testAlert() { call("POST", "/api/admin/alerts/test", "{}".toRequestBody(JSON_TYPE)) }
+    suspend fun ackAlert(id: Long) { call("POST", "/api/admin/alerts/$id/ack", "{}".toRequestBody(JSON_TYPE)) }
+    suspend fun bedClear() { call("POST", "/api/admin/druck/bed-clear", "{}".toRequestBody(JSON_TYPE)) }
+
     suspend fun settings(): ServerSettings = JSON.decodeFromString(call("GET", "/api/admin/settings"))
     suspend fun saveSettings(s: ServerSettings): ServerSettings =
         JSON.decodeFromString(call("PUT", "/api/admin/settings", jsonBody(s.copy(logo = null))))
@@ -131,6 +144,11 @@ class ApiClient(baseUrl: String, private val token: String) {
 
     suspend fun heartbeat(report: DeviceReport): HeartbeatResponse =
         JSON.decodeFromString(call("POST", "/api/device/heartbeat", jsonBody(report)))
+
+    /** Gesammelte Wiedergaben und Kundenkontakte melden. */
+    suspend fun postStats(report: StatReport) {
+        call("POST", "/api/device/stats", jsonBody(report))
+    }
 
     suspend fun overview(): Overview = JSON.decodeFromString(call("GET", "/api/admin/overview"))
 

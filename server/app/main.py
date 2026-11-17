@@ -1554,7 +1554,31 @@ def _editor_media(media_id: str):
     return {"id": row["id"], "type": row["type"], "title": row["title"], "path": str(MEDIA_DIR / row["filename"])}
 
 
-editor_router, register_editor_audio = make_editor_router(DATA_DIR, require_admin, _editor_media, _register_media, _add_to_playlists)
+def _template_assets():
+    """Logo und Name für die Expert-Vorlagen im Video-Schnitt: eigenes Laden-Logo, sonst das expert-Logo."""
+    logo = None
+    with db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='logo'").fetchone()
+        store = get_settings(c).get("store_name") or ""
+    if row:
+        info = json.loads(row["value"])
+        if info.get("mime") in ("image/png", "image/jpeg", "image/webp"):
+            logo = LOGO_DIR / info["filename"]
+    if not logo:
+        for base in (Path(__file__).resolve().parents[1], Path(__file__).resolve().parents[2]):
+            if (base / "druckmonitor" / "web" / "logo.png").exists():
+                logo = base / "druckmonitor" / "web" / "logo.png"
+                break
+    return logo, store
+
+
+def _media_exists(media_id: str) -> bool:
+    with db() as c:
+        return c.execute("SELECT 1 FROM media WHERE id=?", (media_id,)).fetchone() is not None
+
+
+editor_router, register_editor_audio = make_editor_router(DATA_DIR, require_admin, _editor_media, _register_media, _add_to_playlists,
+                                                          _template_assets, _media_exists)
 app.include_router(editor_router)
 app.include_router(make_scobetube_router(DATA_DIR, require_admin, _register_media, _add_to_playlists, register_editor_audio))
 

@@ -19,8 +19,8 @@ android {
         applicationId = "de.retaildemo.admin"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.7.0"
+        versionCode = 9
+        versionName = "1.8.0"
     }
 
     signingConfigs {
@@ -73,4 +73,5 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.compose.icons)
+    implementation(libs.work.runtime)
 }

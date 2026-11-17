@@ -7,6 +7,7 @@ Ein Projekt besteht aus
   - audio:  Musik/Ton-Spuren (hochgeladene Audiodateien) mit Lage, Ausschnitt, Lautstärke, Ein-/Ausblenden
 Gerendert wird auf dem Server zu einem MP4 (H.264/AAC), das danach in der Mediathek liegt.
 """
+import hashlib
 import json
 import re
 import shutil
@@ -80,6 +81,7 @@ def clean_project(p: dict, media_ok: Callable[[str], Optional[dict]], audio_ok: 
             "font": t.get("font") if t.get("font") in FONTS else "sans-bold",
             "anim": t.get("anim") if t.get("anim") in ("none", "fade", "slide", "pop") else "fade",
             "shadow": bool(t.get("shadow", True)),
+            "sub": bool(t.get("sub")),  # automatisch erzeugter Untertitel
         })
     for a in (p.get("audio") or [])[:MAX_AUDIO]:
         if not audio_ok(str(a.get("file_id", ""))):
@@ -231,16 +233,60 @@ class ProjectIn(BaseModel):
 class RenderIn(BaseModel):
     title: str = ""
     playlist_ids: list[int] = []
+    formats: list[str] = []  # leer = Format des Projekts; mehrere = je ein Video pro Format
+
+
+class SubtitlesIn(BaseModel):
+    source: str = "clips"   # clips = Ton der Videos, all = auch Musik-/Sprachspuren
+    replace: bool = True    # bisherige automatische Untertitel ersetzen
+    model: str = "small"
+
+
+FORMAT_NAMES = {"portrait": "Hochformat", "landscape": "Querformat", "square": "Quadrat"}
+WHISPER_MODELS = ("base", "small", "medium")
+
+
+def _subtitle_chunks(words: list[tuple[float, float, str]], max_chars: int = 42, max_s: float = 5.0) -> list[tuple[float, float, str]]:
+    """Wörter (Start, Ende, Text) zu gut lesbaren Untertiteln bündeln: höchstens 2 Zeilen, ca. 3,5 s."""
+    out, cur = [], []
+    for w in words:
+        text = " ".join(x[2] for x in cur + [w]).strip()
+        too_long = cur and (len(text) > max_chars * 2 or w[1] - cur[0][0] > max_s)
+        if too_long:
+            out.append(cur)
+            cur = []
+        cur.append(w)
+        if w[2].rstrip().endswith((".", "!", "?")) and len(" ".join(x[2] for x in cur)) > 12:
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    res = []
+    for c in out:
+        text = " ".join(x[2].strip() for x in c).strip()
+        if len(text) > max_chars:  # auf zwei Zeilen umbrechen (am Leerzeichen nahe der Mitte)
+            mid = len(text) // 2
+            cut = min((i for i, ch in enumerate(text) if ch == " "), key=lambda i: abs(i - mid), default=None)
+            if cut:
+                text = text[:cut] + "\n" + text[cut + 1:]
+        res.append([c[0][0], max(c[-1][1], c[0][0] + 0.8), text])
+    for a, b in zip(res, res[1:]):  # nicht überlappen
+        a[1] = min(a[1], b[0] - 0.05)
+    return [tuple(x) for x in res]
 
 
 def make_editor_router(data_dir: Path, require_admin: Callable, media_lookup: Callable[[str], Optional[dict]],
-                       register_media: Callable, add_to_playlists: Callable):
+                       register_media: Callable, add_to_playlists: Callable,
+                       template_assets: Optional[Callable[[], tuple[Optional[Path], str]]] = None,
+                       media_exists: Optional[Callable[[str], bool]] = None):
     root = data_dir / "editor"
     pdir, adir, wdir = root / "projects", root / "audio", root / "render"
     for d in (pdir, adir, wdir):
         d.mkdir(parents=True, exist_ok=True)
     probe_cache: dict = {}
     renders: dict = {}  # project_id -> Status
+    subs: dict = {}     # project_id -> Status der Untertitel-Erkennung
+    whisper: dict = {}  # geladene Spracherkennungs-Modelle
     lock = threading.Lock()
     r = APIRouter()
 
@@ -379,35 +425,44 @@ def make_editor_router(data_dir: Path, require_admin: Callable, media_lookup: Ca
         return {"ok": True}
 
     # ------------------------------------------------ Rendern
-    def run_render(pid: str, p: dict, title: str, playlist_ids: list[int]):
-        work = wdir / pid
-        shutil.rmtree(work, ignore_errors=True)
-        work.mkdir(parents=True)
-        out = work / "video.mp4"
+    def run_render(pid: str, p: dict, title: str, playlist_ids: list[int], formats: list[str]):
         st = renders[pid]
+        done_ids = []
         try:
-            args, total = build_ffmpeg(p, lambda mid: media_info(mid), lambda fid: audio_file(fid), work, out)
-            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            for line in proc.stdout:
-                if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
-                    try:
-                        st["progress"] = min(0.99, int(line.split("=")[1]) / 1e6 / max(total, 0.1))
-                    except ValueError:
-                        pass
-            err = proc.stderr.read()
-            if proc.wait() != 0 or not out.exists():
-                raise RuntimeError((err.strip().splitlines() or ["ffmpeg-Fehler"])[-1][:300])
-            st.update(state="saving", progress=1)
-            m = register_media(out, f"{title or p['name']}.mp4", "video/mp4", title or p["name"])
-            if playlist_ids:
-                add_to_playlists(m["id"], playlist_ids)
-            st.update(state="done", media_id=m["id"], finished=time.time())
+            for k, fmt in enumerate(formats):
+                work = wdir / pid
+                shutil.rmtree(work, ignore_errors=True)
+                work.mkdir(parents=True)
+                out = work / "video.mp4"
+                name = title or p["name"]
+                if len(formats) > 1:
+                    name = f"{name} ({FORMAT_NAMES[fmt]})"
+                st.update(format=fmt, step=k + 1, steps=len(formats))
+                args, total = build_ffmpeg({**p, "format": fmt}, lambda mid: media_info(mid), lambda fid: audio_file(fid), work, out)
+                proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                for line in proc.stdout:
+                    if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
+                        try:
+                            part = min(0.99, int(line.split("=")[1]) / 1e6 / max(total, 0.1))
+                            st["progress"] = min(0.99, (k + part) / len(formats))
+                        except ValueError:
+                            pass
+                err = proc.stderr.read()
+                if proc.wait() != 0 or not out.exists():
+                    raise RuntimeError((err.strip().splitlines() or ["ffmpeg-Fehler"])[-1][:300])
+                st.update(state="saving")
+                m = register_media(out, f"{name}.mp4", "video/mp4", name)
+                if playlist_ids:
+                    add_to_playlists(m["id"], playlist_ids)
+                done_ids.append(m["id"])
+                st.update(state="rendering" if k + 1 < len(formats) else "saving", media_ids=done_ids)
+            st.update(state="done", progress=1, media_id=done_ids[0] if done_ids else None, media_ids=done_ids, finished=time.time())
         except HTTPException as e:
             st.update(state="error", error=e.detail)
         except Exception as e:  # noqa: BLE001 – Fehler dem Nutzer zeigen statt still abbrechen
             st.update(state="error", error=str(e))
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            shutil.rmtree(wdir / pid, ignore_errors=True)
 
     @r.post("/api/admin/editor/projects/{pid}/render", dependencies=[Depends(require_admin)])
     def render(pid: str, body: RenderIn):
@@ -416,11 +471,158 @@ def make_editor_router(data_dir: Path, require_admin: Callable, media_lookup: Ca
             if any(s.get("state") in ("rendering", "saving") for s in renders.values()):
                 raise HTTPException(409, "Es wird gerade schon ein Video erstellt – bitte kurz warten")
             renders[pid] = {"state": "rendering", "progress": 0, "started": time.time()}
-        threading.Thread(target=run_render, args=(pid, p, body.title.strip()[:120], body.playlist_ids), daemon=True).start()
+        formats = [f for f in dict.fromkeys(body.formats) if f in FORMATS] or [p["format"]]
+        renders[pid].update(steps=len(formats), step=1)
+        threading.Thread(target=run_render, args=(pid, p, body.title.strip()[:120], body.playlist_ids, formats), daemon=True).start()
         return renders[pid]
 
     @r.get("/api/admin/editor/projects/{pid}/render", dependencies=[Depends(require_admin)])
     def render_status(pid: str):
         return renders.get(pid) or {"state": "none"}
+
+    # ------------------------------------------------ Automatische Untertitel (Spracherkennung auf dem Server)
+    def whisper_model(name: str):
+        if name not in whisper:
+            from faster_whisper import WhisperModel  # erst bei Bedarf laden (groß)
+            whisper.clear()  # nur ein Modell im Speicher
+            whisper[name] = WhisperModel(name, device="cpu", compute_type="int8", download_root=str(data_dir / "whisper"))
+        return whisper[name]
+
+    def pcm(path: Path, start: float, dur: float):
+        import numpy as np
+        raw = subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(path),
+                              "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"], capture_output=True, timeout=600).stdout
+        return np.frombuffer(raw, np.float32)
+
+    def run_subtitles(pid: str, body: SubtitlesIn):
+        st = subs[pid]
+        try:
+            p = load(pid)
+            starts, total = timeline(p["clips"])
+            # Tonquellen: (Datei, Ausschnitt-Start, Länge, Startzeit im Video)
+            sources = []
+            for c, t0 in zip(p["clips"], starts):
+                m = media_info(c["media_id"])
+                if m and m["type"] == "video" and m.get("has_audio") and not c["muted"] and c["volume"] > 0:
+                    sources.append((Path(m["path"]), c["in"], c["out"] - c["in"], t0))
+            if body.source == "all":
+                for a in p["audio"]:
+                    f = audio_file(a["file_id"])
+                    if f:
+                        sources.append((f, a["in"], min(a["out"] - a["in"], max(0, total - a["start"])), a["start"]))
+            if not sources:
+                raise RuntimeError("Im Projekt gibt es keinen Ton mit Sprache (Videos ohne Ton oder stumm geschaltet)")
+            st.update(state="loading", note="Spracherkennung wird geladen …" + ("" if (data_dir / "whisper").exists() else " (beim ersten Mal ca. 500 MB, einige Minuten)"))
+            model = whisper_model(body.model if body.model in WHISPER_MODELS else "small")
+            st.update(state="running", note="")
+            texts = []
+            for i, (f, s0, d, t0) in enumerate(sources):
+                if d <= 0.3:
+                    continue
+                audio = pcm(f, s0, d)
+                segs, _ = model.transcribe(audio, language="de", vad_filter=True, word_timestamps=True, condition_on_previous_text=False)
+                words = []
+                for seg in segs:
+                    for w in seg.words or []:
+                        if w.word.strip():
+                            words.append((t0 + w.start, t0 + w.end, w.word.strip()))
+                    st["progress"] = min(0.99, (i + min(1, seg.end / max(d, 0.1))) / len(sources))
+                for a, b, text in _subtitle_chunks(words):
+                    if a < total:
+                        texts.append({"id": uuid.uuid4().hex, "text": text, "start": round(a, 2), "end": round(min(b, total), 2),
+                                      "x": 0.5, "y": 0.86, "size": 4.2, "color": "#ffffff", "bg": "#000000", "bg_on": True,
+                                      "bg_alpha": 0.62, "font": "sans-bold", "anim": "none", "shadow": False, "sub": True})
+            p = load(pid)  # neu laden (falls inzwischen gespeichert wurde)
+            if body.replace:
+                p["texts"] = [t for t in p["texts"] if not t.get("sub")]
+            p["texts"] = (p["texts"] + texts)[:MAX_TEXTS]
+            p = clean_project(p, media_info, lambda fid: audio_file(fid) is not None)
+            p["id"], p["updated"] = pid, time.time()
+            save(p)
+            st.update(state="done", progress=1, count=len(texts))
+        except Exception as e:  # noqa: BLE001
+            st.update(state="error", error=str(getattr(e, "detail", None) or e)[:300])
+
+    @r.post("/api/admin/editor/projects/{pid}/subtitles", dependencies=[Depends(require_admin)])
+    def start_subtitles(pid: str, body: SubtitlesIn):
+        load(pid)
+        with lock:
+            if any(x.get("state") in ("loading", "running") for x in subs.values()):
+                raise HTTPException(409, "Es laufen gerade schon Untertitel – bitte kurz warten")
+            subs[pid] = {"state": "loading", "progress": 0, "started": time.time()}
+        threading.Thread(target=run_subtitles, args=(pid, body), daemon=True).start()
+        return subs[pid]
+
+    @r.get("/api/admin/editor/projects/{pid}/subtitles", dependencies=[Depends(require_admin)])
+    def subtitles_status(pid: str):
+        return subs.get(pid) or {"state": "none"}
+
+    # ------------------------------------------------ Vorlagen: Expert-Intro und -Outro
+    tpl_file = root / "templates.json"
+
+    def make_template(kind: str, logo: Optional[Path], store: str, out: Path):
+        """Kurzes Video 1080×1080 (passt per „Füllen“ in jedes Format: alles Wichtige liegt in der Mitte)."""
+        S, dur = 1080, (3.0 if kind == "intro" else 4.0)
+        args = ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", f"color=c=0x15171c:s={S}x{S}:r={FPS}:d={dur}",
+                "-f", "lavfi", "-i", f"color=c=0xee7f00:s={S}x14:r={FPS}:d={dur}"]
+        fc = ["[0:v]vignette=PI/4[bg]",
+              # oranger Balken fährt von links ein
+              f"[bg][1:v]overlay=x='-W+W*min(1,t/0.7)':y={S // 2 + 150}[b1]"]
+        cur = "[b1]"
+        if logo and logo.exists():
+            args += ["-loop", "1", "-t", f"{dur}", "-i", str(logo)]
+            ly = S // 2 - 230 if kind == "intro" else S // 2 - 300
+            fc.append(f"[2:v]scale=520:-1,format=rgba,fade=t=in:st=0.15:d=0.6:alpha=1[logo]")
+            fc.append(f"{cur}[logo]overlay=x=(W-w)/2:y='{ly}+40*(1-min(1,t/0.6))':shortest=1[b2]")
+            cur = "[b2]"
+        font = FONTS["sans-bold"]
+        lines = [store or "Mit den besten Empfehlungen."] if kind == "intro" else [f"Jetzt bei {store or 'expert'}", "Mit den besten Empfehlungen."]
+        tdir = out.parent
+        for i, line in enumerate(lines):
+            tf = tdir / f"tpl{i}.txt"
+            tf.write_text(line, encoding="utf-8")
+            fs = max(30, min(64 if i == 0 else 40, int(560 / max(1, len(line)) * 1.7)))
+            y = S // 2 + (60 if kind == "intro" else 0) + i * 80
+            col = "white" if i == 0 else "0xee7f00"
+            fc.append(f"{cur}drawtext=fontfile='{font}':textfile='{tf}':expansion=none:fontsize={fs}:fontcolor={col}:"
+                      f"x=(w-text_w)/2:y={y}:alpha='min(1,max(0,(t-0.5-{i * 0.25})/0.5))'[t{i}]")
+            cur = f"[t{i}]"
+        fc.append(f"{cur}fade=t=in:st=0:d=0.3,fade=t=out:st={dur - 0.4}:d=0.4,format=yuv420p[v]")
+        (tdir / "tpl.txt").write_text(";\n".join(fc))
+        args += ["-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo", "-filter_complex_script", str(tdir / "tpl.txt"),
+                 "-map", "[v]", "-map", f"{3 if logo and logo.exists() else 2}:a", "-t", f"{dur}",
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(out)]
+        res = subprocess.run(args, capture_output=True, text=True, timeout=300)
+        if res.returncode != 0 or not out.exists():
+            raise HTTPException(500, "Vorlage konnte nicht erstellt werden: " + (res.stderr.strip().splitlines() or ["?"])[-1][:200])
+
+    @r.post("/api/admin/editor/templates/{kind}", dependencies=[Depends(require_admin)])
+    def template(kind: str):
+        if kind not in ("intro", "outro"):
+            raise HTTPException(404, "Unbekannte Vorlage")
+        logo, store = template_assets() if template_assets else (None, "")
+        sig = hashlib.sha1(f"{kind}|{store}|{logo.stat().st_mtime if logo and logo.exists() else 0}|{logo}|v2".encode()).hexdigest()[:16]
+        try:
+            known = json.loads(tpl_file.read_text())
+        except (OSError, ValueError):
+            known = {}
+        k = known.get(kind) or {}
+        if k.get("sig") == sig and (media_exists is None or media_exists(k.get("media_id", ""))):
+            m = media_lookup(k["media_id"])
+            if m:
+                return {"media_id": k["media_id"], "title": m["title"], "created": False}
+        work = wdir / f"tpl-{kind}"
+        shutil.rmtree(work, ignore_errors=True)
+        work.mkdir(parents=True)
+        try:
+            out = work / "tpl.mp4"
+            make_template(kind, logo, store, out)
+            title = "Vorlage: Expert-Intro" if kind == "intro" else "Vorlage: Expert-Outro"
+            m = register_media(out, f"{title}.mp4", "video/mp4", title)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        known[kind] = {"sig": sig, "media_id": m["id"]}
+        tpl_file.write_text(json.dumps(known))
+        return {"media_id": m["id"], "title": m["title"], "created": True}
 
     return r, register_audio

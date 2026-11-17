@@ -237,6 +237,40 @@ Tonspur.
 - Musik: hochladen (MP3, M4A, WAV, OGG, FLAC), Lage, Ausschnitt, Lautstärke, Ein-/Ausblenden
 - **Video erstellen** rendert auf dem Server (ffmpeg, H.264/AAC) und legt das MP4 in den Medien ab –
   auf Wunsch gleich in Playlists. Projekte werden automatisch gespeichert.
+- **Mehrere Formate auf einmal:** im Dialog Hoch-, Quer- und Quadratformat ankreuzen – es entsteht je ein Video
+  (Texte und Bildausschnitt passen sich an).
+- **Vorlagen** (Reiter in der Bibliothek): Expert-Intro und -Outro mit Logo und Ladenname (Einstellungen → Laden;
+  ohne eigenes Logo das expert-Logo), Preis-Störer, Aktion, Rabatt, Statt-Preis, Hinweis.
+  **★ Komplette Werbung** setzt Intro vorne, Outro hinten und einen Preis-Störer ein.
+- **💬 Untertitel:** Der Server erkennt das Gesprochene (Deutsch, Spracherkennung Whisper, läuft komplett auf dem
+  Server) und legt Untertitel auf die Textspur. Beim ersten Mal lädt er das Sprachmodell (ca. 500 MB).
+
+## Statistik
+
+Menü → **Statistik**: Wiedergaben pro Tag, meistgespielte Inhalte, Kundenkontakte (wie oft jemand die Demo durch
+Antippen beendet hat, auch nach Uhrzeit) und Online-Zeit jedes Geräts während der Betriebszeiten. Zeitraum (heute,
+7/30/90 Tage) und Gerät wählbar. Die Demo-App meldet ihre Wiedergaben ab Version 1.13.
+
+## Benachrichtigungen (Push in der Admin-App)
+
+Menü → **Benachrichtigungen**: Liste aller Alarme und Auswahl, worüber benachrichtigt wird – Demo-Gerät offline
+(nach … Minuten, auf Wunsch nur während der Betriebszeiten), 3D-Druck fertig/Fehler, Druckbett abräumen,
+Speicherplatz knapp, Backup fehlgeschlagen. Die Admin-App (ab 1.8) zeigt sie als Push-Benachrichtigung – ohne
+Google-Dienste: Sie hält eine Verbindung zum Server offen (Einstellungen → Benachrichtigungen, dort auch
+„Akku-Optimierung ausschalten“ und „Test senden“). Bei „Druckbett abräumen“ gibt es den Knopf „Druckbett ist frei“
+direkt in der Benachrichtigung.
+
+## Backup
+
+Menü → **Backup**: jeden Tag automatisch (Uhrzeit und Anzahl einstellbar) oder per Klick. Gesichert werden Datenbank,
+Playlists, Geräte, Einstellungen, 3D-Druck, Video-Schnitt und Zeitraffer – auf Wunsch auch alle Medien. Die Backups
+liegen im Ordner `server/backups` (in `docker-compose.yml` z. B. auf ein NAS umstellbar), lassen sich herunterladen,
+hochladen und wiederherstellen (vorher wird automatisch der aktuelle Stand gesichert, danach startet der Server kurz neu).
+
+## Protokoll
+
+Menü → **Protokoll**: Wer hat wann was geändert (Webseite oder Admin-App, mit IP) – Uploads, Löschungen,
+Playlists, Einstellungen, Drucke, Backups, Anmeldungen (auch fehlgeschlagene). Mit Suche.
 
 ## YouTube-Import (über ScobeTube)
 
@@ -349,6 +383,16 @@ anklicken, dann erscheint der Abstand (auch einzeln in X, Y und Z). Die Werte pa
 
 **Filament:** Oben in der Vorschau stehen vor dem Druck Länge (m), Gewicht bei Standard-PLA (1,75 mm,
 1,24 g/cm³) und Anteil an einer 1-kg-Rolle – bei jeder Änderung der Einstellungen live neu berechnet.
+
+**Warteschlange:** „In Warteschlange“ reiht Aufträge ein – sofort oder „frühestens um …“. Der nächste startet
+automatisch, sobald der Drucker frei ist **und** das Druckbett als abgeräumt bestätigt wurde: Nach jedem Druck kommt
+der Alarm „Druckbett abräumen“ (Push), bestätigt wird links im 3D-Slicer, in den Benachrichtigungen oder direkt in
+der Push-Meldung. Reihenfolge per ↑/↓ änderbar.
+
+**Zeitraffer:** Bei jedem Druck nimmt der Server ein Bild pro Schicht auf (Druckmonitor ab 1.2.5 schickt dafür
+während des Drucks alle 3 s ein Bild). Am Ende entsteht ein kurzes Video: Es erscheint im Reiter 3D-Drucker, kommt
+(einstellbar) in die Medien und Playlists der Handys und läuft in der Druckmonitor-App und unter /druck/,
+solange nicht gedruckt wird.
 
 ### Übergang zwischen den Medien
 

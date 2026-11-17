@@ -41,6 +41,10 @@ class AdminActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        Alerts.start(this)
+        // Android 13+: Erlaubnis für Benachrichtigungen (Alarme vom Server)
+        if (android.os.Build.VERSION.SDK_INT >= 33 && Alerts.enabled(this) && !Alerts.canNotify(this))
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 7)
         setContent {
             val dark = isSystemInDarkTheme()
             MaterialTheme(

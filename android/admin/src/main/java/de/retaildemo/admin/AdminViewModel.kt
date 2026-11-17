@@ -59,7 +59,8 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
             test.settings() // prüft das Admin-Token
             serverUrl = test.baseUrl
             adminToken = token.trim()
-            sp.edit().putString("url", serverUrl).putString("token", adminToken).apply()
+            sp.edit().putString("url", serverUrl).putString("token", adminToken).remove("last_alert").apply()
+            Alerts.start(getApplication())
             api = test
             imageLoader = buildLoader()
             refreshAll()

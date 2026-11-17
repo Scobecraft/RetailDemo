@@ -19,8 +19,8 @@ android {
         applicationId = "de.retaildemo.demo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 14
-        versionName = "1.12.0"
+        versionCode = 15
+        versionName = "1.13.0"
     }
 
     signingConfigs {

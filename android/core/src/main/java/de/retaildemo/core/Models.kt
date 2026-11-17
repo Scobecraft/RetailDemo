@@ -272,3 +272,36 @@ data class Overview(
     @SerialName("app_versions") val appVersions: Map<String, Int> = emptyMap(),
     @SerialName("rolled_out") val rolledOut: Boolean = false,
 )
+
+/** Wiedergabe-Statistik der Demo-App (POST /api/device/stats). type: play | promo | specs | touch */
+@Serializable
+data class StatEvent(
+    val type: String,
+    @SerialName("media_id") val mediaId: String? = null,
+    val start: Double,
+    @SerialName("duration_s") val durationS: Double = 0.0,
+    val completed: Boolean = true,
+)
+
+@Serializable
+data class StatReport(@SerialName("device_id") val deviceId: String, val events: List<StatEvent>)
+
+/** Alarm vom Server (Benachrichtigung in der Admin-App). */
+@Serializable
+data class Alert(
+    val id: Long,
+    val t: Double = 0.0,
+    val kind: String = "",
+    val level: String = "warn",
+    val title: String = "",
+    val body: String = "",
+    val resolved: Boolean = false,
+    val acked: Boolean = false,
+    val data: Map<String, kotlinx.serialization.json.JsonElement>? = null,
+) {
+    /** "bed_clear": Knopf „Druckbett ist frei“ anbieten */
+    val action: String? get() = (data?.get("action") as? kotlinx.serialization.json.JsonPrimitive)?.content
+}
+
+@Serializable
+data class AlertList(val alerts: List<Alert> = emptyList(), @SerialName("latest_id") val latestId: Long = 0)

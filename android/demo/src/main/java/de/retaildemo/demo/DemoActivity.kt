@@ -143,6 +143,7 @@ class DemoActivity : ComponentActivity() {
 
     /** Kunde hat den Bildschirm berührt: Demo beenden und zum Startbildschirm wechseln. */
     private fun exitToHome() {
+        demoApp.stats.touch()
         demoApp.sync.playerStatus = "Kunde benutzt Gerät"
         startActivity(
             Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
@@ -213,6 +214,16 @@ private fun DemoScreen(app: DemoApp, onCustomerTouch: () -> Unit, onAdminGesture
     var holdStartedAt by remember { mutableStateOf<Long?>(null) }
     val onTouch by rememberUpdatedState(onCustomerTouch)
     val onAdmin by rememberUpdatedState(onAdminGesture)
+
+    // Statistik: jede Folie (Video, Bild, Gerätedaten, 3D-Druck-Einblendung) mit Dauer festhalten
+    DisposableEffect(index, showPromo, slide) {
+        when {
+            showPromo -> app.stats.begin("promo", null)
+            slide is Slide.Media -> app.stats.begin("play", slide.item.id)
+            slide is Slide.Specs -> app.stats.begin("specs", null)
+        }
+        onDispose { app.stats.end() }
+    }
 
     Box(
         Modifier

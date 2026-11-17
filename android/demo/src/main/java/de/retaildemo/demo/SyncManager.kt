@@ -25,6 +25,7 @@ import java.security.MessageDigest
 class SyncManager(private val app: DemoApp) {
 
     private val prefs get() = app.prefs
+    private var lastStatsFlush = 0L
     private val mutex = Mutex()
     private var nextRetryAt = 0L
 
@@ -98,6 +99,11 @@ class SyncManager(private val app: DemoApp) {
                 runCatching { api().heartbeat(report(withSpecs = false)) }
                     .onSuccess { waitS = handleHeartbeat(it) }
                     .onFailure { Log.w(TAG, "Heartbeat fehlgeschlagen", it) }
+                // Wiedergabe-Statistik mitschicken (höchstens alle 5 Minuten)
+                if (System.currentTimeMillis() - lastStatsFlush > 5 * 60_000L) {
+                    lastStatsFlush = System.currentTimeMillis()
+                    runCatching { app.stats.flush(api(), prefs.deviceId) }
+                }
             }
             delay(waitS * 1000L)
         }
