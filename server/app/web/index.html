@@ -321,6 +321,8 @@
   .sd-row input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
   .sd-row input[type=time] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); }
   .sd-row input[type=time]:disabled { opacity: .4; }
+  .ops-push-row { grid-template-columns: 22px 110px 120px 30px 120px; }
+  @media (max-width: 640px) { .ops-push-row { grid-template-columns: 22px 1fr 92px 92px; } .ops-push-row > span.muted { display: none; } }
   .set-layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; align-items: start; }
   .set-nav { position: sticky; top: 84px; display: grid; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
   .set-group { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; padding: 10px 10px 4px; }

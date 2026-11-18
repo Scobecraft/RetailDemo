@@ -5,6 +5,7 @@ Backup fehlgeschlagen. Die Admin-App holt neue Alarme ab (dauerhafte Verbindung 
 und zeigt sie als Push-Benachrichtigung.
 """
 import json
+import re
 import shutil
 import threading
 import time
@@ -12,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 KINDS = {
@@ -28,6 +29,9 @@ DEFAULT_CONFIG = {
     "offline_minutes": 15,
     "only_opening_hours": True,  # Offline-Alarm nur während der Betriebszeiten
     "disk_min_percent": 10,
+    # Push nur in diesen Zeiten (Montag … Sonntag); sonst steht der Alarm nur auf der Webseite
+    "push_hours": [{"on": True, "from": "08:55", "to": "19:00"}] * 5
+                  + [{"on": True, "from": "08:55", "to": "16:00"}, {"on": False, "from": "08:55", "to": "16:00"}],
 }
 
 
@@ -36,6 +40,7 @@ class AlertConfig(BaseModel):
     offline_minutes: int = 15
     only_opening_hours: bool = True
     disk_min_percent: int = 10
+    push_hours: Optional[list[dict]] = None
 
 
 class Alerts:
@@ -59,6 +64,18 @@ class Alerts:
                 );
                 CREATE INDEX IF NOT EXISTS alerts_key ON alerts(key, resolved);
             """)
+            if "quiet" not in {r["name"] for r in c.execute("PRAGMA table_info(alerts)")}:
+                # 1 = außerhalb der Push-Zeiten entstanden: nicht aufs Handy, nur auf der Webseite
+                c.execute("ALTER TABLE alerts ADD COLUMN quiet INTEGER NOT NULL DEFAULT 0")
+
+    def push_allowed(self, now: Optional[datetime] = None) -> bool:
+        now = now or datetime.now()
+        ph = self.config().get("push_hours") or []
+        if len(ph) != 7:
+            return True
+        d = ph[now.weekday()]
+        hm = now.strftime("%H:%M")
+        return bool(d.get("on")) and d["from"] <= hm < d["to"]
 
     # ------------------------------------------------ Einstellungen
     def config(self) -> dict:
@@ -66,7 +83,7 @@ class Alerts:
         try:
             saved = json.loads(self.cfg_file.read_text())
             c["enabled"].update({k: bool(v) for k, v in (saved.get("enabled") or {}).items() if k in KINDS})
-            for k in ("offline_minutes", "only_opening_hours", "disk_min_percent"):
+            for k in ("offline_minutes", "only_opening_hours", "disk_min_percent", "push_hours"):
                 if k in saved:
                     c[k] = saved[k]
         except (OSError, ValueError):
@@ -79,6 +96,17 @@ class Alerts:
         c["offline_minutes"] = max(5, min(240, body.offline_minutes))
         c["only_opening_hours"] = body.only_opening_hours
         c["disk_min_percent"] = max(1, min(50, body.disk_min_percent))
+        if body.push_hours is not None:
+            if len(body.push_hours) != 7:
+                raise ValueError("Bitte alle 7 Wochentage angeben")
+            hm = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+            ph = []
+            for d in body.push_hours:
+                f, t = str(d.get("from", "")), str(d.get("to", ""))
+                if not hm.fullmatch(f) or not hm.fullmatch(t):
+                    raise ValueError("Uhrzeiten bitte als HH:MM")
+                ph.append({"on": bool(d.get("on")), "from": f, "to": t})
+            c["push_hours"] = ph
         self.cfg_file.write_text(json.dumps(c))
         return c
 
@@ -91,8 +119,9 @@ class Alerts:
         with self.db() as c:
             if key and c.execute("SELECT 1 FROM alerts WHERE key=? AND resolved=0", (key,)).fetchone():
                 return None
-            cur = c.execute("INSERT INTO alerts (t, kind, level, title, body, key, data) VALUES (?,?,?,?,?,?,?)",
-                            (time.time(), kind, level, title[:200], body[:1000], key, json.dumps(data) if data else None))
+            quiet = 0 if kind == "test" or self.push_allowed() else 1
+            cur = c.execute("INSERT INTO alerts (t, kind, level, title, body, key, data, quiet) VALUES (?,?,?,?,?,?,?,?)",
+                            (time.time(), kind, level, title[:200], body[:1000], key, json.dumps(data) if data else None, quiet))
             new_id = cur.lastrowid
             # alte Einträge aufräumen
             c.execute("DELETE FROM alerts WHERE t < ?", (time.time() - 60 * 86400,))
@@ -109,13 +138,14 @@ class Alerts:
             return c.execute("SELECT COALESCE(MAX(id), 0) FROM alerts").fetchone()[0]
 
     def items(self, after: int = 0, limit: int = 50) -> list[dict]:
+        """after>0 = Abfrage der Admin-App: Alarme aus den Ruhezeiten werden nicht aufs Handy geschickt."""
         with self.db() as c:
             if after:
-                rows = c.execute("SELECT * FROM alerts WHERE id > ? ORDER BY id LIMIT ?", (after, limit)).fetchall()
+                rows = c.execute("SELECT * FROM alerts WHERE id > ? AND quiet=0 ORDER BY id LIMIT ?", (after, limit)).fetchall()
             else:
                 rows = c.execute("SELECT * FROM alerts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [{"id": r["id"], "t": r["t"], "kind": r["kind"], "level": r["level"], "title": r["title"], "body": r["body"],
-                 "resolved": bool(r["resolved"]), "acked": bool(r["acked"]), "data": json.loads(r["data"]) if r["data"] else None}
+                 "resolved": bool(r["resolved"]), "acked": bool(r["acked"]), "quiet": bool(r["quiet"]), "data": json.loads(r["data"]) if r["data"] else None}
                 for r in rows]
 
     def wait(self, after: int, timeout: float) -> list[dict]:
@@ -217,7 +247,10 @@ def make_alerts_router(alerts: Alerts, require_admin: Callable, db: Callable, se
 
     @r.put("/api/admin/alerts/config", dependencies=[Depends(require_admin)])
     def put_config(body: AlertConfig):
-        return {**alerts.save_config(body), "kinds": KINDS}
+        try:
+            return {**alerts.save_config(body), "kinds": KINDS}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
     @r.post("/api/admin/alerts/test", dependencies=[Depends(require_admin)])
     def test_alert():

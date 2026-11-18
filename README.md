@@ -260,6 +260,10 @@ Google-Dienste: Sie hält eine Verbindung zum Server offen (Einstellungen → Be
 „Akku-Optimierung ausschalten“ und „Test senden“). Bei „Druckbett abräumen“ gibt es den Knopf „Druckbett ist frei“
 direkt in der Benachrichtigung.
 
+**Push-Zeiten:** Aufs Handy kommen Alarme nur zu den eingestellten Zeiten – Standard Montag bis Freitag 8:55–19:00,
+Samstag 8:55–16:00, Sonntag gar nicht. Was außerhalb entsteht, steht nur auf der Webseite (mit 🌙). Einstellbar
+unter Benachrichtigungen → „Push aufs Handy nur zu diesen Zeiten“.
+
 ## Backup
 
 Menü → **Backup**: jeden Tag automatisch (Uhrzeit und Anzahl einstellbar) oder per Klick. Gesichert werden Datenbank,

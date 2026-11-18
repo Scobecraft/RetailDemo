@@ -100,6 +100,17 @@ async function opsAlerts() {
     el("input", { type: "checkbox", checked: c.enabled[k], onchange: e => { c.enabled[k] = e.target.checked; save(); } }), label));
   const mins = el("input", { type: "number", min: 5, max: 240, value: c.offline_minutes, style: "width:80px", onchange: e => { c.offline_minutes = +e.target.value; save(); } });
   const hours = el("input", { type: "checkbox", checked: c.only_opening_hours, onchange: e => { c.only_opening_hours = e.target.checked; save(); } });
+  const DAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+  c.push_hours = (c.push_hours || []).map(d => ({ ...d }));
+  const pushRows = c.push_hours.map((d, i) => {
+    const on = el("input", { type: "checkbox", checked: d.on });
+    const from = el("input", { type: "time", value: d.from, disabled: !d.on });
+    const to = el("input", { type: "time", value: d.to, disabled: !d.on });
+    on.onchange = () => { d.on = on.checked; from.disabled = to.disabled = !on.checked; save(); };
+    from.onchange = () => { d.from = from.value; save(); };
+    to.onchange = () => { d.to = to.value; save(); };
+    return el("label", { class: "sd-row ops-push-row" }, on, el("span", {}, DAYS[i]), from, el("span", { class: "muted" }, "bis"), to);
+  });
   page.replaceChildren(
     el("div", { class: "row" }, el("div", {}, el("h2", {}, "Benachrichtigungen"),
       el("p", { class: "sub" }, "Alarme kommen als Push-Benachrichtigung in die Admin-App (ab Version 1.8) und stehen hier in der Liste.")),
@@ -110,10 +121,13 @@ async function opsAlerts() {
       el("div", { class: "target" }, ...kinds),
       el("div", { class: "row ops-cfg" }, el("span", {}, "Gerät gilt als offline nach"), mins, el("span", {}, "Minuten"),
         el("label", { class: "chip" }, hours, "nur während der Betriebszeiten"))),
+    el("section", { class: "panel ops-card" }, el("h3", {}, "Push aufs Handy nur zu diesen Zeiten"),
+      el("p", { class: "muted", style: "margin:0 0 10px;font-size:13px" }, "Außerhalb dieser Zeiten kommt nichts aufs Handy – die Alarme stehen trotzdem hier in der Liste (mit 🌙). „Test senden“ kommt immer an."),
+      el("div", { class: "sd-days" }, ...pushRows)),
     el("div", { class: "ops-alerts" }, ...(d.alerts.length ? d.alerts.map(a => el("div", { class: `ops-alert ${a.level}${a.acked ? " acked" : ""}${a.resolved ? " resolved" : ""}` },
       el("span", { class: "ops-alert-ic" }, OPS_LEVEL[a.level] || "•"),
       el("div", { class: "ops-alert-body" }, el("b", {}, a.title), a.body ? el("span", {}, a.body) : null,
-        el("small", { class: "muted" }, `${opsWhen(a.t)} · ${cfg.kinds[a.kind] || "Test"}${a.resolved ? " · erledigt" : ""}`)),
+        el("small", { class: "muted" }, `${opsWhen(a.t)} · ${cfg.kinds[a.kind] || "Test"}${a.resolved ? " · erledigt" : ""}${a.quiet ? " · 🌙 Ruhezeit, nicht aufs Handy" : ""}`)),
       a.data?.action === "bed_clear" && !a.resolved ? el("button", { class: "btn small primary", onclick: async () => {
         const r = await api("/api/admin/druck/bed-clear", json("POST", {})); toast(r.started ? `Druckbett frei – „${r.started}“ startet` : "Druckbett frei ✓"); opsAlerts();
       } }, "✓ Druckbett ist frei") : null))
