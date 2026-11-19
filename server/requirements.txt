@@ -3,3 +3,14 @@ uvicorn[standard]==0.54.0
 python-multipart==0.0.32
 # Automatische Untertitel im Video-Schnitt (Spracherkennung, läuft auf dem Server)
 faster-whisper==1.2.1
+# 3D-Konverter (jede 3D-Datei → druckbares Modell)
+trimesh==5.2.1
+gmsh==4.15.2
+pymeshlab==2025.7.post1
+shapely==2.2.0
+networkx==3.7
+lxml==6.1.3
+scipy==1.18.1
+rtree==1.4.1
+svg.path==7.1
+pycollada==0.9.3

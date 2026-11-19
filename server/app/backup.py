@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 NAME_RE = re.compile(r"^retaildemo-backup-\d{8}-\d{6}(-medien)?\.tar\.gz$")
 # nie sichern: Zwischendateien, Backups selbst
-SKIP_TOP = {"backups", "uploads", "restore-tmp", "whisper"}
+SKIP_TOP = {"backups", "uploads", "restore-tmp", "whisper", "converter"}
 SKIP_SUFFIX = (".part", ".tmp", "-journal", "-wal", "-shm")
 
 

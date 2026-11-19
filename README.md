@@ -405,6 +405,20 @@ Minuten vorher erscheint im Monitor ein Hinweis mit Countdown und „Heute nicht
 Minute vorher. Wird der PC erst nach der Uhrzeit eingeschaltet, fährt er nicht gleich wieder herunter. Der Plan ist
 in der App gespeichert und funktioniert auch ohne Verbindung zum Server.
 
+### 3D-Konverter
+
+Menü → 3D-Druck → **3D-Konverter**: (fast) jede 3D-Datei hineinziehen – der Server macht daraus ein druckbares
+Modell: repariert, in Millimetern, stabil aufs Druckbett gelegt, mit Größen- und Passt-aufs-Bett-Prüfung und
+3D-Vorschau. Danach **G-Code herunterladen** (geslict mit dem Profil des Adventurer 5M), **im 3D-Slicer öffnen**
+(Einstellungen anpassen, drucken) oder als STL/3MF/OBJ herunterladen. Optionen: Maßeinheit (automatisch, mm, cm,
+m, Zoll), Lage, Größe in %, aufs Bett verkleinern, Genauigkeit für CAD/Scans, Höhe für 2D-Zeichnungen.
+
+Werkzeuge auf dem Server (je Format das passende, bei Fehlern das nächste): trimesh (STL, OBJ, PLY, OFF, glTF,
+3MF, DAE, SVG/DXF → herausgezogen), gmsh/OpenCASCADE (STEP, IGES, BREP, FreeCAD), OpenSCAD (.scad), Blender
+(.blend, USD, Alembic, FBX …), Assimp (ca. 70 Formate wie 3DS, X, LWO, MS3D, B3D, IFC), PyMeshLab (VRML, CTM,
+Punktwolken/Scans) und PrusaSlicer für den G-Code. ZIP- und GZ-Archive werden ausgepackt. Nicht möglich sind
+Formate ohne freie Software (SolidWorks, Fusion 360, SketchUp) – dort als STEP oder STL exportieren.
+
 ### Übergang zwischen den Medien
 
 Zwischen Videos, Bildern und der Spec-Seite läuft auf den Handys ein kurzer Übergang (ca. 1,5 s): eine

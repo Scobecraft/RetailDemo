@@ -59,6 +59,8 @@ ACTIONS = [
     ("PUT", r"^/api/admin/backups/config$", "Backup-Einstellungen geändert"),
     ("PUT", r"^/api/admin/alerts/config$", "Benachrichtigungen eingestellt"),
     ("DELETE", r"^/api/admin/stats$", "Statistik zurückgesetzt"),
+    ("POST", r"^/api/admin/convert/jobs/[^/]+/to-slicer/[^/]+$", "Umgewandeltes 3D-Modell in den Slicer übernommen"),
+    ("DELETE", r"^/api/admin/convert/jobs/[^/]+$", "Umwandlung gelöscht"),
     ("PUT", r"^/api/admin/timelapse/config$", "Zeitraffer-Einstellungen geändert"),
     ("PUT", r"^/api/admin/druck/shutdown$", "Zeitplan „PC herunterfahren“ geändert"),
     ("POST", r"^/api/admin/druck/shutdown/skip$", "Herunterfahren heute ausgelassen/wieder aktiviert"),

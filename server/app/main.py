@@ -37,6 +37,7 @@ from .activity import Activity, install as install_activity, make_activity_route
 from .backup import make_backup_router
 from .stats import make_stats_router
 from .shutdown import make_shutdown_router
+from .converter import make_converter_router
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 MEDIA_DIR = DATA_DIR / "media"
@@ -611,6 +612,9 @@ def upload_init(body: UploadInit):
     elif body.kind in ("druckjob", "druckmodel"):
         if body.size > 500 * 1024 * 1024:
             raise HTTPException(400, "Datei zu groß (max. 500 MB)")
+    elif body.kind == "convert":
+        if body.size > 500 * 1024 * 1024:
+            raise HTTPException(400, "Datei zu groß (max. 500 MB)")
     elif body.kind == "backup":
         if not body.filename.lower().endswith((".tar.gz", ".tgz")):
             raise HTTPException(400, "Bitte eine Backup-Datei (retaildemo-backup-….tar.gz) auswählen")
@@ -657,6 +661,9 @@ def upload_complete(upload_id: str, body: UploadComplete):
         release = register_druck_release(part)
         meta.unlink(missing_ok=True)
         return release
+    if info.get("kind") == "convert":
+        meta.unlink(missing_ok=True)
+        return register_convert_upload(part, info["filename"], info.get("options") or {})
     if info.get("kind") == "backup":
         meta.unlink(missing_ok=True)
         return register_backup_upload(part, info["filename"])
@@ -1211,7 +1218,7 @@ def web_me(request: Request):
     return {"user": user, "managed_by_env": from_env}
 
 
-WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube", "ops", "eggs")
+WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube", "ops", "eggs", "converter")
 
 
 @app.get("/", include_in_schema=False)
@@ -1631,6 +1638,8 @@ backup_router, register_backup_upload = make_backup_router(DATA_DIR, DB_PATH, _d
 app.include_router(backup_router)
 app.include_router(make_stats_router(db, require_device, require_admin, get_settings))
 _druck_hooks["alerts"] = alerts
+converter_router, register_convert_upload = make_converter_router(DATA_DIR, require_admin, register_druck_job)
+app.include_router(converter_router)
 _druck_hooks["register_media"] = _register_media
 _druck_hooks["add_to_playlists"] = _add_to_playlists
 

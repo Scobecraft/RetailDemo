@@ -241,6 +241,43 @@
     .ops-rank-row { grid-template-columns: 1fr 50px; } .ops-rank-track, .ops-rank-row > span.muted { display: none; }
     .ops-act-row { grid-template-columns: 46px 1fr; } .ops-act-who, .ops-act-ip { display: none; }
   }
+  /* ---------- 3D-Konverter ---------- */
+  .cv-drop { padding: 34px 16px; }
+  .cv-drop-ic { font-size: 30px; color: var(--accent); line-height: 1; margin-bottom: 6px; }
+  .cv-opts { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: flex-end; padding: 14px 18px; margin: 14px 0; }
+  .cv-opts select { min-width: 190px; }
+  .cv-fit { margin-bottom: 4px; }
+  .cv-formats { padding: 12px 18px; margin-bottom: 14px; }
+  .cv-formats summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  .cv-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+  .cv-tool { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--line); color: var(--muted); }
+  .cv-tool.on { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+  .cv-fgroup { display: grid; grid-template-columns: 240px 1fr; gap: 10px; font-size: 13px; padding: 5px 0; border-top: 1px solid var(--line); }
+  .cv-fgroup span { color: var(--muted); font-family: ui-monospace, monospace; word-spacing: 4px; }
+  .cv-h { margin: 22px 0 10px; font-size: 16px; }
+  .cv-list { display: grid; gap: 14px; }
+  .cv-card { padding: 14px 18px; animation: setIn .25s ease both; }
+  .cv-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; position: relative; padding-right: 26px; }
+  .cv-head .sl-job-del { top: -2px; right: -4px; }
+  .cv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cv-ext { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); }
+  .cv-busy { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .cv-spin { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--accent-soft); border-top-color: var(--accent); animation: rot 0.9s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .cv-part { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .cv-part:first-of-type { border-top: 0; }
+  .cv-view { height: 200px; border-radius: 12px; background: radial-gradient(circle at 50% 40%, #2a2f38, #14161b); overflow: hidden; cursor: grab; display: grid; place-items: center; }
+  .cv-view canvas { width: 100%; height: 100%; display: block; }
+  .cv-info { display: grid; gap: 8px; align-content: start; min-width: 0; }
+  .cv-pname { font-size: 16px; }
+  .cv-info dl { display: grid; grid-template-columns: 90px 1fr; gap: 3px 12px; margin: 0; font-size: 14px; }
+  .cv-info dt { color: var(--muted); }
+  .cv-info dd { margin: 0; }
+  .cv-info dd.bad { color: var(--danger); font-weight: 600; }
+  .cv-notes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cv-notes span { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
+  .cv-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+  @media (max-width: 700px) { .cv-part { grid-template-columns: 1fr; } .cv-fgroup { grid-template-columns: 1fr; gap: 2px; } }
   /* ---------- Medien-Raster ---------- */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; margin-top: 24px; }
   .search { position: relative; display: flex; align-items: center; margin: 0 0 16px; }
@@ -913,6 +950,7 @@
               <div class="menu-group">3D-Druck</div>
               <button data-tab="druck"><span class="mi"></span><b>3D-Drucker</b><small>Live-Kamera, Druck, Zeitraffer</small></button>
               <button data-tab="slicer"><span class="mi"></span><b>3D-Slicer</b><small>Slicen, Warteschlange, Drucken</small></button>
+              <button data-tab="converter"><span class="mi"></span><b>3D-Konverter</b><small>Jedes 3D-Format druckbar machen</small></button>
             </div>
             <div class="menu-col" data-group="system">
               <div class="menu-group">System</div>
@@ -951,6 +989,8 @@
     <div data-page="alerts" hidden></div>
     <div data-page="backup" hidden></div>
     <div data-page="activity" hidden></div>
+    <!-- 3D-Konverter (Inhalt baut converter.js) -->
+    <div data-page="converter" hidden></div>
     <!-- YouTube-Import über ScobeTube (Inhalt baut youtube.js) -->
     <div data-page="youtube" hidden></div>
 
@@ -1212,6 +1252,7 @@ const MENU_ICONS = {
   youtube: '<rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z"/><path d="M12 19v3M9 22h6"/>',
   druck: '<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 21h10v-4H7z"/>',
   slicer: '<path d="M12 2 3 7l9 5 9-5z"/><path d="m3 12 9 5 9-5M3 17l9 5 9-5"/>',
+  converter: '<path d="M4 7h11l-3-3M20 17H9l3 3"/><path d="m12 9 3 1.7v3.6L12 16l-3-1.7v-3.6z"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   alerts: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
   backup: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M12 7v5l3 2"/>',
@@ -1276,6 +1317,7 @@ document.querySelectorAll("nav [data-tab]").forEach(b => b.addEventListener("cli
   showSlicer(b.dataset.tab === "slicer");
   showEditor(b.dataset.tab === "editor");
   showYoutube(b.dataset.tab === "youtube");
+  showConverter(b.dataset.tab === "converter");
   showOps(b.dataset.tab);
 }));
 
@@ -2235,6 +2277,7 @@ api("/api/web/me").then(me => { managedByEnv = !!me.managed_by_env; showApp(); }
 <script src="/editor.js"></script>
 <script src="/youtube.js"></script>
 <script src="/ops.js"></script>
+<script src="/converter.js"></script>
 <script src="/eggs.js"></script>
 </body>
 </html>
