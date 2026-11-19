@@ -29,6 +29,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+try:
+    import numpy as np
+except ImportError:  # pragma: no cover
+    np = None
+
 BED = (220.0, 220.0, 220.0)
 MAX_INPUT = 500 * 1024 * 1024
 TOOL_TIMEOUT = 600
@@ -293,22 +298,29 @@ def finish(stl: Path, opts: dict, ext: str) -> dict:
             pass
     elif orient == "yup":
         m.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))
+    scale_pct = float(opts.get("scale") or 100)
+    if abs(scale_pct - 100) > 0.01:
+        m.apply_scale(scale_pct / 100)
+    fits = all(e <= b for e, b in zip(m.extents, BED))
+    if not fits:  # passt es gedreht, hingelegt oder schräg?
+        from .splitter import fit_transform
+        T = fit_transform(m)
+        if T is not None:
+            m.apply_transform(T)
+            fits = True
+            notes.append("Gedreht bzw. schräg hingelegt, damit es aufs Druckbett passt")
+    mode = opts.get("oversize") or ("shrink" if opts.get("fit") else "split")
+    if opts.get("fit"):
+        mode = "shrink"
+    if not fits and mode == "shrink":
+        s = min(b / e for e, b in zip(m.extents, BED) if e > 0) * 0.98
+        m.apply_scale(s)
+        notes.append(f"Auf das Druckbett verkleinert ({s * 100:.0f} %)")
+        fits = True
     # aufs Bett und in die Mitte
     lo, hi = m.bounds
     m.apply_translation([-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -lo[2]])
     ext3 = [float(v) for v in m.extents]
-    fits = all(e <= b for e, b in zip(ext3, BED))
-    if not fits and opts.get("fit"):
-        s = min(b / e for e, b in zip(ext3, BED) if e > 0) * 0.98
-        m.apply_scale(s)
-        ext3 = [float(v) for v in m.extents]
-        notes.append(f"Auf das Druckbett verkleinert ({s * 100:.0f} %)")
-        fits = True
-    scale_pct = float(opts.get("scale") or 100)
-    if abs(scale_pct - 100) > 0.01:
-        m.apply_scale(scale_pct / 100)
-        ext3 = [float(v) for v in m.extents]
-        fits = all(e <= b for e, b in zip(ext3, BED))
     m.export(str(stl))
     return {"size_mm": [round(v, 2) for v in ext3], "fits": fits, "triangles": int(len(m.faces)),
             "watertight": bool(m.is_watertight), "volume_cm3": round(float(abs(m.volume)) / 1000, 2) if m.is_watertight else None,
@@ -319,7 +331,8 @@ def finish(stl: Path, opts: dict, ext: str) -> dict:
 class ConvOptions(BaseModel):
     unit: str = "auto"        # auto | mm | cm | m | in
     orient: str = "stable"    # stable | file | yup
-    fit: bool = False         # zu groß → aufs Druckbett verkleinern
+    fit: bool = False         # (alt) zu groß → verkleinern
+    oversize: str = "split"   # zu groß: split (zerteilen, mit Steckstiften) | shrink (verkleinern) | warn
     scale: float = 100
     quality: str = "normal"   # CAD/Punktwolken: fein | normal | grob
     extrude_mm: float = 3     # SVG/DXF: Höhe
@@ -442,6 +455,37 @@ def make_converter_router(data_dir: Path, require_admin: Callable, register_druc
                 trimesh.load(str(stl), force="mesh").export(str(out))
             return FileResponse(out, media_type="text/plain", filename=f"{base}.obj")
         return FileResponse(stl, media_type="model/stl", filename=f"{base}.stl")
+
+    @r.get("/api/admin/convert/jobs/{jid}/group/{g}.zip", dependencies=[Depends(require_admin)])
+    def group_zip(jid: str, g: int):
+        """Alle Teile eines zerteilten Modells + Steckstifte + Anleitung als ZIP."""
+        j = load(jid)
+        asm = next((a for a in j.get("assemblies") or [] if a["group"] == g), None)
+        if not asm:
+            raise HTTPException(404, "Nicht gefunden")
+        d = jdir(jid)
+        out = d / f"gruppe_{g}.zip"
+        safe = re.sub(r"[^\w\- ]+", "_", asm["name"])[:60] or "modell"
+        lines = [f"Zusammenbau: {asm['name']}", "=" * 40, "",
+                 f"Originalgröße: {' × '.join(f'{v:.0f}' for v in asm['size_mm'])} mm · {asm['parts']} Teile · {asm['pins']} Steckstifte (+2 Ersatz)", "",
+                 "So geht's:",
+                 "1. Alle Teile und die Steckstifte drucken (Teile liegen schon richtig auf dem Druckbett).",
+                 "2. Stifte zur Probe in die Löcher stecken und die Teile trocken zusammensetzen – die Stifte",
+                 "   zentrieren die Teile; wo mehrere (unterschiedlich verteilte/dicke) Stifte sind, passen sie",
+                 "   nur richtig herum.",
+                 "3. Kleber (Sekundenkleber oder 2K-Kleber) in die Löcher und dünn auf die Schnittflächen,",
+                 "   zusammendrücken, kurz fixieren (Klebeband/Zwinge).", "",
+                 "Welche Teile gehören zusammen:"]
+        for pr in asm["pairs"]:
+            lines.append(f"  Teil {pr['a']} + Teil {pr['b']}  ({pr['pins']} Stift{'e' if pr['pins'] != 1 else ''})")
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+            for f in asm["files"]:
+                part = next((p for p in j["parts"] if p["file"] == f), None)
+                z.write(d / f, f"{safe} - Teil {part['split']['index']} von {part['split']['of']}.stl" if part else f)
+            if asm.get("pins_file"):
+                z.write(d / asm["pins_file"], f"{safe} - Steckstifte.stl")
+            z.writestr("Anleitung.txt", "\r\n".join(lines))
+        return FileResponse(out, media_type="application/zip", filename=f"{safe} (zerteilt).zip")
 
     @r.post("/api/admin/convert/jobs/{jid}/to-slicer/{name}", dependencies=[Depends(require_admin)])
     def to_slicer(jid: str, name: str):
@@ -570,6 +614,16 @@ def process_job(dir_: str):
             nm = re.sub(r"(\.[a-z0-9]{1,6})+$", "", nm, flags=re.I) or "modell"
             if nm.startswith("eingabe_"):
                 nm = nm[8:]
+            mode = j["options"].get("oversize") or "split"
+            if not info["fits"] and mode == "split" and not j["options"].get("fit"):
+                try:
+                    split_parts, assembly = split_into(final, d, nm, tool, info, len(j.get("assemblies") or []))
+                    parts.extend(split_parts)
+                    j.setdefault("assemblies", []).append(assembly)
+                    final.unlink(missing_ok=True)
+                    continue
+                except Exception as err:  # noqa: BLE001 – dann eben ungeteilt mit Hinweis
+                    info["notes"].append(f"Zerteilen nicht möglich ({str(err)[:120]}) – Option „verkleinern“ wählen")
             parts.append({"file": final.name, "name": nm, "tool": tool, **info})
         j.update(state="done", parts=parts, finished=time.time())
     except ConvError as e:
@@ -579,3 +633,44 @@ def process_job(dir_: str):
     finally:
         shutil.rmtree(work, ignore_errors=True)
         save()
+
+
+def split_into(stl: Path, d: Path, name: str, tool: str, info: dict, group: int) -> tuple[list, dict]:
+    """Zu großes Modell zerteilen: Teile (druckfertig hingelegt) + Steckstifte + Zusammenbau-Infos."""
+    import trimesh
+    from .splitter import assembly_pairs, pins_mesh, print_pose, split_model
+    m = trimesh.load(str(stl), force="mesh")
+    r = split_model(m)
+    n = len(r["parts"])
+    pairs = assembly_pairs(r["parts"], r["cuts"], r["pins"])
+    base = f"g{group + 1}"
+    out = []
+    for k, p in enumerate(r["parts"]):
+        tm, back, fits, cut_down = print_pose(p)
+        f = f"{base}_teil_{k + 1}.stl"
+        tm.export(str(d / f))
+        partners = sorted({x["b"] if x["a"] == k + 1 else x["a"] for x in pairs if k + 1 in (x["a"], x["b"])})
+        out.append({"file": f, "name": f"{name} – Teil {k + 1} von {n}", "tool": tool,
+                    "size_mm": [round(float(v), 2) for v in tm.extents], "fits": bool(fits), "triangles": int(len(tm.faces)),
+                    "watertight": bool(tm.is_watertight), "volume_cm3": round(float(abs(tm.volume)) / 1000, 2) if tm.is_watertight else None,
+                    "notes": [f"Wird mit Teil {', '.join(map(str, partners))} verbunden" if partners else "Einzelteil",
+                              "Glatte Schnittfläche liegt unten" if cut_down else "", r.get("note") if k == 0 else ""],
+                    "split": {"group": group, "index": k + 1, "of": n, "back": np.asarray(back).round(5).tolist()}})
+        out[-1]["notes"] = [x for x in out[-1]["notes"] if x]
+    pm = pins_mesh(r["pins"])
+    pins_file = None
+    if pm is not None:
+        pins_file = f"{base}_steckstifte.stl"
+        pm.export(str(d / pins_file))
+        sizes = {}
+        for pin in r["pins"]:
+            sizes[pin["d"]] = sizes.get(pin["d"], 0) + 1
+        out.append({"file": pins_file, "name": f"{name} – Steckstifte", "tool": "Konverter", "pins": True,
+                    "size_mm": [round(float(v), 2) for v in pm.extents], "fits": True, "triangles": int(len(pm.faces)),
+                    "watertight": True, "volume_cm3": round(float(pm.volume) / 1000, 2),
+                    "notes": [", ".join(f"{c}× Ø {dd:g} mm" for dd, c in sorted(sizes.items(), reverse=True)) + " (+2 Ersatz)",
+                              "Mit Sekundenkleber oder 2K-Kleber in die Löcher kleben"]})
+    assembly = {"group": group, "name": name, "size_mm": info["size_mm"], "parts": n, "pins": len(r["pins"]), "pins_file": pins_file,
+                "pairs": pairs, "cuts": [{k2: v for k2, v in c.items() if k2 != "parts"} for c in r["cuts"]],
+                "files": [x["file"] for x in out if not x.get("pins")]}
+    return out, assembly

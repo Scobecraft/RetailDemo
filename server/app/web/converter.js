@@ -4,8 +4,9 @@
 "use strict";
 
 const CV = { built: false, visible: false, timer: null, formats: null, jobs: [], viewers: new Map(),
-  opts: { unit: "auto", orient: "stable", fit: false, scale: 100, quality: "normal", extrude_mm: 3 } };
+  opts: { unit: "auto", orient: "stable", oversize: "split", scale: 100, quality: "normal", extrude_mm: 3 } };
 try { Object.assign(CV.opts, JSON.parse(localStorage.getItem("cvOpts") || "{}")); } catch (e) {}
+delete CV.opts.fit; // alte Einstellung (jetzt „Wenn zu groß“)
 
 function cvBuild() {
   const page = $("[data-page=converter]");
@@ -34,7 +35,7 @@ function cvBuild() {
       el("div", {}, el("label", {}, "Größe"), el("div", { class: "row" }, num("scale", 1, 1000, 1), "%")),
       el("div", {}, el("label", {}, "Genauigkeit (CAD, Scans)"), sel("quality", [["fein", "Fein"], ["normal", "Normal"], ["grob", "Grob (schnell)"]])),
       el("div", {}, el("label", {}, "Höhe bei 2D (SVG/DXF)"), el("div", { class: "row" }, num("extrude_mm", 0.4, 100, 0.2), "mm")),
-      el("label", { class: "chip cv-fit" }, el("input", { type: "checkbox", checked: o.fit, onchange: e => { o.fit = e.target.checked; saveO(); } }), "Zu groß? Aufs Druckbett verkleinern")),
+      el("div", {}, el("label", {}, "Wenn zu groß fürs Druckbett"), sel("oversize", [["split", "Zerteilen – mit Steckstiften zum Kleben"], ["shrink", "Verkleinern, bis es passt"], ["warn", "Nur Hinweis"]]))),
     CV.progress, CV.formatsBox,
     el("h3", { class: "cv-h" }, "Umwandlungen"), CV.list);
   CV.built = true;
@@ -97,9 +98,44 @@ function cvCard(j) {
   } else if (j.state === "error") {
     card.append(el("div", { class: "dkj-msg bad" }, j.error), j.log?.length > 1 ? el("small", { class: "muted" }, j.log.join(" · ")) : null);
   } else {
+    for (const a of j.assemblies || []) card.append(cvAssembly(j, a));
     for (const p of j.parts || []) card.append(cvPart(j, p));
   }
   return card;
+}
+
+// Zusammenbau eines zerteilten Modells: Explosionsansicht, welche Teile zusammengehören, alles als ZIP
+const CV_COLORS = [0xee7f00, 0x3b82f6, 0x22c55e, 0xa855f7, 0xe5484d, 0x14b8a6, 0xfacc15, 0x64748b];
+function cvAssembly(j, a) {
+  const parts = j.parts.filter(p => p.split?.group === a.group);
+  const view = el("div", { class: "cv-view cv-asm-view" });
+  const labels = el("div", { class: "cv-asm-labels" });
+  view.append(labels);
+  const slider = el("input", { type: "range", min: 0, max: 100, value: 35, title: "Auseinanderziehen" });
+  cvViewer(view, parts.map((p, i) => ({ url: `/api/admin/convert/jobs/${j.id}/file/${p.file}`, back: p.split.back, color: CV_COLORS[i % CV_COLORS.length], label: String(p.split.index) })),
+    { explode: () => +slider.value / 100, labels });
+  const toAll = el("button", { class: "btn small", onclick: async () => {
+    toAll.disabled = true;
+    try { for (const p of parts) await api(`/api/admin/convert/jobs/${j.id}/to-slicer/${p.file}`, json("POST", {})); toast(`${parts.length} Teile im 3D-Slicer angelegt`); }
+    catch (e) { toast(e.message); }
+    toAll.disabled = false;
+  } }, "Alle Teile in den 3D-Slicer");
+  return el("div", { class: "cv-asm" },
+    el("div", { class: "cv-asm-head" }, el("b", {}, `✂ In ${a.parts} Teile zerteilt`),
+      el("span", { class: "muted" }, ` – Original ${a.size_mm.map(v => dkNum(v, 0)).join(" × ")} mm, zu groß fürs Druckbett`)),
+    el("div", { class: "cv-asm-body" },
+      el("div", {}, view, el("label", { class: "cv-asm-slider" }, "Zusammen", slider, "Auseinander")),
+      el("div", { class: "cv-asm-info" },
+        el("p", {}, `Geschnitten wurde an möglichst schmalen Stellen. Jede Schnittfläche hat Löcher für ${a.pins} Steckstifte – die Stifte (eigene Datei) einkleben, dann sitzen die Teile genau aufeinander – wo mehrere Stifte sind, auch nur richtig herum.`),
+        el("div", { class: "cv-pairs" }, ...a.pairs.map(pr => el("span", {}, el("i", { style: `background:#${CV_COLORS[(pr.a - 1) % 8].toString(16).padStart(6, "0")}` }), `Teil ${pr.a}`, " + ",
+          el("i", { style: `background:#${CV_COLORS[(pr.b - 1) % 8].toString(16).padStart(6, "0")}` }), `Teil ${pr.b}`, el("small", { class: "muted" }, ` · ${pr.pins} Stift${pr.pins === 1 ? "" : "e"}`)))),
+        el("ol", { class: "cv-steps" },
+          el("li", {}, "Alle Teile und die Steckstifte drucken – die Teile liegen schon richtig auf dem Bett."),
+          el("li", {}, "Trocken zusammenstecken und prüfen."),
+          el("li", {}, "Kleber in die Löcher und dünn auf die Schnittflächen, zusammendrücken, kurz fixieren.")),
+        el("div", { class: "cv-actions" },
+          el("a", { class: "btn small primary", href: `/api/admin/convert/jobs/${j.id}/group/${a.group}.zip`, download: "" }, "Alle Teile + Anleitung (ZIP)"),
+          toAll))));
 }
 
 function cvPart(j, p) {
@@ -156,39 +192,55 @@ function cvPart(j, p) {
         gcodeBtn, el("span", { class: "muted", style: "font-size:12px" }, "oder"), dl("stl"), dl("3mf"), dl("obj"))));
 }
 
-// kleine 3D-Vorschau (dreht sich langsam, Ziehen = drehen)
-async function cvViewer(host, url) {
+// kleine 3D-Vorschau (dreht sich langsam, Ziehen = drehen). src: URL oder Liste {url, back, color, label} (Zusammenbau)
+async function cvViewer(host, src, opt = {}) {
   try {
     const THREE = await import("three");
     const { STLLoader } = await import("three/addons/loaders/STLLoader.js");
-    const geo = await new Promise((res, rej) => new STLLoader().load(url, res, undefined, rej));
-    geo.computeVertexNormals(); geo.computeBoundingBox();
-    const bb = geo.boundingBox, c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
-    geo.translate(-c.x, -c.y, -bb.min.z);
+    const items = Array.isArray(src) ? src : [{ url: src, color: 0xee7f00 }];
+    const geos = await Promise.all(items.map(it => new Promise((res, rej) => new STLLoader().load(it.url, res, undefined, rej))));
+    const grp = new THREE.Group();
+    const meshes = geos.map((geo, i) => {
+      geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: items[i].color, roughness: 0.55, metalness: 0.05 }));
+      if (items[i].back) { const M = new THREE.Matrix4().fromArray(items[i].back.flat()).transpose(); m.applyMatrix4(M); }
+      grp.add(m);
+      return m;
+    });
+    const bb = new THREE.Box3().setFromObject(grp), c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
+    grp.position.set(-c.x, -c.y, -bb.min.z);
+    const base = meshes.map(m => m.position.clone());
+    const centers = meshes.map(m => new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()).sub(c));
     const r = Math.max(sz.x, sz.y, sz.z);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, devicePixelRatio));
-    host.append(renderer.domElement);
+    host.prepend(renderer.domElement);
     const scene = new THREE.Scene();
     scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.2));
     const dl = new THREE.DirectionalLight(0xffffff, 1.6); dl.position.set(1, -1.5, 2); scene.add(dl);
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xee7f00, roughness: 0.55, metalness: 0.05 }));
-    const grp = new THREE.Group(); grp.add(mesh); scene.add(grp);
+    scene.add(grp);
     const grid = new THREE.GridHelper(r * 1.8, 10, 0x888888, 0x555555); grid.rotation.x = Math.PI / 2; grid.material.transparent = true; grid.material.opacity = 0.35; scene.add(grid);
     const cam = new THREE.PerspectiveCamera(35, 1, r / 100, r * 20);
     cam.up.set(0, 0, 1);
     let rot = -0.6, drag = null, alive = true;
-    const place = () => { cam.position.set(Math.sin(rot) * r * 2.2, -Math.cos(rot) * r * 2.2, r * 1.3 + sz.z * 0.3); cam.lookAt(0, 0, sz.z / 2); };
+    const place = () => { const k = items.length > 1 ? 2.7 : 2.2; cam.position.set(Math.sin(rot) * r * k, -Math.cos(rot) * r * k, r * 1.3 + sz.z * 0.3); cam.lookAt(0, 0, sz.z / 2); };
     renderer.domElement.addEventListener("pointerdown", e => { drag = e.clientX; renderer.domElement.setPointerCapture(e.pointerId); });
     renderer.domElement.addEventListener("pointermove", e => { if (drag != null) { rot -= (e.clientX - drag) * 0.01; drag = e.clientX; } });
     renderer.domElement.addEventListener("pointerup", () => { drag = null; });
+    const labels = opt.labels ? items.map(it => { const s = el("span", {}, it.label); opt.labels.append(s); return s; }) : [];
     const loop = () => {
       if (!alive) return;
-      if (!host.isConnected) { alive = false; renderer.dispose(); geo.dispose(); return; }
+      if (!host.isConnected) { alive = false; renderer.dispose(); geos.forEach(g => g.dispose()); return; }
       const w = host.clientWidth, h = host.clientHeight;
       if (renderer.domElement.width !== Math.round(w * renderer.getPixelRatio())) { renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
       if (drag == null && CV.visible) rot += 0.004;
+      const ex = opt.explode ? opt.explode() : 0;
+      meshes.forEach((m, i) => m.position.copy(base[i]).addScaledVector(centers[i], ex * 0.9));
       place(); renderer.render(scene, cam);
+      labels.forEach((s, i) => {
+        const p = new THREE.Box3().setFromObject(meshes[i]).getCenter(new THREE.Vector3()).project(cam);
+        s.style.transform = `translate(${(p.x + 1) / 2 * w}px, ${(1 - p.y) / 2 * h}px) translate(-50%, -50%)`;
+      });
       requestAnimationFrame(loop);
     };
     loop();

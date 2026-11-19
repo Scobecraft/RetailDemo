@@ -413,6 +413,15 @@ Modell: repariert, in Millimetern, stabil aufs Druckbett gelegt, mit Größen- u
 (Einstellungen anpassen, drucken) oder als STL/3MF/OBJ herunterladen. Optionen: Maßeinheit (automatisch, mm, cm,
 m, Zoll), Lage, Größe in %, aufs Bett verkleinern, Genauigkeit für CAD/Scans, Höhe für 2D-Zeichnungen.
 
+**Zu groß fürs Druckbett?** Standard ist „Zerteilen“: Erst prüft der Konverter, ob das Teil gedreht oder schräg
+doch passt. Sonst sucht er die besten Schnittstellen (möglichst schmale Querschnitte, keine zerbrechlichen
+Mini-Inseln, genug Fläche zum Kleben, ausgewogene Teile) und schneidet so oft wie nötig. In die Schnittflächen
+kommen passgenaue Löcher für Steckstifte (Ø 5 bzw. 3 mm, eigene STL-Datei, +2 Ersatz) – unterschiedlich verteilt
+bzw. dick, damit die Teile genau und richtig herum zusammenpassen. Jedes Teil liegt so auf dem Bett, dass es gut
+druckt (große Auflage, wenig Höhe; glatte Schnittflächen bevorzugt). Dazu gibt es eine Explosionsansicht, die Liste
+„Teil 1 + Teil 2 …“, „Alle Teile in den 3D-Slicer“ und ein ZIP mit allen Teilen und einer Anleitung. Offene Modelle
+werden vorher repariert (Löcher schließen bzw. Oberfläche neu aufbauen). Alternativ: „Verkleinern“ oder „Nur Hinweis“.
+
 Werkzeuge auf dem Server (je Format das passende, bei Fehlern das nächste): trimesh (STL, OBJ, PLY, OFF, glTF,
 3MF, DAE, SVG/DXF → herausgezogen), gmsh/OpenCASCADE (STEP, IGES, BREP, FreeCAD), OpenSCAD (.scad), Blender
 (.blend, USD, Alembic, FBX …), Assimp (ca. 70 Formate wie 3DS, X, LWO, MS3D, B3D, IFC), PyMeshLab (VRML, CTM,
