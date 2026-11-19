@@ -14,7 +14,11 @@ from typing import Optional
 
 import numpy as np
 import trimesh
-from manifold3d import Manifold, Mesh
+
+# manifold3d (für saubere Schnitte und Löcher) erst laden, wenn wirklich zerteilt wird
+def _mf():
+    from manifold3d import Manifold, Mesh
+    return Manifold, Mesh
 
 BED = 220.0
 LIMIT = 212.0        # etwas Rand lassen
@@ -24,11 +28,12 @@ WALL = 2.0           # Material um ein Loch herum
 MAX_PARTS = 24
 
 
-def to_manifold(m: trimesh.Trimesh) -> Manifold:
+def to_manifold(m: trimesh.Trimesh):
+    Manifold, Mesh = _mf()
     return Manifold(Mesh(vert_properties=np.asarray(m.vertices, np.float32), tri_verts=np.asarray(m.faces, np.uint32)))
 
 
-def to_trimesh(M: Manifold) -> trimesh.Trimesh:
+def to_trimesh(M) -> trimesh.Trimesh:
     mm = M.to_mesh()
     return trimesh.Trimesh(np.asarray(mm.vert_properties)[:, :3], np.asarray(mm.tri_verts), process=True)
 
@@ -202,7 +207,8 @@ def _pins(sec, to3d_m, mesh: trimesh.Trimesh, axis: int, pos: float):
     return [], n
 
 
-def _cylinder(c, n, d, length) -> Manifold:
+def _cylinder(c, n, d, length):
+    Manifold, _ = _mf()
     cyl = Manifold.cylinder(length, d / 2, d / 2, 48, True)  # entlang Z, zentriert
     T = _rot_to([0, 0, 1], n)
     T[:3, 3] = c

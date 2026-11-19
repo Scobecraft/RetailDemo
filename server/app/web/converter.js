@@ -96,7 +96,8 @@ function cvCard(j) {
     card.append(el("div", { class: "cv-busy" }, el("span", { class: "cv-spin" }), j.state === "queued" ? "Wartet …" : "Wird umgewandelt …",
       j.log?.length ? el("small", { class: "muted" }, " · " + j.log[j.log.length - 1]) : null));
   } else if (j.state === "error") {
-    card.append(el("div", { class: "dkj-msg bad" }, j.error), j.log?.length > 1 ? el("small", { class: "muted" }, j.log.join(" · ")) : null);
+    card.append(el("div", { class: "dkj-msg bad" }, j.error));
+    if (j.log?.length > 1) card.append(el("small", { class: "muted" }, j.log.join(" · ")));
   } else {
     for (const a of j.assemblies || []) card.append(cvAssembly(j, a));
     for (const p of j.parts || []) card.append(cvPart(j, p));

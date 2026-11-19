@@ -14,3 +14,4 @@ scipy==1.18.1
 rtree==1.4.1
 svg.path==7.1
 pycollada==0.9.3
+manifold3d==3.5.5

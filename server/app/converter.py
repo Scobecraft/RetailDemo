@@ -622,6 +622,8 @@ def process_job(dir_: str):
                     j.setdefault("assemblies", []).append(assembly)
                     final.unlink(missing_ok=True)
                     continue
+                except ImportError:
+                    info["notes"].append("Zerteilen nicht möglich: Werkzeug fehlt auf dem Server – bitte Server aktualisieren (docker compose up -d --build)")
                 except Exception as err:  # noqa: BLE001 – dann eben ungeteilt mit Hinweis
                     info["notes"].append(f"Zerteilen nicht möglich ({str(err)[:120]}) – Option „verkleinern“ wählen")
             parts.append({"file": final.name, "name": nm, "tool": tool, **info})
