@@ -598,7 +598,7 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
         expire_queued()
         p = printer_state()
         return {"jobs": all_jobs()[:50], "materials": {k: {"name": v["name"], "enclosure": v.get("enclosure", False)} for k, v in MATERIALS.items()},
-                "qualities": QUALITIES, "printer": p, "bed": bed(), "queue": [j["id"] for j in queue()]}
+                "qualities": QUALITIES, "printer": p, "bed": bed(), "queue": [j["id"] for j in queue()], "server_time": time.time()}
 
     @r.post("/api/admin/druck/jobs/{job_id}/slice", dependencies=[Depends(require_viewer)])
     def reslice(job_id: str, body: SliceOptions):
@@ -701,6 +701,7 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
     @r.post("/api/admin/druck/bed-clear", dependencies=[Depends(require_viewer)])
     def bed_clear():
         set_bed(True)
+        hooks["clear_platform_seq"] = int(time.time() * 1000)
         if (al := hooks.get("alerts")):
             al.resolve("bed")
         advance_queue()
@@ -778,7 +779,9 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
         for j in all_jobs():
             if j["state"] == "queued":
                 return {"id": j["id"], "name": j["name"], "size": j.get("size", 0),
-                        "url": f"/api/druck/jobs/{j['id']}/file", "leveling": j.get("leveling", True)}
+                        "url": f"/api/druck/jobs/{j['id']}/file", "leveling": j.get("leveling", True),
+                        # jedes Abschicken eigene Nummer: derselbe Auftrag lässt sich mehrmals drucken
+                        "dispatch": int(j.get("queued_at", 0) * 1000)}
         return None
 
     @r.get("/api/druck/jobs/{job_id}/file", dependencies=[Depends(require_device)])

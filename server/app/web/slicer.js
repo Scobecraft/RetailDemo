@@ -109,6 +109,9 @@ async function slLoad() {
   } catch (e) { /* nächster Versuch */ }
 }
 
+// „Fertig um“ läuft mit der Uhr mit
+setInterval(() => { if (SL.visible && SL.lastStats && SL.r) slStatsBar(...SL.lastStats); }, 30000);
+
 function showSlicer(on) {
   SL.visible = on;
   clearInterval(SL.timer); SL.timer = null;
@@ -174,7 +177,8 @@ function slRenderBedQueue() {
     ...q.map((j, i) => el("div", { class: "sl-qitem" },
       el("span", { class: "sl-qn" }, String(i + 1)),
       el("span", { class: "sl-qname", title: j.name, onclick: () => slSelect(j.id) }, j.name,
-        j.not_before ? el("small", {}, ` · ab ${new Date(j.not_before * 1000).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })}`) : null),
+        j.not_before ? el("small", {}, ` · ab ${new Date(j.not_before * 1000).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })}`) : null,
+        (() => { const e = slEta(j.stats?.time_s, j.id); return e && !j.not_before ? el("small", {}, ` · fertig ~${e.text.replace(" Uhr", "")}`) : null; })()),
       el("button", { class: "sl-qbtn", title: "Nach oben", disabled: i === 0, onclick: () => move(i, -1) }, "↑"),
       el("button", { class: "sl-qbtn", title: "Nach unten", disabled: i === q.length - 1, onclick: () => move(i, 1) }, "↓"),
       el("button", { class: "sl-qbtn", title: "Aus der Warteschlange nehmen", onclick: async () => {
@@ -215,14 +219,40 @@ function slSelect(id) {
 }
 
 // ---------------------------------------------------------------- Vorschau (Mitte)
+// Voraussichtliches Ende: jetzt (bzw. nach laufendem Druck und Warteschlange) + Vorbereitung + Druckzeit
+const SL_PREP_S = (leveling = true) => (leveling ? 4 : 2) * 60; // Aufheizen (+ Bett vermessen)
+function slEta(timeS, jobId) {
+  if (!timeS) return null;
+  const p = SL.printer || {};
+  let start = Date.now() / 1000, why = [];
+  if (["printing", "paused", "heating"].includes(p.state)) {
+    start += (p.remaining_s || 0) + 5 * 60; // + Druckbett abräumen
+    why.push("nach dem laufenden Druck");
+  }
+  const ahead = (SL.queue || []).filter(id => id !== jobId).map(id => SL.jobs.find(j => j.id === id)).filter(j => j?.stats?.time_s);
+  const mine = (SL.queue || []).indexOf(jobId);
+  const before = mine >= 0 ? ahead.slice(0, mine) : ahead;
+  for (const j of before) start += j.stats.time_s + SL_PREP_S(j.leveling !== false) + 5 * 60;
+  if (before.length) why.push(`${before.length} Auftrag${before.length === 1 ? "" : "e"} in der Warteschlange davor`);
+  const end = new Date((start + SL_PREP_S() + timeS) * 1000);
+  const now = new Date(), tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const hm = end.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const day = end.toDateString() === now.toDateString() ? "" : end.toDateString() === tomorrow.toDateString() ? "morgen " :
+    end.toLocaleDateString("de-DE", { weekday: "short" }) + " ";
+  return { text: `${day}${hm} Uhr`, hint: why.length ? why.join(", ") : "wenn jetzt gestartet" };
+}
+
 function slStatsBar(stats, note) {
   const st = stats || {};
+  SL.lastStats = [stats, note];
+  const eta = slEta(st.time_s, SL.sel);
   const parts = [
     st.time_s ? ["Druckzeit", dkDur(st.time_s)] : null,
+    eta ? ["Fertig um", eta.text, eta.hint] : null,
     ...slFilament(st),
     st.layers ? ["Schichten", dkNum(st.layers)] : null,
   ].filter(Boolean);
-  SL.r.viewTop.replaceChildren(...parts.map(([k, v]) => el("div", {}, el("small", {}, k), el("b", {}, v))),
+  SL.r.viewTop.replaceChildren(...parts.map(([k, v, h]) => el("div", { title: h ? `ca. – ${h}` : "" }, el("small", {}, k), el("b", {}, v), h ? el("i", { class: "sl-eta-hint" }, h) : null)),
     ...(note ? [el("div", { class: "sl-note" }, note)] : []));
 }
 

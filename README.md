@@ -393,6 +393,14 @@ automatisch, sobald der Drucker frei ist **und** das Druckbett als abgeräumt be
 der Alarm „Druckbett abräumen“ (Push), bestätigt wird links im 3D-Slicer, in den Benachrichtigungen oder direkt in
 der Push-Meldung. Reihenfolge per ↑/↓ änderbar.
 
+**Fertig um:** Die Vorschau im 3D-Slicer zeigt, wann das Modell voraussichtlich fertig ist – Druckzeit plus Aufheizen
+(und Bett vermessen), bei laufendem Druck bzw. Aufträgen in der Warteschlange danach. Auch in der Warteschlange
+steht bei jedem Auftrag „fertig ~…“.
+
+**Druckbett frei → auch am Drucker:** Neuere Flashforge-Firmware will nach einem fertigen Druck die Bestätigung
+„Druckplatte geräumt“. Der Druckmonitor (ab 1.2.7) schickt sie, sobald auf der Webseite „Druckbett ist frei“ bestätigt
+wird, und vor jedem neuen Druck sicherheitshalber noch einmal.
+
 **Zeitraffer:** Bei jedem Druck nimmt der Server ein Bild pro Schicht auf (Druckmonitor ab 1.2.5 schickt dafür
 während des Drucks alle 3 s ein Bild). Am Ende entsteht ein kurzes Video: Es erscheint im Reiter 3D-Drucker, kommt
 (einstellbar) in die Medien und Playlists der Handys und läuft in der Druckmonitor-App und unter /druck/,

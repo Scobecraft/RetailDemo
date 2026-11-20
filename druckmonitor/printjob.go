@@ -34,6 +34,7 @@ type PrintJob struct {
 	Size     int64  `json:"size"`
 	URL      string `json:"url"`
 	Leveling bool   `json:"leveling"`
+	Dispatch int64  `json:"dispatch"` // jedes Abschicken eigene Nummer (derselbe Auftrag darf mehrmals gedruckt werden)
 }
 
 var (
@@ -41,19 +42,31 @@ var (
 	printJobsSeen = map[string]bool{}
 )
 
-// onPrintJob wird nach jeder Übertragung aufgerufen; jeden Auftrag nur einmal bearbeiten.
+// onPrintJob wird nach jeder Übertragung aufgerufen; jedes Abschicken nur einmal bearbeiten.
+// Früher galt das je Auftrag für immer – ein zweiter Druck desselben Auftrags blieb dann bis zum
+// Neustart der App liegen. Jetzt zählt die Nummer des Abschickens (bzw. bei älteren Servern: nur
+// solange der Auftrag gerade bearbeitet wird).
 func (a *App) onPrintJob(job *PrintJob) {
 	if job == nil || job.ID == "" {
 		return
 	}
+	key := job.ID + "@" + strconv.FormatInt(job.Dispatch, 10)
 	printJobsMu.Lock()
-	if printJobsSeen[job.ID] {
+	if printJobsSeen[key] {
 		printJobsMu.Unlock()
 		return
 	}
-	printJobsSeen[job.ID] = true
+	printJobsSeen[key] = true
 	printJobsMu.Unlock()
-	go a.runPrintJob(job)
+	go func() {
+		a.runPrintJob(job)
+		if job.Dispatch == 0 { // alter Server ohne Nummer: nach kurzer Pause wieder annehmen
+			time.Sleep(2 * time.Minute)
+			printJobsMu.Lock()
+			delete(printJobsSeen, key)
+			printJobsMu.Unlock()
+		}
+	}()
 }
 
 func (a *App) reportJob(id, state, msg string) {
@@ -92,6 +105,12 @@ func (a *App) runPrintJob(job *PrintJob) {
 		return
 	}
 	info := a.printer.Info()
+	if info.State == "done" {
+		// Druck fertig: neuere Firmware will erst „Druckplatte geräumt“ – das hat der Nutzer auf der Webseite bestätigt
+		ffClearPlatform(c.IP, c.FFSerial, c.FFCheckCode)
+		time.Sleep(3 * time.Second)
+		info = a.printer.Info()
+	}
 	if info.State != "idle" && info.State != "done" {
 		fail("Der Drucker ist gerade nicht bereit (" + info.Status + ").")
 		return
@@ -104,7 +123,15 @@ func (a *App) runPrintJob(job *PrintJob) {
 	}
 	defer os.Remove(path)
 	a.reportJob(job.ID, "sending", "Wird an den Drucker übertragen …")
-	if err := ffUploadGcode(c.IP, c.FFSerial, c.FFCheckCode, path, jobFileName(job.Name), job.Leveling); err != nil {
+	err = ffUploadGcode(c.IP, c.FFSerial, c.FFCheckCode, path, jobFileName(job.Name), job.Leveling)
+	if err != nil {
+		// zweiter Versuch: Druckplatte am Drucker als geräumt melden, kurz warten, nochmal
+		log.Printf("Druckauftrag „%s“: erster Versuch fehlgeschlagen (%v) – nochmal", job.Name, err)
+		ffClearPlatform(c.IP, c.FFSerial, c.FFCheckCode)
+		time.Sleep(4 * time.Second)
+		err = ffUploadGcode(c.IP, c.FFSerial, c.FFCheckCode, path, jobFileName(job.Name), job.Leveling)
+	}
+	if err != nil {
 		fail(err.Error())
 		return
 	}
@@ -193,7 +220,9 @@ func ffUploadGcode(host, serial, code, path, fileName string, leveling bool) err
 	req.Header["printNow"] = []string{"true"}
 	req.Header["levelingBeforePrint"] = []string{strconv.FormatBool(leveling)}
 	req.Header.Set("Expect", "100-continue")
-	client := &http.Client{Transport: &http.Transport{ExpectContinueTimeout: 3 * time.Second, ResponseHeaderTimeout: 10 * time.Minute}}
+	// keine offen bleibende Verbindung: der Drucker verkraftet nur wenige gleichzeitig
+	client := &http.Client{Transport: &http.Transport{Proxy: nil, ExpectContinueTimeout: 3 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Minute, DisableKeepAlives: true}}
 	resp, err := client.Do(req)
 	if err != nil {
 		return errors.New("Drucker nicht erreichbar: " + friendlyErr(err))
@@ -216,6 +245,49 @@ func ffUploadGcode(host, serial, code, path, fileName string, leveling bool) err
 		return errors.New("LAN-Modus am Drucker ist nicht aktiviert")
 	}
 	return fmt.Errorf("Drucker lehnt die Datei ab (Fehler %d: %s)", r.Code, r.Message)
+}
+
+// ffClearPlatform meldet dem Drucker „Druckplatte geräumt“ (HTTP-Schnittstelle, /control). Neuere Firmware
+// nimmt nach einem fertigen Druck erst danach einen neuen Auftrag an. Fehler sind egal (ältere Firmware kennt es nicht).
+func ffClearPlatform(host, serial, code string) {
+	if strings.TrimSpace(serial) == "" || strings.TrimSpace(code) == "" || host == "" {
+		return
+	}
+	body, _ := json.Marshal(map[string]any{
+		"serialNumber": strings.TrimSpace(serial), "checkCode": strings.TrimSpace(code),
+		"payload": map[string]any{"cmd": "stateCtrl_cmd", "args": map[string]string{"action": "setClearPlatform"}},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+net.JoinHostPort(cleanHost(host), ffHTTPPort)+"/control", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := newClient().Do(req)
+	if err != nil {
+		log.Println("Druckplatte geräumt melden:", friendlyErr(err))
+		return
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	resp.Body.Close()
+	log.Printf("Druckplatte geräumt gemeldet: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+}
+
+var clearPlatformSeen int64
+
+// onClearPlatform: auf der Webseite wurde „Druckbett ist frei“ bestätigt → auch am Drucker melden.
+func (a *App) onClearPlatform(seq int64) {
+	printJobsMu.Lock()
+	if seq == 0 || seq == clearPlatformSeen {
+		printJobsMu.Unlock()
+		return
+	}
+	first := clearPlatformSeen == 0
+	clearPlatformSeen = seq
+	printJobsMu.Unlock()
+	if first && time.Since(time.UnixMilli(seq)) > 10*time.Minute {
+		return // alte Bestätigung von vor dem Programmstart
+	}
+	c := a.config()
+	go ffClearPlatform(c.IP, c.FFSerial, c.FFCheckCode)
 }
 
 // ModelOverride: Auf der Webseite hochgeladenes (oder aus dem 3D-Slicer gewähltes) Modell – für den Fall,

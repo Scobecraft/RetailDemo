@@ -173,6 +173,8 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
                 # Zeitraffer: während des Drucks regelmäßig Bilder schicken (auch wenn niemand zuschaut)
                 "timelapse": tracker.wants_frames(), "frame_every_s": FRAME_EVERY_S,
                 "print_job": pending() if pending else None,
+                # „Druckbett ist frei“ auf der Webseite → auch am Drucker bestätigen (neuere Firmware verlangt das)
+                "clear_platform": hooks.get("clear_platform_seq", 0),
                 "model_override": ({"id": o["id"], "name": o["name"], "url": "/api/druck/override/file"}
                                    if (o := model_override()) else None)}
 
@@ -503,7 +505,19 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
         return {"online": st.online and bool(live.get("online")), "app_online": st.online,
                 "state": live.get("state") if st.online else None, "status": live.get("status") if st.online else None,
                 "can_upload": bool((st.state.get("capabilities") or {}).get("upload")),
-                "app_version": st.state.get("appVersion")}
+                "app_version": st.state.get("appVersion"), "remaining_s": _remaining(live) if st.online else None}
+
+    def _remaining(live: dict):
+        """Restzeit des laufenden Drucks (vom Drucker, sonst aus Fortschritt hochgerechnet)."""
+        if live.get("state") not in ("printing", "paused", "heating"):
+            return None
+        rem = _num(live.get("remainingSec"))
+        if rem:
+            return rem
+        prog, el = _num(live.get("progress")), _num(live.get("elapsedSec"))
+        if prog and el and prog > 0.02:
+            return el * (1 - prog) / prog
+        return None
 
     hooks["printer_state"] = printer_state
     return r, register_release

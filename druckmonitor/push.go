@@ -267,6 +267,7 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		// Zeitraffer läuft: alle frame_every_s Sekunden ein Bild schicken
 		Timelapse  bool          `json:"timelapse"`
 		Shutdown   *ShutdownPlan `json:"shutdown_plan"`
+		ClearPlat  int64         `json:"clear_platform"`
 		FrameEvery float64       `json:"frame_every_s"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&r)
@@ -282,6 +283,7 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 	a.onPrintJob(r.PrintJob)
 	a.onModelOverride(r.Model)
 	a.onShutdownPlan(r.Shutdown)
+	a.onClearPlatform(r.ClearPlat)
 	return r.Watching, nil
 }
 
