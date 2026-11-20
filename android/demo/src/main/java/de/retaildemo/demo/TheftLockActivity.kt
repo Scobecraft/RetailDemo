@@ -87,19 +87,39 @@ class TheftLockActivity : ComponentActivity() {
         if (demoApp.theft.locked.value) TheftService.ensureRunning(this)
     }
 
-    // Lautstärke-Tasten dürfen den Alarm nicht leiser machen
+    // Lautstärke-Tasten dürfen den Alarm nicht leiser/aus machen – Down wie Up abfangen,
+    // damit weder Lautstärke sinkt noch der System-Lautstärkeregler erscheint.
+    private fun isVolKey(keyCode: Int) =
+        keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+        keyCode == KeyEvent.KEYCODE_VOLUME_MUTE
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
-            keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
-            maxVolume(); return true
-        }
+        if (isVolKey(keyCode)) { maxVolume(); return true }
         return super.onKeyDown(keyCode, event)
     }
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (isVolKey(keyCode)) { maxVolume(); return true }
+        return super.onKeyUp(keyCode, event)
+    }
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent?): Boolean {
+        if (isVolKey(keyCode)) { maxVolume(); return true }
+        return super.onKeyLongPress(keyCode, event)
+    }
+
+    // Erkennt jede Lautstärke-Änderung sofort (z. B. über Schnelleinstellungen/Bluetooth) und dreht wieder auf.
+    private var volObserver: android.database.ContentObserver? = null
 
     private fun maxVolume() {
         val am = audio ?: return
         try {
-            am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
+            // Nicht-Stören / Stumm umgehen, Alarm ist von DND ausgenommen
+            if (am.ringerMode != AudioManager.RINGER_MODE_NORMAL) {
+                runCatching { am.ringerMode = AudioManager.RINGER_MODE_NORMAL }
+            }
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            if (am.getStreamVolume(AudioManager.STREAM_ALARM) != max) {
+                am.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
+            }
         } catch (_: Exception) {}
     }
 
@@ -107,6 +127,7 @@ class TheftLockActivity : ComponentActivity() {
         if (player?.isPlaying == true) return
         audio = getSystemService(AUDIO_SERVICE) as AudioManager
         maxVolume()
+        registerVolumeGuard()
         try {
             player = MediaPlayer().apply {
                 setAudioAttributes(AudioAttributes.Builder()
@@ -119,17 +140,32 @@ class TheftLockActivity : ComponentActivity() {
                 prepare(); start()
             }
         } catch (e: Exception) { android.util.Log.w("TheftLock", "Alarm", e) }
-        // Lautstärke dauerhaft oben halten (gegen Leiserdrehen / Stumm-Modus)
+        // Zusätzliche Absicherung: Lautstärke engmaschig oben halten, Wiedergabe neu starten falls gestoppt
         lifecycleScope.launch {
             while (demoApp.theft.locked.value) {
                 maxVolume()
+                player?.setVolume(1f, 1f)
                 if (player?.isPlaying == false) runCatching { player?.start() }
-                delay(1000)
+                delay(300)
             }
         }
     }
 
+    private fun registerVolumeGuard() {
+        if (volObserver != null) return
+        val obs = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) { maxVolume() }
+        }
+        runCatching {
+            contentResolver.registerContentObserver(
+                android.provider.Settings.System.CONTENT_URI, true, obs)
+        }
+        volObserver = obs
+    }
+
     private fun stopAlarm() {
+        volObserver?.let { runCatching { contentResolver.unregisterContentObserver(it) } }
+        volObserver = null
         runCatching { player?.stop(); player?.release() }
         player = null
     }
