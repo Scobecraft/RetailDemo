@@ -142,6 +142,10 @@ class ApiClient(baseUrl: String, private val token: String) {
     suspend fun sync(report: DeviceReport): Manifest =
         JSON.decodeFromString(call("POST", "/api/device/sync", jsonBody(report)))
 
+    /** GPS-Standorte an den Server melden (Diebstahlschutz). Antwort = aktueller Sperr-Stand. */
+    suspend fun postLocation(report: LocationReport): TheftInfo =
+        JSON.decodeFromString(call("POST", "/api/device/location", jsonBody(report)))
+
     suspend fun heartbeat(report: DeviceReport): HeartbeatResponse =
         JSON.decodeFromString(call("POST", "/api/device/heartbeat", jsonBody(report)))
 

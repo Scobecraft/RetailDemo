@@ -117,6 +117,18 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> U
     val a11y = remember(refresh) { ctx.accessibilityEnabled() }
     val overlay = remember(refresh) { Settings.canDrawOverlays(ctx) }
     val battery = remember(refresh) { ctx.batteryUnrestricted() }
+    val fineLoc = remember(refresh) {
+        androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+    val bgLoc = remember(refresh) {
+        android.os.Build.VERSION.SDK_INT < 29 ||
+            androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+    val locationOk = fineLoc && bgLoc
+    val locPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
     val exactAlarms = remember(refresh) {
         android.os.Build.VERSION.SDK_INT < 31 || ctx.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
     }
@@ -225,6 +237,20 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> U
                     )
                 }
                 PermissionRow(
+                    ok = locationOk,
+                    title = "Standort für Diebstahlschutz",
+                    hint = if (!fineLoc) "Standort erlauben – danach bitte auf \"Immer zulassen\" stellen."
+                        else "Bitte auf \"Immer zulassen\" stellen (App-Info → Berechtigungen → Standort).",
+                    button = if (!fineLoc) "Erlauben" else "Öffnen",
+                ) {
+                    if (!fineLoc) locPermission.launch(arrayOf(
+                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                        android.Manifest.permission.READ_PHONE_STATE))
+                    else ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                PermissionRow(
                     ok = storage,
                     title = "Kundenfotos löschen",
                     hint = "\"Zugriff auf alle Dateien\" erlauben.",
@@ -256,6 +282,27 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> U
                         Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${ctx.packageName}"))
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
+                }
+                val imei = DeviceInfo.imei(ctx)
+                val serial = DeviceInfo.serial(ctx)
+                PermissionRow(
+                    ok = !imei.isNullOrBlank() || !serial.isNullOrBlank(),
+                    title = "IMEI / Seriennummer",
+                    hint = if (!imei.isNullOrBlank() || !serial.isNullOrBlank())
+                        "IMEI: ${imei ?: "—"}  ·  SN: ${serial ?: "—"}"
+                    else "Android gibt sie Apps ab Version 10 oft nicht direkt. Über *#06# auslesen (Bedienungshilfe muss an sein).",
+                    button = if (ImeiCapture.capturing) "…" else "Auslesen",
+                ) {
+                    prefs.imeiTried = true
+                    ImeiCapture.start(ctx) { im, sn ->
+                        if (!im.isNullOrBlank()) prefs.capturedImei = im
+                        if (!sn.isNullOrBlank()) prefs.capturedSerial = sn
+                        message = if (!im.isNullOrBlank() || !sn.isNullOrBlank())
+                            "Ausgelesen: IMEI ${im ?: "—"} · SN ${sn ?: "—"}"
+                        else "Konnte nicht ausgelesen werden (Bedienungshilfe aktiv? Gerät zeigt den Dialog evtl. anders)."
+                        refresh++
+                        app.scope.launch { runCatching { app.sync.syncNow() } }
+                    }
                 }
                 Text(
                     "Tipp: Displaysperre auf \"Keine\" stellen und das Bildschirm-Timeout auf das Maximum setzen.",

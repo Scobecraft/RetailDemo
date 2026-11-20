@@ -23,6 +23,7 @@ KINDS = {
     "bed_clear": "Druckbett abräumen",
     "disk": "Speicherplatz knapp",
     "backup": "Backup fehlgeschlagen",
+    "theft": "Diebstahlschutz: Gerät hat den Bereich verlassen",
 }
 DEFAULT_CONFIG = {
     "enabled": {k: True for k in KINDS},
@@ -119,7 +120,7 @@ class Alerts:
         with self.db() as c:
             if key and c.execute("SELECT 1 FROM alerts WHERE key=? AND resolved=0", (key,)).fetchone():
                 return None
-            quiet = 0 if kind == "test" or self.push_allowed() else 1
+            quiet = 0 if kind in ("test", "theft") or self.push_allowed() else 1
             cur = c.execute("INSERT INTO alerts (t, kind, level, title, body, key, data, quiet) VALUES (?,?,?,?,?,?,?,?)",
                             (time.time(), kind, level, title[:200], body[:1000], key, json.dumps(data) if data else None, quiet))
             new_id = cur.lastrowid

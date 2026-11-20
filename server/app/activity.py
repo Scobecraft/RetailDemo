@@ -65,6 +65,10 @@ ACTIONS = [
     ("DELETE", r"^/api/admin/convert/jobs/[^/]+$", "Umwandlung gelöscht"),
     ("PUT", r"^/api/admin/timelapse/config$", "Zeitraffer-Einstellungen geändert"),
     ("POST", r"^/api/admin/druck/inputlock$", "Tastatur & Maus am Druckmonitor-PC gesperrt/entsperrt"),
+    ("PUT", r"^/api/admin/theft/config$", "Diebstahlschutz-Bereich (Geofence) geändert"),
+    ("POST", r"^/api/admin/theft/[^/]+/lock$", "Gerät gesperrt/entsperrt (Diebstahlschutz)"),
+    ("POST", r"^/api/admin/theft/[^/]+/arm$", "Diebstahlschutz für Gerät scharf/unscharf"),
+    ("POST", r"^/api/admin/theft/[^/]+/test$", "Diebstahl-Testalarm ausgelöst"),
     ("PUT", r"^/api/admin/druck/shutdown$", "Zeitplan „PC herunterfahren“ geändert"),
     ("POST", r"^/api/admin/druck/shutdown/skip$", "Herunterfahren heute ausgelassen/wieder aktiviert"),
 ]

@@ -98,4 +98,74 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putString("manifest", v?.let { ApiClient.JSON.encodeToString(it) }).apply()
 
     val isConfigured get() = serverUrl.isNotBlank() && deviceToken.isNotBlank()
+
+    // ---------------- Diebstahlschutz (überlebt Neustart) ----------------
+    /** Gerät ist gesperrt (Sperrbildschirm + Alarm). Wird nur vom Server aufgehoben. */
+    var theftLocked: Boolean
+        get() = sp.getBoolean("theft_locked", false)
+        set(v) = sp.edit().putBoolean("theft_locked", v).apply()
+
+    /** Nummer des letzten Sperrbefehls (Server). Steigt bei jedem Sperren/Entsperren. */
+    var theftLockSeq: Long
+        get() = sp.getLong("theft_lock_seq", 0)
+        set(v) = sp.edit().putLong("theft_lock_seq", v).apply()
+
+    var theftLockReason: String
+        get() = sp.getString("theft_lock_reason", "") ?: ""
+        set(v) = sp.edit().putString("theft_lock_reason", v).apply()
+
+    /** Diebstahlschutz scharf (Geofence aktiv laut Server). */
+    var theftArmed: Boolean
+        get() = sp.getBoolean("theft_armed", false)
+        set(v) = sp.edit().putBoolean("theft_armed", v).apply()
+
+    /** Geofence-Daten (für die eigene Prüfung, auch offline). */
+    var fenceLat: Double
+        get() = Double.fromBits(sp.getLong("fence_lat", 0))
+        set(v) = sp.edit().putLong("fence_lat", v.toRawBits()).apply()
+    var fenceLon: Double
+        get() = Double.fromBits(sp.getLong("fence_lon", 0))
+        set(v) = sp.edit().putLong("fence_lon", v.toRawBits()).apply()
+    var fenceHasCenter: Boolean
+        get() = sp.getBoolean("fence_has", false)
+        set(v) = sp.edit().putBoolean("fence_has", v).apply()
+    var fenceRadiusM: Int
+        get() = sp.getInt("fence_radius", 150)
+        set(v) = sp.edit().putInt("fence_radius", v).apply()
+    var fenceMinAcc: Int
+        get() = sp.getInt("fence_minacc", 60)
+        set(v) = sp.edit().putInt("fence_minacc", v).apply()
+    var fenceDwellS: Int
+        get() = sp.getInt("fence_dwell", 180)
+        set(v) = sp.edit().putInt("fence_dwell", v).apply()
+    var fenceGraceS: Int
+        get() = sp.getInt("fence_grace", 300)
+        set(v) = sp.edit().putInt("fence_grace", v).apply()
+    var fenceReportS: Int
+        get() = sp.getInt("fence_report", 120)
+        set(v) = sp.edit().putInt("fence_report", v).apply()
+    /** Zeitpunkt (ms), seit dem das Gerät nach dem Scharfschalten läuft (Schonzeit). */
+    var armedAt: Long
+        get() = sp.getLong("armed_at", 0)
+        set(v) = sp.edit().putLong("armed_at", v).apply()
+    /** Seit wann durchgehend außerhalb (ms, 0 = drinnen/unbekannt). */
+    var outsideSince: Long
+        get() = sp.getLong("outside_since", 0)
+        set(v) = sp.edit().putLong("outside_since", v).apply()
+    /** Noch nicht gesendete Standorte (JSON-Zeilen) sammeln sich in einer Datei – hier nur der Zeitstempel der letzten Meldung. */
+    var lastLocReport: Long
+        get() = sp.getLong("last_loc_report", 0)
+        set(v) = sp.edit().putLong("last_loc_report", v).apply()
+
+    /** Über *#06# ausgelesene IMEI/Seriennummer (falls Android sie der App direkt nicht gibt). */
+    var capturedImei: String
+        get() = sp.getString("cap_imei", "") ?: ""
+        set(v) = sp.edit().putString("cap_imei", v).apply()
+    var capturedSerial: String
+        get() = sp.getString("cap_serial", "") ?: ""
+        set(v) = sp.edit().putString("cap_serial", v).apply()
+    /** true = *#06#-Auslesen bei der Einrichtung schon einmal versucht. */
+    var imeiTried: Boolean
+        get() = sp.getBoolean("imei_tried", false)
+        set(v) = sp.edit().putBoolean("imei_tried", v).apply()
 }

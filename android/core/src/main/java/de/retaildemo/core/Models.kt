@@ -155,6 +155,8 @@ data class Manifest(
     val transition: String = "",
     /** Einblendung "3D-Druck live" zwischen den Medien (null = aus). */
     @SerialName("druck_promo") val druckPromo: DruckPromo? = null,
+    val theft: TheftInfo? = null,
+    @SerialName("store_name") val storeName: String = "",
 )
 
 @Serializable
@@ -204,6 +206,8 @@ data class DeviceReport(
     @SerialName("previous_id") val previousId: String? = null,
     @SerialName("app_version_code") val appVersionCode: Int? = null,
     @SerialName("update_ready") val updateReady: Int? = null,
+    val imei: String? = null,
+    val serial: String? = null,
 )
 
 @Serializable
@@ -211,6 +215,55 @@ data class HeartbeatResponse(
     @SerialName("app_update") val appUpdate: AppRelease? = null,
     @SerialName("sync_now") val syncNow: Boolean = false,
     @SerialName("heartbeat_interval_s") val heartbeatIntervalS: Int = 300,
+    val theft: TheftInfo? = null,
+)
+
+/** Diebstahlschutz-Stand vom Server (in Heartbeat, Sync und der Standort-Antwort). */
+@Serializable
+data class TheftInfo(
+    val armed: Boolean = false,
+    val locked: Boolean = false,
+    @SerialName("lock_seq") val lockSeq: Long = 0,
+    @SerialName("lock_reason") val lockReason: String = "",
+    val test: Boolean = false,
+    val geofence: Geofence = Geofence(),
+    val params: TheftParams = TheftParams(),
+)
+
+@Serializable
+data class Geofence(
+    val enabled: Boolean = false,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    @SerialName("radius_m") val radiusM: Int = 150,
+)
+
+@Serializable
+data class TheftParams(
+    @SerialName("min_accuracy_m") val minAccuracyM: Int = 60,
+    @SerialName("dwell_s") val dwellS: Int = 180,
+    @SerialName("arm_grace_s") val armGraceS: Int = 300,
+    @SerialName("report_interval_s") val reportIntervalS: Int = 120,
+)
+
+/** Ein GPS-Standort, den die App an den Server meldet. */
+@Serializable
+data class LocFix(
+    val t: Double,
+    val lat: Double,
+    val lon: Double,
+    val acc: Double = 0.0,
+    val battery: Int? = null,
+    val speed: Double? = null,
+    val source: String = "gps",
+)
+
+@Serializable
+data class LocationReport(
+    @SerialName("device_id") val deviceId: String,
+    val fixes: List<LocFix> = emptyList(),
+    @SerialName("app_outside") val appOutside: Boolean = false,
+    @SerialName("app_locked") val appLocked: Boolean = false,
 )
 
 /** Neueste Demo-App-Version auf dem Server (leere Felder = keine hochgeladen). */

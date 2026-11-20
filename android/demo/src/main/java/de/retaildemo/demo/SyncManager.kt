@@ -62,6 +62,8 @@ class SyncManager(private val app: DemoApp) {
 
     private suspend fun handleHeartbeat(r: de.retaildemo.core.HeartbeatResponse): Int {
         r.appUpdate?.let { u -> app.updater.prefetchInBackground(u) }
+        app.theft.applyServerState(r.theft)
+        runCatching { app.theft.flush() }
         if (r.syncNow) syncNow()
         return r.heartbeatIntervalS
     }
@@ -124,6 +126,8 @@ class SyncManager(private val app: DemoApp) {
         previousId = prefs.legacyDeviceId,
         appVersionCode = BuildConfig.VERSION_CODE,
         updateReady = prefs.updateReadyCode.takeIf { it > BuildConfig.VERSION_CODE },
+        imei = if (withSpecs) DeviceInfo.imei(app) else null,
+        serial = if (withSpecs) DeviceInfo.serial(app) else null,
     )
 
     /** Vollständiger Abgleich. Gibt null bei Erfolg zurück, sonst die Fehlermeldung. */
@@ -134,6 +138,7 @@ class SyncManager(private val app: DemoApp) {
             val api = api()
             val m = api.sync(report(withSpecs = true))
             m.appUpdate?.let { u -> app.updater.prefetchInBackground(u) }
+            app.theft.applyServerState(m.theft)
             // Server hat den alten Eintrag übernommen -> alte Zufalls-ID nicht mehr melden
             if (prefs.legacyDeviceId != null) prefs.legacyDeviceId = prefs.deviceId
             var failed = 0

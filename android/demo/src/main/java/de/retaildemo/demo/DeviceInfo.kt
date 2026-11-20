@@ -36,6 +36,45 @@ object DeviceInfo {
 
     fun androidVersion() = "Android ${Build.VERSION.RELEASE}"
 
+    /**
+     * Seriennummer – best effort. Android gibt sie seit Android 10 (API 29) nur noch an Systemsoftware
+     * bzw. den Geräteverwalter heraus; für normale Apps meist "unknown". Dann leer zurückgeben.
+     */
+    @android.annotation.SuppressLint("HardwareIds", "MissingPermission")
+    fun serial(context: Context): String? {
+        context.demoApp.prefs.capturedSerial.takeIf { it.isNotBlank() }?.let { return it }
+        return try {
+            if (!hasPhonePerm(context)) return null
+            val s = if (Build.VERSION.SDK_INT >= 26) Build.getSerial() else @Suppress("DEPRECATION") Build.SERIAL
+            s?.takeIf { it.isNotBlank() && !it.equals("unknown", true) && it != Build.UNKNOWN }
+        } catch (e: Exception) { null }
+    }
+
+    /**
+     * IMEI / Geräte-ID – best effort. Ebenfalls nur mit Systemrechten lesbar (ab Android 10). Bei mehreren
+     * SIM-Slots werden die IMEIs mit "/" verbunden. Fehlt die Berechtigung, wird leer zurückgegeben.
+     */
+    @android.annotation.SuppressLint("HardwareIds", "MissingPermission")
+    fun imei(context: Context): String? {
+        context.demoApp.prefs.capturedImei.takeIf { it.isNotBlank() }?.let { return it }
+        return try {
+            if (!hasPhonePerm(context)) return null
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager ?: return null
+            if (Build.VERSION.SDK_INT >= 26) {
+                val n = try { tm.phoneCount } catch (e: Exception) { 1 }
+                val ids = (0 until n).mapNotNull { i -> try { tm.getImei(i) } catch (e: Exception) { null } }
+                    .filter { it.isNotBlank() }.distinct()
+                if (ids.isNotEmpty()) return ids.joinToString("/")
+            }
+            @Suppress("DEPRECATION", "HardwareIds")
+            tm.deviceId?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) { null }
+    }
+
+    private fun hasPhonePerm(context: Context) =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_PHONE_STATE) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+
     fun specs(context: Context): List<Spec> = buildList {
         runCatching { display(context) }.getOrNull()?.let { add(Spec("Display", it)) }
         runCatching { processor() }.getOrNull()?.let { add(Spec("Prozessor", it)) }

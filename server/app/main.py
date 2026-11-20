@@ -36,6 +36,7 @@ from .alerts import Alerts, make_alerts_router
 from .activity import Activity, install as install_activity, make_activity_router
 from .backup import make_backup_router
 from .stats import make_stats_router
+from .theft import make_theft_router
 from .shutdown import make_shutdown_router
 from .converter import make_converter_router
 
@@ -240,6 +241,10 @@ def init_db():
         if "platform" not in cols:
             # android = Demo-App auf dem Handy, windows/macos/linux = Laptop-Demo
             c.execute("ALTER TABLE devices ADD COLUMN platform TEXT NOT NULL DEFAULT 'android'")
+        if "imei" not in cols:
+            # Seriennummer / IMEI (best effort – ab Android 10 nur mit Systemrechten lesbar)
+            c.execute("ALTER TABLE devices ADD COLUMN imei TEXT")
+            c.execute("ALTER TABLE devices ADD COLUMN serial TEXT")
         version = c.execute("SELECT value FROM settings WHERE key='schema_version'").fetchone()
         if version is None:
             # v2: Standard-Wartezeit bis zum Neustart der Demo von 60 auf 30 Sekunden
@@ -430,6 +435,7 @@ def build_manifest(c, device_row) -> dict:
         "schedule": s["schedule"],
         "cleanup_interval_h": s["cleanup_interval_h"],
         "heartbeat_interval_s": HEARTBEAT_INTERVAL_S,
+        "store_name": s["store_name"],
     }
     if s["media_transition"]:
         manifest["transition"] = "logo"
@@ -839,6 +845,8 @@ def device_dict(c, row, settings) -> dict:
         "status": row["status"],
         "last_error": row["last_error"],
         "battery": row["battery"],
+        "imei": row["imei"],
+        "serial": row["serial"],
         "ip": row["ip"],
         "online": online,
         "up_to_date": row["synced_hash"] == manifest["hash"],
@@ -997,6 +1005,8 @@ class DeviceReport(BaseModel):
     # Demo-App: installierte Versionsnummer und ggf. schon heruntergeladenes Update (Versionsnummer)
     app_version_code: Optional[int] = None
     update_ready: Optional[int] = None
+    imei: Optional[str] = None
+    serial: Optional[str] = None
 
 
 def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
@@ -1023,8 +1033,10 @@ def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
     c.execute(
         "UPDATE devices SET last_seen=?, status=?, last_error=?, battery=?, ip=?,"
         " synced_hash=COALESCE(?, synced_hash), removed=0,"
-        " app_version_code=COALESCE(?, app_version_code), update_ready=? WHERE id=?",
-        (now, r.status, r.error, r.battery, ip, r.synced_hash, r.app_version_code, r.update_ready, r.device_id))
+        " app_version_code=COALESCE(?, app_version_code), update_ready=?,"
+        " imei=COALESCE(?, imei), serial=COALESCE(?, serial) WHERE id=?",
+        (now, r.status, r.error, r.battery, ip, r.synced_hash, r.app_version_code, r.update_ready,
+         (r.imei or None), (r.serial or None), r.device_id))
     if full_sync:
         c.execute("UPDATE devices SET last_sync=?, sync_requested=0 WHERE id=?", (now, r.device_id))
     return c.execute("SELECT * FROM devices WHERE id=?", (r.device_id,)).fetchone()
@@ -1035,7 +1047,9 @@ def device_sync(report: DeviceReport, x_forwarded_for: Optional[str] = Header(No
     """Stündlicher Abgleich: liefert die vollständige Playlist (Manifest)."""
     with db() as c:
         row = _upsert_device(c, report, x_forwarded_for, full_sync=True)
-        return {**build_manifest(c, row), "app_update": _pushed_update_for(row)}
+        resp = {**build_manifest(c, row), "app_update": _pushed_update_for(row)}
+    resp["theft"] = _theft_status_for(report.device_id)
+    return resp
 
 
 @app.post("/api/device/heartbeat", dependencies=[Depends(require_device)])
@@ -1043,8 +1057,10 @@ def device_heartbeat(report: DeviceReport, x_forwarded_for: Optional[str] = Head
     """Alle paar Minuten: nur Online-Status. sync_now=True wenn der Admin 'Jetzt aktualisieren' gedrückt hat."""
     with db() as c:
         row = _upsert_device(c, report, x_forwarded_for, full_sync=False)
-        return {"sync_now": bool(row["sync_requested"]), "heartbeat_interval_s": HEARTBEAT_INTERVAL_S,
+        resp = {"sync_now": bool(row["sync_requested"]), "heartbeat_interval_s": HEARTBEAT_INTERVAL_S,
                 "app_update": _pushed_update_for(row)}
+    resp["theft"] = _theft_status_for(report.device_id)
+    return resp
 
 
 class Unregister(BaseModel):
@@ -1218,7 +1234,7 @@ def web_me(request: Request):
     return {"user": user, "managed_by_env": from_env}
 
 
-WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube", "ops", "eggs", "converter")
+WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube", "ops", "eggs", "converter", "theft")
 
 
 @app.get("/", include_in_schema=False)
@@ -1637,6 +1653,20 @@ app.include_router(make_activity_router(activity, require_admin))
 backup_router, register_backup_upload = make_backup_router(DATA_DIR, DB_PATH, _db_lock, require_admin, alerts)
 app.include_router(backup_router)
 app.include_router(make_stats_router(db, require_device, require_admin, get_settings))
+
+
+def _device_name(device_id: str) -> str:
+    with db() as c:
+        row = c.execute("SELECT display_name, marketing_name, model FROM devices WHERE id=?", (device_id,)).fetchone()
+    if not row:
+        return device_id[:8]
+    return row["display_name"] or row["marketing_name"] or row["model"] or device_id[:8]
+
+
+theft_router, _theft_status_for, _theft_set_cfg_path = make_theft_router(
+    db, require_admin, require_device, alerts, _client_ip, _device_name)
+_theft_set_cfg_path(DATA_DIR)
+app.include_router(theft_router)
 _druck_hooks["alerts"] = alerts
 converter_router, register_convert_upload = make_converter_router(DATA_DIR, require_admin, register_druck_job)
 app.include_router(converter_router)

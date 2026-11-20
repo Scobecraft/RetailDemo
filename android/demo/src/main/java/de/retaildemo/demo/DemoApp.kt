@@ -29,6 +29,8 @@ class DemoApp : Application() {
         private set
     lateinit var stats: PlayStats
         private set
+    lateinit var theft: TheftGuard
+        private set
 
     /** Bis zu diesem Zeitpunkt (elapsedRealtime) läuft ein App-Update – Demo nicht dazwischenschieben. */
     @Volatile var updateInProgressUntil = 0L
@@ -88,7 +90,10 @@ class DemoApp : Application() {
         bloatware.start(scope)
         druck = DruckWatcher(this)
         stats = PlayStats(this)
+        theft = TheftGuard(this)
         druck.start(scope)
+        theft.init()
+        if (prefs.isConfigured) TheftService.ensureRunning(this)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(a: Activity) { resumedActivities++ }
