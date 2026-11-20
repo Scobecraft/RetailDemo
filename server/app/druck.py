@@ -112,6 +112,7 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
     tracker = PrintTracker(st.dir, hooks)
     hooks["tracker"] = tracker
     hooks["druck_status"] = lambda: {"online": st.online, "shutdown": st.state.get("shutdown"), "app_version": st.state.get("appVersion")}
+    remote_lock = {"seq": 0, "on": True}
     r.include_router(make_timelapse_router(tracker, require_device, require_viewer))  # vor /druck/api/{rest}
     release_file = st.dir / "Druckmonitor-Setup.exe"
     release_json = st.dir / "release.json"
@@ -175,6 +176,8 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
                 "print_job": pending() if pending else None,
                 # „Druckbett ist frei“ auf der Webseite → auch am Drucker bestätigen (neuere Firmware verlangt das)
                 "clear_platform": hooks.get("clear_platform_seq", 0),
+                # Kundenschutz von der Webseite sperren/entsperren
+                "input_lock": remote_lock if remote_lock["seq"] else None,
                 "model_override": ({"id": o["id"], "name": o["name"], "url": "/api/druck/override/file"}
                                    if (o := model_override()) else None)}
 
@@ -348,8 +351,19 @@ def make_router(data_dir: Path, require_device: Callable, require_viewer: Callab
             "camera": {k: (st.state.get("status") or {}).get(k) for k in ("state", "fps", "error")} if st.online else None,
             "pc": st.state.get("pc") if st.online else None,
             "pc_info": st.pc_info,
+            "input_lock": st.state.get("inputLock") if st.online else None,
             "history": [p for p in st.history if p["t"] > since],
         }
+
+    @r.post("/api/admin/druck/inputlock", dependencies=[Depends(require_viewer)])
+    async def set_input_lock(request: Request):
+        """Tastatur & Maus am Druckmonitor-PC sperren/entsperren (wird mit der nächsten Meldung übernommen)."""
+        try:
+            on = bool((await request.json()).get("on"))
+        except ValueError:
+            raise HTTPException(400, "Kein JSON")
+        remote_lock.update(seq=int(time.time() * 1000), on=on)
+        return {"ok": True, "on": on}
 
     @r.get("/druck", include_in_schema=False)
     def druck_root():

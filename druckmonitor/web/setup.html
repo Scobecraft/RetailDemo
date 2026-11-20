@@ -181,6 +181,8 @@
         </div>
       </div>
       <label class="check"><input type="checkbox" id="fullscreen"> Im Vollbild starten</label>
+      <label class="check"><input type="checkbox" id="inputlock"> Kundenschutz: Tastatur &amp; Maus sperren, solange der Monitor läuft
+        <span style="opacity:.7">– entsperren mit Strg + Alt + Entf (danach Abbrechen/Esc); nach 10 Minuten ohne Eingabe sperrt er wieder</span></label>
       <details>
         <summary>Erweitert: Webseite statt Videostream</summary>
         <label class="check"><input type="checkbox" id="pageMode"> Kamera-Adresse als Webseite einbetten (nur nötig, wenn der Drucker keinen direkten Videostream hat)</label>
@@ -263,6 +265,7 @@ async function init() {
   $('subtitle').value = cfg.subtitle || '';
   $('ticker').value = cfg.ticker || '';
   $('fullscreen').checked = cfg.fullscreen !== false;
+  $('inputlock').checked = !cfg.noInputLock;
   $('pageMode').checked = cfg.mode === 'page';
   $('reload').value = cfg.reloadSec || 60;
   $('modelName').textContent = cfg.modelName || 'Kein Modell ausgewählt';
@@ -521,7 +524,7 @@ async function start() {
     monitor: +$('monitor').value, title: $('title').value, subtitle: $('subtitle').value, ticker: $('ticker').value,
     modelColor: colorAuto ? 'auto' : $('color').value, rotSpeed: +$('speed').value, fullscreen: $('fullscreen').checked,
     printerKind: $('pkind').value, ffSerial: $('ffserial').value.trim(), ffCheckCode: $('ffcode').value.trim(),
-    autoIp: $('autoip').checked, autoModel: $('automodel').checked,
+    autoIp: $('autoip').checked, autoModel: $('automodel').checked, noInputLock: !$('inputlock').checked,
     serverUrl: $('srvurl').value.trim(), serverToken: $('srvtoken').value.trim(),
   };
   delete c.modelName; delete c.modelFile; // gehören dem Server

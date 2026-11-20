@@ -62,6 +62,7 @@ ACTIONS = [
     ("POST", r"^/api/admin/convert/jobs/[^/]+/to-slicer/[^/]+$", "Umgewandeltes 3D-Modell in den Slicer übernommen"),
     ("DELETE", r"^/api/admin/convert/jobs/[^/]+$", "Umwandlung gelöscht"),
     ("PUT", r"^/api/admin/timelapse/config$", "Zeitraffer-Einstellungen geändert"),
+    ("POST", r"^/api/admin/druck/inputlock$", "Tastatur & Maus am Druckmonitor-PC gesperrt/entsperrt"),
     ("PUT", r"^/api/admin/druck/shutdown$", "Zeitplan „PC herunterfahren“ geändert"),
     ("POST", r"^/api/admin/druck/shutdown/skip$", "Herunterfahren heute ausgelassen/wieder aktiviert"),
 ]

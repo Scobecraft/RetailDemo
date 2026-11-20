@@ -244,6 +244,7 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		"pcInfo":     pcInfo,
 		"appVersion": version,
 		"shutdown":   a.shutdownStatus(),
+		"inputLock":  a.inputLockStatus(),
 		// kann Druckaufträge von der Webseite an den Drucker schicken (braucht Seriennummer + Prüfcode)
 		"capabilities": map[string]bool{"upload": strings.TrimSpace(c.FFSerial) != "" && strings.TrimSpace(c.FFCheckCode) != ""},
 	})
@@ -268,6 +269,7 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 		Timelapse  bool          `json:"timelapse"`
 		Shutdown   *ShutdownPlan `json:"shutdown_plan"`
 		ClearPlat  int64         `json:"clear_platform"`
+		InputLock  *RemoteLock   `json:"input_lock"`
 		FrameEvery float64       `json:"frame_every_s"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&r)
@@ -284,6 +286,7 @@ func (a *App) pushState(post postFunc, c Config) (bool, error) {
 	a.onModelOverride(r.Model)
 	a.onShutdownPlan(r.Shutdown)
 	a.onClearPlatform(r.ClearPlat)
+	a.onRemoteInputLock(r.InputLock)
 	return r.Watching, nil
 }
 

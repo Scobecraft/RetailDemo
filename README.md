@@ -406,6 +406,13 @@ während des Drucks alle 3 s ein Bild). Am Ende entsteht ein kurzes Video: Es er
 (einstellbar) in die Medien und Playlists der Handys und läuft in der Druckmonitor-App und unter /druck/,
 solange nicht gedruckt wird.
 
+**Kundenschutz – Tastatur & Maus gesperrt:** Sobald die Druckmonitor-App (ab 1.2.8) die Monitor-Ansicht zeigt (beim
+Windows-Start, nach Updates, nach „Starten“), sperrt sie Tastatur und Maus. **Entsperren: Strg + Alt + Entf** und dann
+„Abbrechen“/Esc – diese Tastenkombination kann unter Windows kein Programm abfangen, die App erkennt den
+Sicherheitsbildschirm und hebt die Sperre auf. Nach 10 Minuten ohne Eingabe sperrt sie wieder. Auf der Webseite zeigt
+der Reiter 3D-Drucker oben „🔒 PC gesperrt“ – per Klick aus der Ferne entsperren/sperren. Abschaltbar in den
+Einstellungen der App („Kundenschutz“). Touchscreens werden ggf. nicht gesperrt.
+
 **PC herunterfahren (Feierabend):** Die Druckmonitor-App (ab 1.2.6) fährt den PC am Drucker nach Zeitplan herunter –
 Standard Montag bis Freitag 19:00, Samstag 16:00, Sonntag nicht. Einstellbar auf der Webseite unter Einstellungen →
 „PC herunterfahren“ (auch „Heute nicht herunterfahren“). Läuft noch ein Druck, wartet sie, bis er fertig ist. Einige

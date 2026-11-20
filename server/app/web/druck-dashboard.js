@@ -173,7 +173,7 @@ function dkBuild() {
   page.replaceChildren(el("div", { class: "dk ov" },
     el("div", { class: "dk-head" },
       el("div", {}, el("h2", {}, "3D-Drucker"), el("div", { class: "dk-headline" }, R.live, R.sub)),
-      el("div", { class: "dk-actions" }, fullBtn, progBtn)),
+      el("div", { class: "dk-actions" }, R.lockBtn = el("button", { class: "btn small dk-lock", hidden: true, onclick: dkToggleLock }), fullBtn, progBtn)),
     el("div", { class: "dk-grid" }, hero, camCard, modelCard, tempCard, nowCard, progCard, detailCard, dkTimelapseCard()),
     el("div", { class: "dk-head dk-pc-head" }, el("div", {}, R.pcTitle, el("div", { class: "dk-headline" }, R.pcSub))),
     R.pcHint, R.pcGrid, R.foot,
@@ -289,7 +289,31 @@ function dkSetLive(ok, text) {
   l.lastChild.textContent = text;
 }
 
+// Kundenschutz am Druckmonitor-PC (Tastatur & Maus gesperrt)
+function dkLockUi(d) {
+  const b = DK.refs.lockBtn, l = d.input_lock;
+  if (!b) return;
+  b.hidden = !l || l.supported === false;
+  if (b.hidden) return;
+  if (DK.lockPending && Date.now() - DK.lockPending < 8000) return; // kurz warten, bis die App den Befehl übernommen hat
+  b.classList.toggle("on", !!l.locked);
+  b.textContent = l.locked ? "🔒 PC gesperrt" : "🔓 PC entsperrt";
+  b.title = l.locked ? "Tastatur & Maus am Druckmonitor-PC sind gesperrt (am PC: Strg+Alt+Entf). Klicken = entsperren"
+    : "Tastatur & Maus am Druckmonitor-PC sind frei. Klicken = sperren";
+}
+async function dkToggleLock() {
+  const l = DK.data?.input_lock; if (!l) return;
+  const on = !l.locked;
+  try {
+    await api("/api/admin/druck/inputlock", json("POST", { on }));
+    DK.lockPending = Date.now();
+    const b = DK.refs.lockBtn; b.textContent = on ? "🔒 Wird gesperrt …" : "🔓 Wird entsperrt …";
+    toast(on ? "Tastatur & Maus am PC werden gesperrt" : "Tastatur & Maus am PC werden freigegeben (sperrt nach 10 Min. ohne Eingabe wieder)");
+  } catch (e) { toast(e.message); }
+}
+
 function dkUpdate(d) {
+  dkLockUi(d);
   const R = DK.refs, live = d.live || {}, file = d.file || {};
   DK.data = d;
   const online = d.online;

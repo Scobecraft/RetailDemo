@@ -53,6 +53,8 @@ type Config struct {
 	HandledUpdate int64 `json:"handledUpdate"`
 	// zuletzt übernommenes Modell, das auf der Webseite hochgeladen wurde
 	HandledModel string `json:"handledModel"`
+	// Kundenschutz: Tastatur & Maus während der Monitor-Ansicht NICHT sperren (Standard: sperren)
+	NoInputLock bool `json:"noInputLock"`
 }
 
 func defaultConfig() Config {
@@ -202,6 +204,7 @@ func main() {
 	go app.pushLoop()
 	go app.frameLoop()
 	go app.shutdownLoop()
+	go app.inputLockLoop()
 	// --autostart (Windows-Start, nach einem Update): gespeicherte Einstellungen übernehmen und
 	// direkt die Vollbildansicht zeigen
 	for _, arg := range os.Args[1:] {
@@ -212,6 +215,7 @@ func main() {
 			}
 			app.autostarted = true
 			base += "monitor"
+			go func() { time.Sleep(4 * time.Second); app.startInputLock() }()
 		}
 	}
 	runShell(app, base)
@@ -325,6 +329,8 @@ func (a *App) routes() http.Handler {
 			return
 		}
 		writeJSON(w, map[string]any{"ok": true, "url": c.StreamURL(), "ip": c.IP, "found": found})
+		// Monitor-Ansicht startet: Tastatur & Maus sperren (Strg+Alt+Entf entsperrt)
+		go func() { time.Sleep(1500 * time.Millisecond); a.startInputLock() }()
 	})
 
 	// Drucker suchen (Einstellungsdialog). ?full=1: alle Quellen durchsuchen
@@ -401,6 +407,8 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/timelapses", a.handleTimelapses)
 	// Feierabend: Herunterfahren nach Zeitplan (Status, „Heute nicht“)
 	mux.HandleFunc("/api/shutdown", a.handleShutdown)
+	// Kundenschutz (Status für die Anzeige)
+	mux.HandleFunc("/api/inputlock", a.handleInputLock)
 	mux.HandleFunc("/api/timelapse/", a.handleTimelapseFile)
 
 	// Druckerdaten (live) + Angaben aus der Slicer-Datei
