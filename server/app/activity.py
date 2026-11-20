@@ -45,6 +45,8 @@ ACTIONS = [
     ("POST", r"^/api/admin/druck/jobs/[^/]+/as-model$", "3D-Modell an den Druckmonitor geschickt"),
     ("POST", r"^/api/admin/druck/bed-clear$", "Druckbett als frei bestätigt"),
     ("PUT", r"^/api/admin/druck/queue$", "Druck-Warteschlange geändert"),
+    ("POST", r"^/api/admin/druck/plates$", "Druckplatte mit mehreren Modellen angelegt"),
+    ("PUT", r"^/api/admin/druck/plates/[^/]+$", "Druckplatte geändert"),
     ("POST", r"^/api/admin/druck/thingiverse/import$", "Modell von Thingiverse geladen"),
     ("PUT", r"^/api/admin/druck/slicer/defaults$", "Slicer-Standards gespeichert"),
     ("POST", r"^/api/admin/editor/projects$", "Schnitt-Projekt angelegt"),

@@ -393,6 +393,12 @@ automatisch, sobald der Drucker frei ist **und** das Druckbett als abgeräumt be
 der Alarm „Druckbett abräumen“ (Push), bestätigt wird links im 3D-Slicer, in den Benachrichtigungen oder direkt in
 der Push-Meldung. Reihenfolge per ↑/↓ änderbar.
 
+**Mehrere Modelle auf ein Druckbett:** In der Auftragsliste „▦ Druckplatte“ anklicken, Modelle anhaken und je die
+Anzahl wählen (z. B. 1× A, 3× B), dann „Auf ein Druckbett“. Der Server ordnet alles platzsparend mit Abstand mittig an
+(längere Seite in X, Größe/Drehung aus den einzelnen Modellen) und slict es als einen Druck. Rechts lassen sich bei der
+Druckplatte Modelle hinzufügen/entfernen, Anzahl und Abstand ändern („Neu anordnen“). Passt nicht alles aufs Bett,
+sagt er, wie viele Teile passen.
+
 **Fertig um:** Die Vorschau im 3D-Slicer zeigt, wann das Modell voraussichtlich fertig ist – Druckzeit plus Aufheizen
 (und Bett vermessen), bei laufendem Druck bzw. Aufträgen in der Warteschlange danach. Auch in der Warteschlange
 steht bei jedem Auftrag „fertig ~…“.

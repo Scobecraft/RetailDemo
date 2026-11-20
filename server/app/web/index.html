@@ -733,6 +733,16 @@
   .dk-tl-item video { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 10px; object-fit: cover; cursor: pointer; }
   .dk-tl-meta { display: grid; gap: 2px; min-width: 0; }
   .dk-tl-meta b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sl-label-row { display: flex; align-items: center; justify-content: space-between; }
+  .sl-plate-btn { text-transform: none; letter-spacing: 0; font-size: 12px; padding: 3px 9px; }
+  .sl-plate-btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .sl-platebar { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: 10px; background: var(--accent-soft); font-size: 13px; }
+  .sl-job.dim { opacity: .45; }
+  .sl-job.picked { border-color: var(--accent); }
+  .sl-pick { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .sl-pick input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .sl-platecard { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--accent); border-radius: 10px; margin-bottom: 12px; }
+  .sl-plate-head { display: flex; justify-content: space-between; align-items: baseline; }
   .sl-bedqueue { display: grid; gap: 10px; }
   .sl-bedqueue:empty { display: none; }
   .sl-bed { display: grid; gap: 6px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent-soft); font-size: 13px; }

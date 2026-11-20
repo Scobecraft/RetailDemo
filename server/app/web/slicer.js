@@ -70,6 +70,9 @@ function slBuild() {
   R.printer = el("div", { class: "sl-printer" });
   R.bedQueue = el("div", { class: "sl-bedqueue" });
   R.jobs = el("div", { class: "sl-jobs" });
+  R.plateBtn = el("button", { class: "btn small sl-plate-btn", title: "Mehrere Modelle (auch mehrmals) zusammen auf ein Druckbett",
+    onclick: () => { SL.plateMode = !SL.plateMode; SL.plateSel.clear(); slRenderJobs(); } }, "▦ Druckplatte");
+  R.plateBar = el("div", { class: "sl-platebar", hidden: true });
   R.viewHost = el("div", { class: "sl-view-host" });
   R.viewTop = el("div", { class: "sl-view-top" });
   R.empty = el("div", { class: "sl-empty" }, el("strong", {}, "Noch kein Modell gewählt"), el("span", {}, "Links ein Modell hinzufügen oder einen Auftrag auswählen."));
@@ -78,7 +81,8 @@ function slBuild() {
   page.replaceChildren(el("div", { class: "sl ov" },
     el("aside", { class: "sl-side" },
       el("div", { class: "sl-side-head" }, el("h2", {}, "3D-Slicer"), el("p", { class: "sub" }, "Flashforge Adventurer 5M · 220 × 220 × 220 mm")),
-      R.drop, R.tv, R.progress, R.printer, R.bedQueue, el("div", { class: "sl-label" }, "Aufträge"), R.jobs),
+      R.drop, R.tv, R.progress, R.printer, R.bedQueue,
+      el("div", { class: "sl-label sl-label-row" }, el("span", {}, "Aufträge"), R.plateBtn), R.plateBar, R.jobs),
     el("section", { class: "sl-view" }, R.viewTop, R.viewHost, R.empty),
     el("aside", { class: "sl-panel" }, R.panel, R.actions)));
   SL.built = true;
@@ -131,8 +135,35 @@ function slPrinterReady() {
   return [true, "Drucker bereit"];
 }
 
+// Modelle, die auf eine Druckplatte dürfen (keine fertigen G-Codes, keine Druckplatten)
+const slIsModel = j => !j.sliced_by_user && !j.sources && /\.(stl|3mf|obj)$/i.test(j.source || "");
+SL.plateSel = new Map(); // job_id -> Anzahl
+
+function slPlateBar() {
+  const R = SL.r;
+  const n = [...SL.plateSel.values()].reduce((a, b) => a + b, 0);
+  R.plateBar.hidden = !SL.plateMode;
+  R.plateBar.replaceChildren(
+    el("span", {}, n ? `${SL.plateSel.size} Modell${SL.plateSel.size === 1 ? "" : "e"} · ${n} Teil${n === 1 ? "" : "e"}` : "Modelle anhaken, Anzahl wählen"),
+    el("div", { class: "row" },
+      el("button", { class: "btn small", onclick: () => { SL.plateMode = false; SL.plateSel.clear(); slRenderJobs(); } }, "Abbrechen"),
+      el("button", { class: "btn small primary", disabled: n < 2, onclick: slCreatePlate }, "Auf ein Druckbett")));
+}
+
+async function slCreatePlate() {
+  const items = [...SL.plateSel].map(([job_id, copies]) => ({ job_id, copies }));
+  try {
+    const j = await api("/api/admin/druck/plates", json("POST", { items }));
+    SL.plateMode = false; SL.plateSel.clear();
+    toast("Druckplatte angelegt – wird geslict");
+    SL.last = ""; await slLoad(); slSelect(j.id);
+  } catch (e) { toast(e.message); }
+}
+
 function slRenderJobs() {
   const R = SL.r;
+  slPlateBar();
+  R.plateBtn.classList.toggle("on", !!SL.plateMode);
   const [ready, why] = slPrinterReady();
   R.printer.replaceChildren(el("span", { class: "dot" + (ready ? " on" : "") }), why);
   slRenderBedQueue();
@@ -141,8 +172,18 @@ function slRenderJobs() {
     const [label, cls] = SL_STATE[j.state] || [j.state, "idle"];
     const st = j.stats || {};
     const facts = [st.time_s ? dkDur(st.time_s) : null, st.filament_g ? `${dkNum(st.filament_g, 0)} g` : null].filter(Boolean).join(" · ");
-    return el("div", { class: "sl-job" + (j.id === SL.sel ? " active" : ""), onclick: () => slSelect(j.id) },
-      el("div", { class: "sl-job-name", title: j.file_name || j.name }, j.name),
+    const pick = SL.plateMode && slIsModel(j);
+    const cnt = SL.plateSel.get(j.id) || 0;
+    const stepper = pick ? el("div", { class: "sl-pick", onclick: e => e.stopPropagation() },
+      el("input", { type: "checkbox", checked: cnt > 0, onchange: e => { e.target.checked ? SL.plateSel.set(j.id, 1) : SL.plateSel.delete(j.id); slRenderJobs(); } }),
+      cnt ? el("button", { class: "sl-qbtn", onclick: () => { cnt > 1 ? SL.plateSel.set(j.id, cnt - 1) : SL.plateSel.delete(j.id); slRenderJobs(); } }, "−") : null,
+      cnt ? el("b", {}, `${cnt}×`) : null,
+      cnt ? el("button", { class: "sl-qbtn", onclick: () => { SL.plateSel.set(j.id, Math.min(50, cnt + 1)); slRenderJobs(); } }, "+") : null) : null;
+    return el("div", { class: "sl-job" + (j.id === SL.sel ? " active" : "") + (SL.plateMode && !pick ? " dim" : "") + (cnt ? " picked" : ""),
+        onclick: () => pick ? (cnt ? SL.plateSel.delete(j.id) : SL.plateSel.set(j.id, 1), slRenderJobs()) : slSelect(j.id) },
+      stepper,
+      el("div", { class: "sl-job-name", title: j.file_name || j.name }, j.sources ? "▦ " : "", j.name),
+      j.plate ? el("div", { class: "sl-origin" }, j.plate.map(x => `${x.copies}× ${x.name}`).join(" · ")) : null,
       el("div", { class: "sl-job-meta" }, el("span", { class: `dk-state ${cls}` }, el("i"), el("span", {}, label)), facts ? el("span", { class: "muted" }, facts) : null),
       j.origin ? el("div", { class: "sl-origin" }, `${j.origin.site}${j.origin.creator ? " · " + j.origin.creator : ""}${j.origin.license ? " · " + j.origin.license : ""}`) : null,
       j.message && ["failed", "error"].includes(j.state) ? el("div", { class: "dkj-msg bad" }, j.message) : null,
@@ -385,17 +426,49 @@ function slRenderPanel() {
     const n = S.fields.filter(f => f.section === s && changed.has(f.key)).length;
     return el("button", { type: "button", class: "dkj-tab" + (s === SL.section && !q ? " active" : ""), onclick: () => { SL.section = s; SL.search = ""; slRenderPanel(); } }, s, n ? el("b", {}, String(n)) : null);
   }));
-  const list = S.fields.filter(f => q ? normText(f.label + " " + f.section).includes(q) : f.section === SL.section);
+  const PLATE_SKIP = new Set(["scale", "rotate", "rotate_x", "rotate_y", "duplicate", "duplicate_distance"]);
+  const list = S.fields.filter(f => !(j?.sources && PLATE_SKIP.has(f.key)))
+    .filter(f => q ? normText(f.label + " " + f.section).includes(q) : f.section === SL.section);
   const rows = el("div", { class: "sl-rows" }, ...(list.length ? list.map(f => el("div", { class: "dkj-row" + (changed.has(f.key) ? " changed" : "") },
     el("label", {}, el("span", {}, f.label), q ? el("small", {}, f.section) : null, f.hint ? el("small", {}, f.hint) : null),
     el("div", { class: "dkj-in" }, slInput(f, v[f.key], val => slSet(f.key, val)), f.unit && f.type !== "bool" ? el("span", { class: "muted" }, f.unit) : null),
     changed.has(f.key) ? el("button", { type: "button", class: "dkj-reset", title: `Zurück auf ${slFmt(f, base[f.key])}`, onclick: () => slSet(f.key, base[f.key]) }, "↺") : el("span")))
     : [el("div", { class: "muted", style: "padding:12px 0" }, "Keine passende Einstellung.")]));
-  R.panel.replaceChildren(quick,
+  R.panel.replaceChildren(...(j?.sources ? [slPlateCard(j)] : []), quick,
     el("div", { class: "sl-all-head" }, el("strong", {}, "Alle Einstellungen"),
       el("span", { class: "muted" }, changed.size ? `${changed.size} geändert` : "wie Materialvorlage")),
     search, tabs, rows);
   rows.scrollTop = scrollTop;
+}
+
+// Druckplatte bearbeiten: Modelle, Anzahl, Abstand → neu anordnen und slicen
+function slPlateCard(j) {
+  const items = j.plate.map(x => ({ ...x }));
+  const spacing = el("input", { type: "number", min: 2, max: 30, step: 1, value: j.plate_spacing || 6, style: "width:70px" });
+  const others = SL.jobs.filter(x => slIsModel(x) && !items.some(i => i.job_id === x.id));
+  const add = el("select", {}, el("option", { value: "" }, "+ Modell hinzufügen …"), ...others.map(x => el("option", { value: x.id }, x.name)));
+  const box = el("div", { class: "sl-platecard" });
+  const apply = async () => {
+    try {
+      await api(`/api/admin/druck/plates/${j.id}`, json("PUT", { items: items.filter(i => i.copies > 0).map(i => ({ job_id: i.job_id, copies: i.copies })), spacing: +spacing.value || 6 }));
+      toast("Wird neu angeordnet und geslict …");
+      SL.previewKey = ""; SL.last = ""; slLoad();
+    } catch (e) { toast(e.message); }
+  };
+  const draw = () => box.replaceChildren(...[
+    el("div", { class: "sl-plate-head" }, el("strong", {}, "▦ Druckplatte"), el("span", { class: "muted" }, `${items.reduce((a, i) => a + i.copies, 0)} Teile`)),
+    ...items.map(i => el("div", { class: "sl-qitem" },
+      el("span", { class: "sl-qname", title: i.name }, i.name),
+      el("button", { class: "sl-qbtn", onclick: () => { i.copies = Math.max(0, i.copies - 1); draw(); } }, "−"),
+      el("b", { style: "min-width:30px;text-align:center" }, `${i.copies}×`),
+      el("button", { class: "sl-qbtn", onclick: () => { i.copies = Math.min(50, i.copies + 1); draw(); } }, "+"))),
+    others.length ? add : null,
+    el("div", { class: "row", style: "font-size:13px;margin-top:4px" }, "Abstand", spacing, "mm",
+      el("span", { class: "spacer" }), el("button", { class: "btn small primary", onclick: apply }, "Neu anordnen")),
+    el("small", { class: "muted" }, "Größe und Drehung kommen aus den einzelnen Modellen (dort einstellen). Alle Teile werden mit denselben Druckeinstellungen gedruckt.")].filter(Boolean));
+  add.onchange = () => { const x = SL.jobs.find(y => y.id === add.value); if (x) items.push({ job_id: x.id, name: x.name, copies: 1 }); draw(); };
+  draw();
+  return box;
 }
 
 function slRenderActions() {

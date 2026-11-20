@@ -99,6 +99,17 @@ class QueueRequest(BaseModel):
     not_before: Optional[float] = None  # frühester Start (Unix-Zeit), None = sobald frei
 
 
+class PlateItem(BaseModel):
+    job_id: str
+    copies: int = 1
+
+
+class PlateIn(BaseModel):
+    items: list[PlateItem]
+    name: str = ""
+    spacing: float = 6
+
+
 class QueueOrder(BaseModel):
     order: list[str]
 
@@ -342,8 +353,13 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
         """Modell des Auftrags mit [values] slicen und nach [out] schreiben; prüft das Ergebnis."""
         d = jobs_dir / job["id"]
         out.unlink(missing_ok=True)
-        cmd = [SLICER, "--export-gcode", "--load", str(PROFILE), *schema.cli_args(values, set(full_profile())),
-               "--center", "0,0", "--ensure-on-bed", "--output", str(out), str(d / job["source"])]
+        if job.get("sources"):  # Druckplatte: Modelle sind schon angeordnet
+            vals = {**values, **schema.TRANSFORM_DEFAULTS}
+            cmd = [SLICER, "--export-gcode", "--load", str(PROFILE), *schema.cli_args(vals, set(full_profile())),
+                   "--merge", "--dont-arrange", "--ensure-on-bed", "--output", str(out), *[str(d / f) for f in job["sources"]]]
+        else:
+            cmd = [SLICER, "--export-gcode", "--load", str(PROFILE), *schema.cli_args(values, set(full_profile())),
+                   "--center", "0,0", "--ensure-on-bed", "--output", str(out), str(d / job["source"])]
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=900,
                                  env={**os.environ, "HOME": str(d), "XDG_CONFIG_HOME": str(d / ".config")})
@@ -445,6 +461,87 @@ def make_jobs_router(data_dir: Path, require_device: Callable, require_viewer: C
             save(job)
             threading.Thread(target=run_slicer, args=(job_id,), daemon=True).start()
         return job
+
+    # ------------------------------------------------ Druckplatte: mehrere Modelle auf ein Bett
+    def build_plate(d: Path, items: list[PlateItem], spacing: float) -> tuple[list, list, str]:
+        from .plate import PlateError, load_model, pack
+        meshes, info, names = [], [], []
+        total = 0
+        for it in items:
+            src_job = load(it.job_id)
+            src = src_job.get("plate_source") or src_job.get("source")
+            ext = Path(src or "").suffix.lower()
+            if src_job.get("sources") or ext not in MODEL_EXT:
+                raise HTTPException(400, f"„{src_job['name']}“ ist kein Modell (fertiger G-Code oder schon eine Druckplatte)")
+            copies = max(1, min(50, it.copies))
+            total += copies
+            try:
+                m = load_model(jobs_dir / src_job["id"] / src, src_job.get("options") or {})
+            except PlateError as e:
+                raise HTTPException(400, str(e))
+            for k in range(copies):
+                meshes.append((src_job["name"], m))
+            info.append({"job_id": src_job["id"], "name": src_job["name"], "copies": copies})
+            names.append(src_job["name"])
+        if total < 2:
+            raise HTTPException(400, "Für eine Druckplatte bitte mindestens zwei Teile (oder ein Modell mehrmals)")
+        if total > 60:
+            raise HTTPException(400, "Höchstens 60 Teile pro Druckplatte")
+        try:
+            placed = pack(meshes, max(2.0, min(30.0, spacing)))
+        except PlateError as e:
+            raise HTTPException(400, str(e))
+        import trimesh
+        for f in d.glob("teil_*.stl"):
+            f.unlink()
+        files = []
+        for i, (_, m) in enumerate(placed):
+            f = f"teil_{i + 1:02d}.stl"
+            m.export(str(d / f))
+            files.append(f)
+        trimesh.util.concatenate([m for _, m in placed]).export(str(d / "druckplatte.stl"))
+        title = " + ".join(names[:3]) + (f" + {len(names) - 3} weitere" if len(names) > 3 else "")
+        return files, info, title
+
+    @r.post("/api/admin/druck/plates", dependencies=[Depends(require_viewer)])
+    def create_plate(body: PlateIn):
+        """Neue Druckplatte aus mehreren Aufträgen (Modelle mit Anzahl Kopien)."""
+        job_id = uuid.uuid4().hex
+        d = jobs_dir / job_id
+        d.mkdir()
+        try:
+            files, info, title = build_plate(d, body.items, body.spacing)
+        except Exception:
+            shutil.rmtree(d, ignore_errors=True)
+            raise
+        first = load(body.items[0].job_id)
+        opts = {k: v for k, v in (first.get("options") or {}).items() if k not in schema.TRANSFORM_DEFAULTS}
+        job = {"id": job_id, "name": (body.name.strip() or f"Druckplatte: {title}")[:120], "file_name": "druckplatte.stl",
+               "source": "druckplatte.stl", "sources": files, "plate": info, "plate_spacing": body.spacing, "created": time.time(),
+               "options": _clean_options(opts, user_defaults()), "stats": {}, "message": "", "state": "slicing"}
+        save(job)
+        threading.Thread(target=run_slicer, args=(job_id,), daemon=True).start()
+        return job
+
+    @r.put("/api/admin/druck/plates/{job_id}", dependencies=[Depends(require_viewer)])
+    def update_plate(job_id: str, body: PlateIn):
+        """Modelle/Anzahl einer Druckplatte ändern (neu anordnen und slicen)."""
+        with lock:
+            job = load(job_id)
+            if not job.get("sources"):
+                raise HTTPException(400, "Das ist keine Druckplatte")
+            if job["state"] in ("slicing", "queued", "sending"):
+                raise HTTPException(409, "Gerade beschäftigt – bitte kurz warten")
+        files, info, title = build_plate(jobs_dir / job_id, body.items, body.spacing)
+        with lock:
+            job = load(job_id)
+            if job["name"].startswith("Druckplatte:"):
+                job["name"] = f"Druckplatte: {title}"[:120]
+            job.update(sources=files, plate=info, plate_spacing=body.spacing, state="slicing", gcode=None, message="")
+            shutil.rmtree(jobs_dir / job_id / "live", ignore_errors=True)
+            save(job)
+        threading.Thread(target=run_slicer, args=(job_id,), daemon=True).start()
+        return load(job_id)
 
     defaults_file = data_dir / "druck" / "slicer-defaults.json"
 
