@@ -1195,6 +1195,18 @@ function ago(ts) {
   if (s < 86400) return `vor ${Math.floor(s / 3600)} Std.`;
   return `vor ${Math.floor(s / 86400)} Tagen`;
 }
+// Datum (Installationsdatum) und Betriebsdauer formatieren
+function fmtDate(ts) {
+  if (!ts) return "unbekannt";
+  return new Date(ts * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+function fmtDur(sec) {
+  if (!sec || sec < 60) return "< 1 Std.";
+  const h = sec / 3600;
+  if (h < 1) return `${Math.round(sec / 60)} Min.`;
+  if (h < 100) return `${h.toFixed(1)} Std.`;
+  return `${Math.round(h)} Std.`;
+}
 const thumbUrl = id => `/api/media/${id}/thumb`;
 const mediaById = id => state.media.find(m => m.id === id);
 
@@ -1714,6 +1726,7 @@ function deviceRow(d) {
     el("div", { class: "grow" },
       el("div", { class: "name" }, d.effective_name || d.model || d.id),
       el("div", { class: "meta" }, [d.manufacturer, d.model, d.android_version].filter(Boolean).join(" · ")),
+      el("div", { class: "meta" }, `Installiert: ${fmtDate(d.created_at)} · Betriebsstunden: ${fmtDur(d.operating_s)}`),
       el("div", { class: "meta" }, `Playlist: ${d.playlist_name} · ` + (d.online ? "Online" : "Offline, zuletzt " + ago(d.last_seen)) + (d.status ? ` · ${d.status}` : "") + (d.battery != null ? ` · 🔋 ${d.battery} %` : "")),
       el("div", { class: "meta", style: d.last_error ? "color:var(--danger)" : "" },
         d.last_error ? "⚠️ " + d.last_error : d.sync_requested ? "⏳ Aktualisierung angefordert" : d.up_to_date ? "✅ Inhalte aktuell" : "🔄 Änderungen beim nächsten Abgleich"),
@@ -1782,6 +1795,8 @@ async function editDevice(d) {
     ...d.auto_specs.map(s => el("div", { title: `${s.label}: ${s.value}` }, `${s.label}: ${s.value}`))));
   content.push(el("p", { class: "meta", style: "color:var(--muted);font-size:13px;margin:12px 0 0" },
     `${isLaptop(d) ? PLATFORM[d.platform] || "Laptop" : "Handy"} · ID ${d.id.slice(0, 8)} · App ${d.app_version || "?"}` + (d.ip ? ` · IP ${d.ip}` : "")));
+  content.push(el("p", { class: "meta", style: "color:var(--muted);font-size:13px;margin:4px 0 0" },
+    `Installiert am ${fmtDate(d.created_at)} · Betriebsstunden: ${fmtDur(d.operating_s)}`));
   if (!isLaptop(d)) content.push(el("p", { class: "meta mono", style: "color:var(--muted);font-size:13px;margin:4px 0 0" },
     `IMEI: ${d.imei || "—"} · Seriennummer: ${d.serial || "—"}` + (!d.imei && !d.serial ? "  (Android gibt diese ab Version 10 nur mit Systemrechten heraus)" : "")));
   const v = await dialog(d.effective_name || "Gerät", content, [["Entfernen", "delete", "danger"], ["Abbrechen", ""], ["Speichern", "ok", "primary"]]);

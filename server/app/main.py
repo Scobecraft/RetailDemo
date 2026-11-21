@@ -245,6 +245,9 @@ def init_db():
             # Seriennummer / IMEI (best effort – ab Android 10 nur mit Systemrechten lesbar)
             c.execute("ALTER TABLE devices ADD COLUMN imei TEXT")
             c.execute("ALTER TABLE devices ADD COLUMN serial TEXT")
+        if "operating_s" not in cols:
+            # Aufsummierte Betriebszeit in Sekunden (nur gezählt, solange das Gerät regelmäßig meldet)
+            c.execute("ALTER TABLE devices ADD COLUMN operating_s REAL NOT NULL DEFAULT 0")
         version = c.execute("SELECT value FROM settings WHERE key='schema_version'").fetchone()
         if version is None:
             # v2: Standard-Wartezeit bis zum Neustart der Demo von 60 auf 30 Sekunden
@@ -853,6 +856,8 @@ def device_dict(c, row, settings) -> dict:
         "sync_requested": bool(row["sync_requested"]),
         "last_seen": row["last_seen"],
         "last_sync": row["last_sync"],
+        "created_at": row["created_at"],
+        "operating_s": row["operating_s"],
     }
 
 
@@ -1030,6 +1035,13 @@ def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
             " platform=?" + (", auto_specs=?" if r.specs else "") + " WHERE id=?",
             (r.manufacturer, r.model, r.marketing_name, os_version, r.app_version, platform)
             + ((json.dumps(r.specs),) if r.specs else ()) + (r.device_id,))
+    # Betriebsstunden aufsummieren: Lücke seit der letzten Meldung dazuzählen, solange das Gerät
+    # regelmäßig gemeldet hat (größere Lücken = Gerät war aus und zählen nicht).
+    prev_seen = row["last_seen"] if row is not None else None
+    if prev_seen is not None:
+        gap = now - prev_seen
+        if 0 < gap <= ONLINE_WINDOW_S:
+            c.execute("UPDATE devices SET operating_s = operating_s + ? WHERE id=?", (gap, r.device_id))
     c.execute(
         "UPDATE devices SET last_seen=?, status=?, last_error=?, battery=?, ip=?,"
         " synced_hash=COALESCE(?, synced_hash), removed=0,"

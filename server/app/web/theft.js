@@ -37,9 +37,14 @@ function tfInitMap() {
 }
 
 async function tfLoad() {
-  try { TF.data = await api("/api/admin/theft"); TF.cfg = { ...TF.data.config }; }
+  try { TF.data = await api("/api/admin/theft"); }
   catch (e) { TF.sidebar.replaceChildren(el("p", { class: "muted" }, e.message)); return; }
-  tfRenderSidebar();
+  // Konfiguration nur beim ersten Laden vom Server \u00fcbernehmen – sonst w\u00fcrde das 8-Sekunden-Polling
+  // laufende, noch nicht gespeicherte Eingaben (Mittelpunkt, Radius \u2026) \u00fcberschreiben.
+  if (!TF.cfg) TF.cfg = { ...TF.data.config };
+  tfBuildSidebar();
+  tfRenderCfg();
+  tfRenderList();
   tfRenderMap();
   clearTimeout(TF.timer);
   if (TF.visible) TF.timer = setTimeout(tfLoad, 8000);
@@ -91,49 +96,65 @@ function tfPopup(d) {
     + ((d.imei || d.serial) ? `<br><span style="font-family:monospace;font-size:11px;color:#888">${[d.imei ? "IMEI " + d.imei : "", d.serial ? "SN " + d.serial : ""].filter(Boolean).join(" · ")}</span>` : "");
 }
 
-function tfRenderSidebar() {
-  const c = TF.cfg, d = TF.data;
+function tfBuildSidebar() {
+  if (TF.cfgPanel) return;
+  TF.cfgPanel = el("div", { class: "panel tf-cfg" });
+  TF.listPanel = el("div", { class: "panel tf-list" });
+  TF.sidebar.replaceChildren(TF.cfgPanel, TF.listPanel);
+}
+
+function tfRenderCfg() {
+  const c = TF.cfg;
   const en = el("input", { type: "checkbox", checked: c.enabled, onchange: e => { c.enabled = e.target.checked; } });
   const radius = el("input", { type: "number", min: 25, max: 100000, step: 25, value: c.radius_m, style: "width:110px",
     onchange: e => { c.radius_m = +e.target.value || 150; tfRenderMap(); }, oninput: e => { c.radius_m = +e.target.value || 150; tfRenderMap(); } });
   const autoLock = el("input", { type: "checkbox", checked: c.auto_lock, onchange: e => c.auto_lock = e.target.checked });
   const pickBtn = el("button", { class: "btn small" + (TF.pickCenter ? " primary" : ""), onclick: () => {
     TF.pickCenter = !TF.pickCenter; TF.mapEl.style.cursor = TF.pickCenter ? "crosshair" : "";
-    toast(TF.pickCenter ? "Auf die Karte klicken, um den Mittelpunkt zu setzen" : ""); tfRenderSidebar();
-  } }, TF.pickCenter ? "Klicke auf die Karte …" : "📍 Mittelpunkt auf Karte wählen");
-  const addr = el("input", { type: "text", placeholder: "Adresse suchen (Straße, Ort) …", class: "tf-addr",
+    toast(TF.pickCenter ? "Auf die Karte klicken, um den Mittelpunkt zu setzen" : ""); tfRenderCfg();
+  } }, TF.pickCenter ? "Klicke auf die Karte \u2026" : "\ud83d\udccd Mittelpunkt auf Karte w\u00e4hlen");
+  const addr = el("input", { type: "text", placeholder: "Adresse suchen (Stra\u00dfe, Ort) \u2026", class: "tf-addr",
     onkeydown: e => { if (e.key === "Enter") tfGeocode(addr.value); } });
+  // Koordinaten direkt eingeben (genauer als Kartenklick)
+  const lat = el("input", { type: "number", step: "0.000001", placeholder: "Breite (lat)", value: c.lat != null ? c.lat : "", style: "width:48%",
+    onchange: e => tfSetCoord(e.target.value, null) });
+  const lon = el("input", { type: "number", step: "0.000001", placeholder: "L\u00e4nge (lon)", value: c.lon != null ? c.lon : "", style: "width:48%",
+    onchange: e => tfSetCoord(null, e.target.value) });
   // erweiterte Fehlalarm-Einstellungen
   const minAcc = el("input", { type: "number", min: 10, max: 500, value: c.min_accuracy_m, style: "width:70px", onchange: e => c.min_accuracy_m = +e.target.value });
   const dwell = el("input", { type: "number", min: 15, max: 3600, value: c.dwell_s, style: "width:70px", onchange: e => c.dwell_s = +e.target.value });
   const grace = el("input", { type: "number", min: 0, max: 3600, value: c.arm_grace_s, style: "width:70px", onchange: e => c.arm_grace_s = +e.target.value });
   const report = el("input", { type: "number", min: 30, max: 3600, value: c.report_interval_s, style: "width:70px", onchange: e => c.report_interval_s = +e.target.value });
 
+  TF.cfgPanel.replaceChildren(
+    el("h3", {}, "\u00dcberwachter Bereich (Geofence)"),
+    el("label", { class: "chip" }, en, "Diebstahlschutz aktiv"),
+    el("div", { class: "tf-center-row" }, pickBtn,
+      c.lat != null ? el("small", { class: "muted" }, `Mittelpunkt: ${(+c.lat).toFixed(5)}, ${(+c.lon).toFixed(5)}`) : el("small", { class: "muted" }, "noch kein Mittelpunkt")),
+    addr,
+    el("label", { style: "margin-top:8px" }, "oder Koordinaten eingeben"),
+    el("div", { class: "row", style: "gap:6px" }, lat, lon),
+    el("label", {}, "Erlaubter Umkreis"), el("div", { class: "row" }, radius, el("span", {}, "Meter")),
+    el("label", { class: "chip" }, autoLock, "Bei Diebstahl automatisch sperren"),
+    el("details", { class: "tf-adv" }, el("summary", {}, "Fehlalarm-Schutz (erweitert)"),
+      el("div", { class: "tf-adv-grid" },
+        el("label", {}, "Nur GPS genauer als", minAcc, "m"),
+        el("label", {}, "Drau\u00dfen mind.", dwell, "Sek. bis Alarm"),
+        el("label", {}, "Schonzeit nach Start", grace, "Sek."),
+        el("label", {}, "Standort melden alle", report, "Sek.")),
+      el("p", { class: "muted", style: "font-size:12px;margin:8px 0 0" }, "Diese Werte verhindern Fehlalarme: ungenaue Messungen werden ignoriert, und das Ger\u00e4t muss den Bereich wirklich eine Weile verlassen haben.")),
+    el("button", { class: "btn primary block", onclick: tfSaveCfg }, "Speichern"),
+    el("p", { class: "muted", style: "font-size:12px" }, "Die Handys brauchen die Demo-App ab Version 1.14 und die Standort-Berechtigung \u201eImmer zulassen\u201c."));
+}
+
+function tfRenderList() {
+  const d = TF.data;
   const online = d.devices.filter(x => x.online).length;
   const withLoc = d.devices.filter(x => x.lat != null).length;
   const locked = d.devices.filter(x => x.locked).length;
-
-  TF.sidebar.replaceChildren(
-    el("div", { class: "panel tf-cfg" },
-      el("h3", {}, "Überwachter Bereich (Geofence)"),
-      el("label", { class: "chip" }, en, "Diebstahlschutz aktiv"),
-      el("div", { class: "tf-center-row" }, pickBtn,
-        c.lat != null ? el("small", { class: "muted" }, `Mittelpunkt: ${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`) : el("small", { class: "muted" }, "noch kein Mittelpunkt")),
-      addr,
-      el("label", {}, "Erlaubter Umkreis"), el("div", { class: "row" }, radius, el("span", {}, "Meter")),
-      el("label", { class: "chip" }, autoLock, "Bei Diebstahl automatisch sperren"),
-      el("details", { class: "tf-adv" }, el("summary", {}, "Fehlalarm-Schutz (erweitert)"),
-        el("div", { class: "tf-adv-grid" },
-          el("label", {}, "Nur GPS genauer als", minAcc, "m"),
-          el("label", {}, "Draußen mind.", dwell, "Sek. bis Alarm"),
-          el("label", {}, "Schonzeit nach Start", grace, "Sek."),
-          el("label", {}, "Standort melden alle", report, "Sek.")),
-        el("p", { class: "muted", style: "font-size:12px;margin:8px 0 0" }, "Diese Werte verhindern Fehlalarme: ungenaue Messungen werden ignoriert, und das Gerät muss den Bereich wirklich eine Weile verlassen haben.")),
-      el("button", { class: "btn primary block", onclick: tfSaveCfg }, "Speichern"),
-      el("p", { class: "muted", style: "font-size:12px" }, "Die Handys brauchen die Demo-App ab Version 1.14 und die Standort-Berechtigung \u201eImmer zulassen\u201c.")),
-    el("div", { class: "panel tf-list" },
-      el("div", { class: "tf-sum" }, `${d.devices.length} Handys · ${online} online · ${withLoc} mit Standort` + (locked ? ` · ${locked} gesperrt` : "")),
-      ...(d.devices.length ? d.devices.map(tfDeviceRow) : [el("p", { class: "muted" }, "Noch keine Handys. Sie erscheinen, sobald die Demo-App läuft und den Standort meldet.")])));
+  TF.listPanel.replaceChildren(
+    el("div", { class: "tf-sum" }, `${d.devices.length} Handys \u00b7 ${online} online \u00b7 ${withLoc} mit Standort` + (locked ? ` \u00b7 ${locked} gesperrt` : "")),
+    ...(d.devices.length ? d.devices.map(tfDeviceRow) : [el("p", { class: "muted" }, "Noch keine Handys. Sie erscheinen, sobald die Demo-App l\u00e4uft und den Standort meldet.")]));
 }
 
 function tfDeviceRow(d) {
@@ -158,8 +179,24 @@ function tfDeviceRow(d) {
 function tfSetCenter(lat, lon) {
   TF.cfg.lat = lat; TF.cfg.lon = lon;
   TF.pickCenter = false; TF.mapEl.style.cursor = "";
-  tfRenderMap(); tfRenderSidebar();
-  toast("Mittelpunkt gesetzt – nicht vergessen zu speichern");
+  tfRenderMap(); tfRenderCfg();
+  toast("Mittelpunkt gesetzt \u2013 nicht vergessen zu speichern");
+}
+
+// Koordinaten-Eingabefelder: einzelne Achse setzen, Wertebereich pr\u00fcfen
+function tfSetCoord(latStr, lonStr) {
+  if (latStr !== null && latStr !== "") {
+    const v = parseFloat(latStr);
+    if (isNaN(v) || v < -90 || v > 90) { toast("Breite (lat) muss zwischen -90 und 90 liegen"); return; }
+    TF.cfg.lat = v;
+  }
+  if (lonStr !== null && lonStr !== "") {
+    const v = parseFloat(lonStr);
+    if (isNaN(v) || v < -180 || v > 180) { toast("L\u00e4nge (lon) muss zwischen -180 und 180 liegen"); return; }
+    TF.cfg.lon = v;
+  }
+  tfRenderMap(); tfRenderCfg();
+  if (TF.cfg.lat != null && TF.cfg.lon != null) TF.map && TF.map.setView([TF.cfg.lat, TF.cfg.lon], Math.max(TF.map.getZoom(), 15));
 }
 
 async function tfGeocode(q) {
@@ -174,8 +211,13 @@ async function tfGeocode(q) {
 
 async function tfSaveCfg() {
   const c = TF.cfg;
-  if (c.enabled && c.lat == null) { toast("Bitte zuerst einen Mittelpunkt auf der Karte wählen"); return; }
-  try { await api("/api/admin/theft/config", json("PUT", c)); toast("Gespeichert"); tfLoad(); }
+  if (c.enabled && (c.lat == null || c.lon == null)) { toast("Bitte zuerst einen Mittelpunkt w\u00e4hlen (Karte, Adresse oder Koordinaten)"); return; }
+  try {
+    const saved = await api("/api/admin/theft/config", json("PUT", c));
+    TF.cfg = { ...saved };            // normalisierte Werte vom Server \u00fcbernehmen
+    toast("Gespeichert");
+    tfRenderCfg(); tfRenderMap();
+  }
   catch (e) { toast(e.message); }
 }
 
