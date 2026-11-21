@@ -228,6 +228,24 @@ data class TheftInfo(
     val test: Boolean = false,
     val geofence: Geofence = Geofence(),
     val params: TheftParams = TheftParams(),
+    @SerialName("wifi_ssids") val wifiSsids: List<String> = emptyList(),
+    val schedule: TheftSchedule = TheftSchedule(),
+    val unlock: UnlockPw? = null,
+)
+
+@Serializable
+data class TheftSchedule(
+    val enabled: Boolean = false,
+    val from: String = "08:00",
+    val until: String = "20:00",
+    val days: List<Int> = listOf(0, 1, 2, 3, 4, 5),
+)
+
+@Serializable
+data class UnlockPw(
+    val salt: String = "",
+    val hash: String = "",
+    @SerialName("iter") val iter: Int = 120000,
 )
 
 @Serializable
@@ -244,6 +262,9 @@ data class TheftParams(
     @SerialName("dwell_s") val dwellS: Int = 180,
     @SerialName("arm_grace_s") val armGraceS: Int = 300,
     @SerialName("report_interval_s") val reportIntervalS: Int = 120,
+    @SerialName("gps_only") val gpsOnly: Boolean = true,
+    @SerialName("min_fixes") val minFixes: Int = 4,
+    @SerialName("margin_m") val marginM: Int = 50,
 )
 
 /** Ein GPS-Standort, den die App an den Server meldet. */
@@ -259,11 +280,18 @@ data class LocFix(
 )
 
 @Serializable
+data class DeviceUnlock(
+    @SerialName("device_id") val deviceId: String,
+    val password: String,
+)
+
+@Serializable
 data class LocationReport(
     @SerialName("device_id") val deviceId: String,
     val fixes: List<LocFix> = emptyList(),
     @SerialName("app_outside") val appOutside: Boolean = false,
     @SerialName("app_locked") val appLocked: Boolean = false,
+    @SerialName("wifi_ssid") val wifiSsid: String? = null,
 )
 
 /** Neueste Demo-App-Version auf dem Server (leere Felder = keine hochgeladen). */

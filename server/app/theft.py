@@ -12,8 +12,10 @@ Fehlalarm-Schutz (greift hier UND in der App):
   - kurz nach dem Scharfschalten / Neustart gibt es eine Schonzeit (GPS braucht Zeit zum Einrasten)
   - fehlt ein Standort ganz, passiert nichts (kein Alarm bei „kein GPS")
 """
+import hashlib
 import json
 import math
+import os
 import threading
 import time
 from pathlib import Path
@@ -27,12 +29,22 @@ DEFAULTS = {
     "lat": None,
     "lon": None,
     "radius_m": 150,          # erlaubter Umkreis um den Laden
-    "min_accuracy_m": 60,     # schlechtere GPS-Fixes ignorieren
+    "min_accuracy_m": 50,     # schlechtere GPS-Fixes ignorieren (nur gute zählen für Alarm)
     "dwell_s": 180,           # so lange muss das Gerät den Bereich durchgehend verlassen haben
     "arm_grace_s": 300,       # Schonzeit nach Scharfschalten / Neustart
     "report_interval_s": 120, # wie oft die App im Normalfall den Standort meldet
     "auto_lock": True,        # Gerät bei Diebstahl automatisch sperren
     "history_hours": 72,      # Standortverlauf so lange aufheben
+    # --- strenger Fehlalarm-Schutz ---
+    "gps_only": True,         # nur echte GPS-Fixes dürfen einen Alarm auslösen (kein Funknetz/WLAN)
+    "min_fixes": 4,           # so viele AUFEINANDERFOLGENDE klare Draußen-Messungen nötig
+    "margin_m": 50,           # zusätzlicher fester Sicherheitsabstand über Radius+Genauigkeit
+    "max_scatter_m": 200,     # Draußen-Messungen müssen nah beieinander liegen (sonst GPS-Rauschen)
+    "wifi_ssids": [],         # Namen des Laden-WLANs: solange das Gerät damit verbunden ist, NIE Alarm
+    "schedule_enabled": False,# Zeitplan nutzen (nachts/sonntags aus, damit WLAN-Aus keinen Fehlalarm macht)
+    "active_from": "08:00",   # Schutz nur in diesem Zeitfenster scharf
+    "active_until": "20:00",
+    "active_days": [0, 1, 2, 3, 4, 5],  # aktive Wochentage (0=Mo … 6=So), Standard Mo–Sa
 }
 EARTH_R = 6371000.0
 
@@ -45,17 +57,68 @@ def haversine(a_lat, a_lon, b_lat, b_lon) -> float:
     return 2 * EARTH_R * math.asin(min(1.0, math.sqrt(h)))
 
 
+def _parse_hhmm(v, default):
+    try:
+        h, m = str(v).split(":")
+        return int(h) * 60 + int(m)
+    except Exception:
+        return default
+
+
+def schedule_active(cfg: dict, now_ts: Optional[float] = None) -> bool:
+    """True, wenn der Schutz laut Zeitplan gerade scharf sein soll (Zeitzone Europe/Berlin)."""
+    if not cfg.get("schedule_enabled"):
+        return True
+    import datetime as _dt
+    tz = None
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("Europe/Berlin")
+    except Exception:
+        tz = None
+    dt = _dt.datetime.fromtimestamp(now_ts or time.time(), tz)
+    days = cfg.get("active_days") or [0, 1, 2, 3, 4, 5]
+    if dt.weekday() not in days:
+        return False
+    start = _parse_hhmm(cfg.get("active_from", "08:00"), 480)
+    end = _parse_hhmm(cfg.get("active_until", "20:00"), 1200)
+    cur = dt.hour * 60 + dt.minute
+    if start == end:
+        return True
+    return start <= cur < end if start < end else (cur >= start or cur < end)
+
+
+def on_store_wifi(cfg: dict, ssid: Optional[str]):
+    """True/False, wenn ein Laden-WLAN konfiguriert ist; None, wenn kein WLAN-Kriterium gesetzt ist."""
+    ssids = cfg.get("wifi_ssids") or []
+    if not ssids:
+        return None
+    if not ssid:
+        return False
+    norm = ssid.strip().strip(chr(34)).lower()
+    return any(norm == str(x).strip().strip(chr(34)).lower() for x in ssids if str(x).strip())
+
+
 class GeofenceConfig(BaseModel):
     enabled: bool = False
     lat: Optional[float] = None
     lon: Optional[float] = None
     radius_m: int = 150
-    min_accuracy_m: int = 60
+    min_accuracy_m: int = 50
     dwell_s: int = 180
     arm_grace_s: int = 300
     report_interval_s: int = 120
     auto_lock: bool = True
     history_hours: int = 72
+    gps_only: bool = True
+    min_fixes: int = 4
+    margin_m: int = 50
+    max_scatter_m: int = 200
+    wifi_ssids: list[str] = []
+    schedule_enabled: bool = False
+    active_from: str = "08:00"
+    active_until: str = "20:00"
+    active_days: list[int] = [0, 1, 2, 3, 4, 5]
 
 
 class Fix(BaseModel):
@@ -74,6 +137,8 @@ class LocationReport(BaseModel):
     # Die App meldet, was sie selbst festgestellt hat (zweite Meinung, ändert aber nichts allein)
     app_outside: bool = False
     app_locked: bool = False
+    # Name des aktuell verbundenen WLANs (für die Laden-WLAN-Prüfung); leer = nicht verbunden/unbekannt
+    wifi_ssid: Optional[str] = None
 
 
 def make_theft_router(db: Callable, require_admin: Callable, require_device: Callable,
@@ -95,7 +160,9 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
                 last_source TEXT, last_battery INTEGER, last_speed REAL,
                 last_distance_m REAL,
                 inside INTEGER,                -- 1 drinnen, 0 draußen, NULL unbekannt
-                armed_at REAL
+                armed_at REAL,
+                outside_count INTEGER NOT NULL DEFAULT 0,  -- aufeinanderfolgende klare Draußen-Messungen
+                outside_lat REAL, outside_lon REAL         -- Position der ersten Draußen-Messung (Konsistenz)
             );
             CREATE TABLE IF NOT EXISTS locations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,6 +174,12 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
             );
             CREATE INDEX IF NOT EXISTS loc_dev_t ON locations(device_id, t);
         """)
+        # Nachträgliche Spalten (für bestehende Installationen)
+        tcols = {r["name"] for r in c.execute("PRAGMA table_info(theft_devices)")}
+        for col, ddl in (("outside_count", "outside_count INTEGER NOT NULL DEFAULT 0"),
+                         ("outside_lat", "outside_lat REAL"), ("outside_lon", "outside_lon REAL")):
+            if col not in tcols:
+                c.execute(f"ALTER TABLE theft_devices ADD COLUMN {ddl}")
 
     def set_cfg_path(data_dir: Path):
         cfg_file_holder["path"] = data_dir / "theft.json"
@@ -123,6 +196,43 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
 
     def save_config(cfg: dict):
         cfg_file_holder["path"].write_text(json.dumps(cfg))
+
+    def _pw_file():
+        base = cfg_file_holder["path"]
+        return (base.parent / "theft_pw.json") if base else None
+
+    def get_password():
+        f = _pw_file()
+        try:
+            if f and f.exists():
+                return json.loads(f.read_text())
+        except Exception:
+            pass
+        return None
+
+    def set_password(pw: str):
+        salt = os.urandom(16)
+        it = 120000
+        h = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, it)
+        _pw_file().write_text(json.dumps({"salt": salt.hex(), "hash": h.hex(), "iter": it}))
+
+    def clear_password():
+        f = _pw_file()
+        try:
+            if f and f.exists():
+                f.unlink()
+        except Exception:
+            pass
+
+    def verify_password(pw: str) -> bool:
+        d = get_password()
+        if not d or not pw:
+            return False
+        try:
+            h = hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(d["salt"]), int(d["iter"]))
+            return h.hex() == d["hash"]
+        except Exception:
+            return False
 
     def tstate(c, device_id: str) -> dict:
         row = c.execute("SELECT * FROM theft_devices WHERE device_id=?", (device_id,)).fetchone()
@@ -141,75 +251,120 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
                       (f"Bereich verlassen ({dist:.0f} m vom Laden)", time.time(), device_id))
         pending.append((device_id, dist, cfg["auto_lock"]))
 
-    def evaluate(c, device_id: str, fixes: list[Fix], pending: list) -> dict:
-        """Gemeldete Standorte auswerten (Fehlalarm-Schutz). Gibt den aktuellen Sperr-Status zurück."""
+    def _qualifies(f, cfg) -> bool:
+        """Nur verlässliche Messungen dürfen einen Alarm auslösen."""
+        if f.acc is None or f.acc <= 0:        # unbekannte Genauigkeit -> niemals
+            return False
+        if f.acc > cfg["min_accuracy_m"]:      # zu ungenau
+            return False
+        if cfg.get("gps_only", True) and (f.source or "gps") != "gps":  # kein echtes GPS (Funknetz/WLAN)
+            return False
+        return True
+
+    def evaluate(c, device_id: str, fixes: list[Fix], pending: list, wifi_ssid: Optional[str] = None) -> dict:
+        """Gemeldete Standorte auswerten (strenger Fehlalarm-Schutz). Gibt den Sperr-Status zurück.
+
+        Alarm NUR wenn ALLES zutrifft:
+          - Zeitplan gerade scharf (nachts/sonntags optional aus)
+          - NICHT im Laden-WLAN (falls eins konfiguriert ist)
+          - mehrere AUFEINANDERFOLGENDE, nah beieinander liegende, genaue GPS-Fixes klar außerhalb
+          - Verweildauer vorbei und Schonzeit abgelaufen
+        """
         cfg = config()
         st = tstate(c, device_id)
         now = time.time()
-        # Standorte speichern (auch wenn der Geofence aus ist – für die Karte)
+        has_center = cfg["lat"] is not None and cfg["lon"] is not None
+        wifi_cfg = bool(cfg.get("wifi_ssids"))
+        store_wifi = on_store_wifi(cfg, wifi_ssid)     # True / False / None
+        sched_ok = schedule_active(cfg, now)
+        margin = cfg.get("margin_m", 50)
+        scatter = cfg.get("max_scatter_m", 200)
+        armed_ok = cfg["enabled"] and st["armed"] and has_center and sched_ok
+        grace_ok = (not st["armed_at"]) or now - st["armed_at"] > cfg["arm_grace_s"]
+        # „Sicher" = im Laden-WLAN ODER Zeitplan gerade aus -> dann niemals Alarm, Zähler zurücksetzen
+        safe_context = (wifi_cfg and store_wifi) or (not sched_ok)
+
+        o_since = st["outside_since"]
+        o_count = st["outside_count"] or 0
+        o_lat = st["outside_lat"]
+        o_lon = st["outside_lon"]
         best = None
-        for f in fixes:
+        trig_dist = None
+
+        for f in sorted(fixes, key=lambda x: (x.t or now)):
             t = f.t or now
             if not (-90 <= f.lat <= 90 and -180 <= f.lon <= 180):
                 continue
             dist = None
             inside = None
-            if cfg["lat"] is not None and cfg["lon"] is not None:
+            if has_center:
                 dist = haversine(cfg["lat"], cfg["lon"], f.lat, f.lon)
-                good = f.acc <= 0 or f.acc <= cfg["min_accuracy_m"]
-                if good:
+                if _qualifies(f, cfg):
                     buffer_m = max(f.acc, 30)
-                    inside = 1 if dist <= cfg["radius_m"] else (0 if dist > cfg["radius_m"] + buffer_m else None)
+                    inside = 1 if dist <= cfg["radius_m"] else (0 if dist > cfg["radius_m"] + buffer_m + margin else None)
             c.execute("INSERT INTO locations (device_id,t,lat,lon,acc,battery,speed,source,distance_m,inside) VALUES (?,?,?,?,?,?,?,?,?,?)",
                       (device_id, t, f.lat, f.lon, f.acc, f.battery, f.speed, f.source, dist, inside))
             if best is None or t >= (best.t or 0):
                 best = f
-        # ältere Standorte aufräumen
+            if not (armed_ok and grace_ok):
+                continue
+            if safe_context:
+                o_count = 0; o_since = None; o_lat = None; o_lon = None
+                continue
+            if not _qualifies(f, cfg):
+                continue
+            if inside == 0:                 # klar + sicher draußen UND nicht im Laden-WLAN
+                if o_count > 0 and o_lat is not None and haversine(o_lat, o_lon, f.lat, f.lon) > scatter:
+                    o_count = 1; o_since = t; o_lat = f.lat; o_lon = f.lon   # Ausreißer -> neu zählen
+                else:
+                    if o_count == 0:
+                        o_since = t; o_lat = f.lat; o_lon = f.lon
+                    o_count += 1
+                if o_count >= cfg["min_fixes"] and o_since is not None and now - o_since >= cfg["dwell_s"]:
+                    trig_dist = dist
+            elif inside == 1:               # eindeutig drinnen
+                o_count = 0; o_since = None; o_lat = None; o_lon = None
+            # inside None (Pufferzone/ungenau) -> Zähler unverändert
+
         c.execute("DELETE FROM locations WHERE t < ?", (now - cfg["history_hours"] * 3600,))
 
         if best is not None:
-            dist = haversine(cfg["lat"], cfg["lon"], best.lat, best.lon) if cfg["lat"] is not None else None
-            inside = None
-            good = best.acc <= 0 or best.acc <= cfg["min_accuracy_m"]
-            if dist is not None and good:
-                buffer_m = max(best.acc, 30)
-                inside = dist <= cfg["radius_m"]
-                outside_hard = dist > cfg["radius_m"] + buffer_m
-            else:
-                outside_hard = False
+            bdist = haversine(cfg["lat"], cfg["lon"], best.lat, best.lon) if has_center else None
+            disp_inside = st["inside"]
+            if has_center and _qualifies(best, cfg):
+                disp_inside = 1 if bdist <= cfg["radius_m"] else (0 if bdist > cfg["radius_m"] + max(best.acc, 30) else st["inside"])
             c.execute("UPDATE theft_devices SET last_lat=?, last_lon=?, last_acc=?, last_at=?, last_source=?, "
-                      "last_battery=COALESCE(?,last_battery), last_speed=?, last_distance_m=?, inside=? WHERE device_id=?",
+                      "last_battery=COALESCE(?,last_battery), last_speed=?, last_distance_m=?, inside=?, "
+                      "outside_since=?, outside_count=?, outside_lat=?, outside_lon=? WHERE device_id=?",
                       (best.lat, best.lon, best.acc, best.t or now, best.source, best.battery, best.speed,
-                       dist, (1 if inside else 0) if inside is not None else st["inside"], device_id))
-            st = tstate(c, device_id)
-            # Geofence-Auswertung nur wenn scharf, eingerichtet, Genauigkeit gut und Schonzeit vorbei
-            armed_ok = cfg["enabled"] and st["armed"] and cfg["lat"] is not None
-            grace_ok = not st["armed_at"] or now - st["armed_at"] > cfg["arm_grace_s"]
-            if armed_ok and grace_ok and good and dist is not None:
-                if outside_hard:
-                    if not st["outside_since"]:
-                        c.execute("UPDATE theft_devices SET outside_since=? WHERE device_id=?", (now, device_id))
-                        st["outside_since"] = now
-                    if now - st["outside_since"] >= cfg["dwell_s"]:
-                        _trigger_theft(c, device_id, dist, cfg, pending)
-                elif inside:
-                    # eindeutig wieder drinnen: Zähler zurücksetzen (Sperre bleibt aber bestehen)
-                    c.execute("UPDATE theft_devices SET outside_since=NULL WHERE device_id=?", (device_id,))
+                       bdist, disp_inside, o_since, o_count, o_lat, o_lon, device_id))
+        else:
+            c.execute("UPDATE theft_devices SET outside_since=?, outside_count=?, outside_lat=?, outside_lon=? WHERE device_id=?",
+                      (o_since, o_count, o_lat, o_lon, device_id))
+
+        if trig_dist is not None:
+            _trigger_theft(c, device_id, trig_dist, cfg, pending)
         return device_theft_status(c, device_id)
 
     def device_theft_status(c, device_id: str) -> dict:
         cfg = config()
         st = tstate(c, device_id)
         reason = st["lock_reason"] or ""
+        pw = get_password()
         return {
-            "armed": bool(st["armed"]) and cfg["enabled"],
+            "armed": bool(st["armed"]) and cfg["enabled"] and schedule_active(cfg),
             "locked": bool(st["locked"]),
             "lock_seq": st["lock_seq"],
             "lock_reason": reason,
             "test": reason.startswith("Test"),
             "geofence": {"enabled": cfg["enabled"] and cfg["lat"] is not None,
                          "lat": cfg["lat"], "lon": cfg["lon"], "radius_m": cfg["radius_m"]},
-            "params": {k: cfg[k] for k in ("min_accuracy_m", "dwell_s", "arm_grace_s", "report_interval_s")},
+            "params": {k: cfg[k] for k in ("min_accuracy_m", "dwell_s", "arm_grace_s", "report_interval_s",
+                                            "gps_only", "min_fixes", "margin_m")},
+            "wifi_ssids": cfg.get("wifi_ssids") or [],
+            "schedule": {"enabled": bool(cfg.get("schedule_enabled")), "from": cfg.get("active_from", "08:00"),
+                         "until": cfg.get("active_until", "20:00"), "days": cfg.get("active_days") or [0, 1, 2, 3, 4, 5]},
+            "unlock": ({"salt": pw["salt"], "hash": pw["hash"], "iter": pw["iter"]} if pw else None),
         }
 
     # ---- von Heartbeat/Sync aufgerufen (damit das Handy Geofence + Sperrstand oft erfährt) ----
@@ -225,7 +380,7 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
     def device_location(report: LocationReport):
         pending = []
         with db() as c:
-            status = evaluate(c, report.device_id, report.fixes[:200], pending)
+            status = evaluate(c, report.device_id, report.fixes[:200], pending, report.wifi_ssid)
         for dev_id, dist, auto_lock in pending:
             if alerts:
                 name = device_name(dev_id)
@@ -269,7 +424,7 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
                     "inside": inside, "source": st.get("last_source"),
                     "imei": d["imei"], "serial": d["serial"],
                 })
-        return {"config": cfg, "devices": out}
+        return {"config": cfg, "pw_set": get_password() is not None, "devices": out}
 
     @r.put("/api/admin/theft/config", dependencies=[Depends(require_admin)])
     def set_config(body: GeofenceConfig):
@@ -282,6 +437,11 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
         cfg["arm_grace_s"] = max(0, min(3600, cfg["arm_grace_s"]))
         cfg["report_interval_s"] = max(30, min(3600, cfg["report_interval_s"]))
         cfg["history_hours"] = max(1, min(720, cfg["history_hours"]))
+        cfg["min_fixes"] = max(1, min(20, cfg.get("min_fixes", 4)))
+        cfg["margin_m"] = max(0, min(2000, cfg.get("margin_m", 50)))
+        cfg["max_scatter_m"] = max(30, min(5000, cfg.get("max_scatter_m", 200)))
+        cfg["wifi_ssids"] = [str(x).strip() for x in (cfg.get("wifi_ssids") or []) if str(x).strip()][:10]
+        cfg["active_days"] = sorted({int(d) for d in (cfg.get("active_days") or []) if 0 <= int(d) <= 6})
         prev = config()
         save_config(cfg)
         # beim (neu) Scharfschalten: Schonzeit für alle neu starten und „außerhalb"-Zähler löschen
@@ -337,5 +497,36 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
             c.execute("UPDATE theft_devices SET armed=?, armed_at=?, outside_since=NULL WHERE device_id=?",
                       (1 if body.armed else 0, time.time(), device_id))
             return device_theft_status(c, device_id)
+
+    class PwBody(BaseModel):
+        password: str = ""
+
+    @r.put("/api/admin/theft/password", dependencies=[Depends(require_admin)])
+    def set_theft_password(body: PwBody):
+        if body.password:
+            if len(body.password) < 4:
+                raise HTTPException(400, "Passwort zu kurz (mindestens 4 Zeichen).")
+            set_password(body.password)
+            return {"set": True}
+        clear_password()
+        return {"set": False}
+
+    class DevUnlockBody(BaseModel):
+        device_id: str
+        password: str
+
+    @r.post("/api/device/theft/unlock", dependencies=[Depends(require_device)])
+    def device_unlock(body: DevUnlockBody):
+        """Entsperren direkt am Gerät mit dem Admin-Passwort (von der Webseite festgelegt)."""
+        if not verify_password(body.password):
+            raise HTTPException(403, "Falsches Passwort")
+        with db() as c:
+            tstate(c, body.device_id)
+            c.execute("UPDATE theft_devices SET locked=0, lock_seq=lock_seq+1, lock_reason=NULL, locked_at=NULL, "
+                      "outside_since=NULL, outside_count=0 WHERE device_id=?", (body.device_id,))
+            status = device_theft_status(c, body.device_id)
+        if alerts:
+            alerts.resolve(f"theft:{body.device_id}")
+        return status
 
     return r, status_for_device, set_cfg_path

@@ -157,6 +157,57 @@ class Prefs(context: Context) {
         get() = sp.getLong("last_loc_report", 0)
         set(v) = sp.edit().putLong("last_loc_report", v).apply()
 
+    // --- strenger Fehlalarm-Schutz / Laden-WLAN / Zeitplan / Entsperr-Passwort ---
+    var fenceGpsOnly: Boolean
+        get() = sp.getBoolean("fence_gpsonly", true)
+        set(v) = sp.edit().putBoolean("fence_gpsonly", v).apply()
+    var fenceMinFixes: Int
+        get() = sp.getInt("fence_minfixes", 4)
+        set(v) = sp.edit().putInt("fence_minfixes", v).apply()
+    var fenceMarginM: Int
+        get() = sp.getInt("fence_margin", 50)
+        set(v) = sp.edit().putInt("fence_margin", v).apply()
+    /** aufeinanderfolgende klare Draußen-Messungen (lokale Zählung). */
+    var outsideCount: Int
+        get() = sp.getInt("outside_count", 0)
+        set(v) = sp.edit().putInt("outside_count", v).apply()
+    /** Laden-WLAN-Namen (SSID), mit "\n" getrennt. */
+    var storeWifis: String
+        get() = sp.getString("store_wifis", "") ?: ""
+        set(v) = sp.edit().putString("store_wifis", v).apply()
+    /** Zeitplan. */
+    var schedEnabled: Boolean
+        get() = sp.getBoolean("sched_on", false)
+        set(v) = sp.edit().putBoolean("sched_on", v).apply()
+    var schedFrom: String
+        get() = sp.getString("sched_from", "08:00") ?: "08:00"
+        set(v) = sp.edit().putString("sched_from", v).apply()
+    var schedUntil: String
+        get() = sp.getString("sched_until", "20:00") ?: "20:00"
+        set(v) = sp.edit().putString("sched_until", v).apply()
+    /** aktive Wochentage als CSV (0=Mo…6=So). */
+    var schedDays: String
+        get() = sp.getString("sched_days", "0,1,2,3,4,5") ?: "0,1,2,3,4,5"
+        set(v) = sp.edit().putString("sched_days", v).apply()
+    /** Entsperr-Passwort (gesalzener Hash) für Offline-Prüfung am Gerät. */
+    var unlockSalt: String
+        get() = sp.getString("unlock_salt", "") ?: ""
+        set(v) = sp.edit().putString("unlock_salt", v).apply()
+    var unlockHash: String
+        get() = sp.getString("unlock_hash", "") ?: ""
+        set(v) = sp.edit().putString("unlock_hash", v).apply()
+    var unlockIter: Int
+        get() = sp.getInt("unlock_iter", 120000)
+        set(v) = sp.edit().putInt("unlock_iter", v).apply()
+    /** Entsperren am Gerät erfolgt, muss noch an den Server gemeldet werden. */
+    var pendingUnlock: Boolean
+        get() = sp.getBoolean("pending_unlock", false)
+        set(v) = sp.edit().putBoolean("pending_unlock", v).apply()
+    /** bis zu diesem Zeitpunkt lokal NICHT erneut sperren (nach Entsperren am Gerät). */
+    var noLockUntil: Long
+        get() = sp.getLong("no_lock_until", 0)
+        set(v) = sp.edit().putLong("no_lock_until", v).apply()
+
     /** Über *#06# ausgelesene IMEI/Seriennummer (falls Android sie der App direkt nicht gibt). */
     var capturedImei: String
         get() = sp.getString("cap_imei", "") ?: ""

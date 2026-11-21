@@ -35,6 +35,8 @@ class TheftGuard(private val app: DemoApp) {
     private val sendMutex = Mutex()
     /** true = Sperrbildschirm/Alarm sollen laufen. */
     val locked = MutableStateFlow(prefs.theftLocked)
+    /** Entsperr-Passwort nur im Speicher halten, bis es (online) an den Server gemeldet wurde. */
+    @Volatile private var pendingUnlockPw: String? = null
 
     private fun api() = ApiClient(prefs.serverUrl, prefs.deviceToken)
 
@@ -70,7 +72,16 @@ class TheftGuard(private val app: DemoApp) {
         prefs.fenceDwellS = t.params.dwellS
         prefs.fenceGraceS = t.params.armGraceS
         prefs.fenceReportS = t.params.reportIntervalS
-        if (t.armed && !wasArmed) { prefs.armedAt = System.currentTimeMillis(); prefs.outsideSince = 0 }
+        prefs.fenceGpsOnly = t.params.gpsOnly
+        prefs.fenceMinFixes = t.params.minFixes
+        prefs.fenceMarginM = t.params.marginM
+        prefs.storeWifis = t.wifiSsids.joinToString("\n")
+        prefs.schedEnabled = t.schedule.enabled
+        prefs.schedFrom = t.schedule.from
+        prefs.schedUntil = t.schedule.until
+        prefs.schedDays = t.schedule.days.joinToString(",")
+        t.unlock?.let { prefs.unlockSalt = it.salt; prefs.unlockHash = it.hash; prefs.unlockIter = it.iter }
+        if (t.armed && !wasArmed) { prefs.armedAt = System.currentTimeMillis(); prefs.outsideSince = 0; prefs.outsideCount = 0 }
 
         // Server-Sperrbefehl: nur bei NEUERER Nummer übernehmen (so entsperrt die Webseite zuverlässig)
         if (t.lockSeq > prefs.theftLockSeq) {
@@ -120,28 +131,105 @@ class TheftGuard(private val app: DemoApp) {
         checkGeofenceLocally(fix)
     }
 
-    /** Eigene Geofence-Prüfung – wirkt auch ohne Internet. Gleiche Fehlalarm-Regeln wie der Server. */
+    /** Eigene Geofence-Prüfung – wirkt auch ohne Internet. Strenge Regeln gegen Fehlalarme:
+     *  Alarm NUR wenn Zeitplan scharf, NICHT im Laden-WLAN, und mehrere genaue GPS-Fixes klar draußen. */
     private fun checkGeofenceLocally(fix: LocFix) {
         if (prefs.theftLocked || !prefs.theftArmed || !prefs.fenceHasCenter) return
         val now = System.currentTimeMillis()
-        if (prefs.armedAt > 0 && now - prefs.armedAt < prefs.fenceGraceS * 1000L) return  // Schonzeit
-        val goodAcc = fix.acc <= 0.0 || fix.acc <= prefs.fenceMinAcc
-        if (!goodAcc) return  // ungenaue Messung ignorieren
+        if (now < prefs.noLockUntil) return                                   // kurz nach Entsperren am Gerät
+        if (!scheduleActiveLocal()) { prefs.outsideSince = 0; prefs.outsideCount = 0; return }  // Zeitplan aus
+        if (onStoreWifi()) { prefs.outsideSince = 0; prefs.outsideCount = 0; return }           // im Laden-WLAN
+        if (prefs.armedAt > 0 && now - prefs.armedAt < prefs.fenceGraceS * 1000L) return        // Schonzeit
+        // Nur verlässliche GPS-Messungen zählen
+        if (fix.acc <= 0.0 || fix.acc > prefs.fenceMinAcc) return
+        if (prefs.fenceGpsOnly && fix.source != "gps") return
         val dist = distanceM(prefs.fenceLat, prefs.fenceLon, fix.lat, fix.lon)
-        val buffer = maxOf(fix.acc, 30.0)
+        val buffer = maxOf(fix.acc, 30.0) + prefs.fenceMarginM
         when {
-            dist > prefs.fenceRadiusM + buffer -> {  // eindeutig draußen
-                if (prefs.outsideSince == 0L) prefs.outsideSince = now
-                if (now - prefs.outsideSince >= prefs.fenceDwellS * 1000L) {
+            dist > prefs.fenceRadiusM + buffer -> {              // klar + sicher draußen
+                if (prefs.outsideCount == 0 || prefs.outsideSince == 0L) { prefs.outsideSince = now; prefs.outsideCount = 0 }
+                prefs.outsideCount = prefs.outsideCount + 1
+                if (prefs.outsideCount >= prefs.fenceMinFixes &&
+                    now - prefs.outsideSince >= prefs.fenceDwellS * 1000L) {
                     prefs.theftLockReason = "Bereich verlassen (${dist.toInt()} m vom Laden)"
                     applyLockState(true, prefs.theftLockReason)
-                    // Server gleich informieren (löst dort den Push-Alarm aus)
                     app.scope.launch { runCatching { flush(force = true) } }
                 }
             }
-            dist <= prefs.fenceRadiusM -> prefs.outsideSince = 0L  // eindeutig drinnen
+            dist <= prefs.fenceRadiusM -> { prefs.outsideSince = 0L; prefs.outsideCount = 0 }  // eindeutig drinnen
         }
     }
+
+    /** Aktuell verbundenes WLAN gehört zum Laden? (SSID-Vergleich, Groß/Klein egal.) */
+    private fun onStoreWifi(): Boolean {
+        val list = prefs.storeWifis.split("\n").map { it.trim().trim('"').lowercase() }.filter { it.isNotEmpty() }
+        if (list.isEmpty()) return false
+        val ssid = currentSsid()?.trim()?.trim('"')?.lowercase() ?: return false
+        if (ssid.isEmpty() || ssid == "<unknown ssid>") return false
+        return list.contains(ssid)
+    }
+
+    private fun currentSsid(): String? {
+        return try {
+            val wm = app.applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+            @Suppress("DEPRECATION")
+            val info = wm?.connectionInfo ?: return null
+            @Suppress("DEPRECATION")
+            if (info.networkId == -1 && (info.ssid == null || info.ssid.contains("unknown"))) null else info.ssid
+        } catch (e: Exception) { null }
+    }
+
+    /** Schutz laut Zeitplan gerade scharf? (lokale Gerätezeit) */
+    private fun scheduleActiveLocal(): Boolean {
+        if (!prefs.schedEnabled) return true
+        val cal = java.util.Calendar.getInstance()
+        // Calendar: SUNDAY=1..SATURDAY=7  ->  0=Mo..6=So
+        val dow = (cal.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7
+        val days = prefs.schedDays.split(",").mapNotNull { it.trim().toIntOrNull() }
+        if (days.isNotEmpty() && !days.contains(dow)) return false
+        fun mins(hhmm: String, def: Int): Int = hhmm.split(":").let {
+            if (it.size == 2) (it[0].toIntOrNull() ?: 0) * 60 + (it[1].toIntOrNull() ?: 0) else def
+        }
+        val start = mins(prefs.schedFrom, 480); val end = mins(prefs.schedUntil, 1200)
+        val cur = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+        if (start == end) return true
+        return if (start < end) cur in start until end else (cur >= start || cur < end)
+    }
+
+    /** Entsperren am Gerät mit dem Admin-Passwort. Prüft offline gegen den gespeicherten Hash. */
+    fun tryUnlock(password: String): Boolean {
+        if (password.isBlank() || prefs.unlockHash.isBlank() || prefs.unlockSalt.isBlank()) return false
+        val ok = try {
+            val salt = hexToBytes(prefs.unlockSalt)
+            val spec = javax.crypto.spec.PBEKeySpec(password.toCharArray(), salt, prefs.unlockIter, 256)
+            val f = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            bytesToHex(f.generateSecret(spec).encoded) == prefs.unlockHash.lowercase()
+        } catch (e: Exception) { Log.w(TAG, "Unlock-Prüfung", e); false }
+        if (!ok) return false
+        // Lokal sofort entsperren + kurzzeitig nicht wieder sperren, Zähler zurücksetzen
+        prefs.noLockUntil = System.currentTimeMillis() + maxOf(prefs.fenceGraceS, 120) * 1000L
+        prefs.outsideSince = 0L; prefs.outsideCount = 0
+        prefs.pendingUnlock = true
+        pendingUnlockPw = password
+        applyLockState(false, "")
+        // Server informieren (oder später beim nächsten flush)
+        app.scope.launch { runCatching { pushUnlock(password) } }
+        return true
+    }
+
+    private suspend fun pushUnlock(password: String) {
+        try {
+            val status = api().deviceUnlock(prefs.deviceId, password)
+            prefs.pendingUnlock = false
+            pendingUnlockPw = null
+            prefs.theftLockSeq = status.lockSeq
+            applyServerState(status)
+        } catch (e: Exception) { Log.w(TAG, "Unlock an Server – später erneut", e) }
+    }
+
+    private fun hexToBytes(h: String): ByteArray =
+        ByteArray(h.length / 2) { ((h[it * 2].digitToInt(16) shl 4) + h[it * 2 + 1].digitToInt(16)).toByte() }
+    private fun bytesToHex(b: ByteArray): String = b.joinToString("") { "%02x".format(it) }
 
     // ---------------------------------------------------------- Melden (mit Offline-Warteschlange)
     private fun enqueue(fix: LocFix) {
@@ -161,6 +249,8 @@ class TheftGuard(private val app: DemoApp) {
     /** Warteschlange an den Server senden. force=true: auch wenn das Intervall noch nicht um ist. */
     suspend fun flush(force: Boolean = false) {
         if (!prefs.isConfigured) return
+        // Offline erfolgtes Entsperren jetzt (online) nachreichen
+        if (prefs.pendingUnlock) pendingUnlockPw?.let { runCatching { pushUnlock(it) } }
         val now = System.currentTimeMillis()
         if (!force && now - prefs.lastLocReport < prefs.fenceReportS * 1000L) return
         sendMutex.withLock {
@@ -175,7 +265,8 @@ class TheftGuard(private val app: DemoApp) {
             try {
                 val status = api().postLocation(LocationReport(
                     deviceId = prefs.deviceId, fixes = fixes.takeLast(200),
-                    appOutside = prefs.outsideSince > 0, appLocked = prefs.theftLocked))
+                    appOutside = prefs.outsideSince > 0, appLocked = prefs.theftLocked,
+                    wifiSsid = currentSsid()))
                 prefs.lastLocReport = now
                 applyServerState(status)
             } catch (e: Exception) {

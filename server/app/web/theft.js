@@ -199,6 +199,24 @@ function tfRenderCfg() {
   const grace = el("input", { type: "number", min: 0, max: 3600, value: c.arm_grace_s, style: "width:70px", onchange: e => c.arm_grace_s = +e.target.value });
   const report = el("input", { type: "number", min: 30, max: 3600, value: c.report_interval_s, style: "width:70px", onchange: e => c.report_interval_s = +e.target.value });
 
+  // Laden-WLAN (SSID): solange ein Gerät damit verbunden ist, gibt es NIE Alarm
+  if (!Array.isArray(c.wifi_ssids)) c.wifi_ssids = [];
+  const wifi = el("input", { type: "text", placeholder: "z. B. Laden-WLAN, Shop-5G", value: c.wifi_ssids.join(", "),
+    onchange: e => { c.wifi_ssids = e.target.value.split(",").map(x => x.trim()).filter(Boolean); } });
+  // Zeitplan (nachts/sonntags aus, weil dann oft das WLAN weg ist)
+  const schedOn = el("input", { type: "checkbox", checked: !!c.schedule_enabled, onchange: e => { c.schedule_enabled = e.target.checked; tfRenderCfg(); } });
+  const sFrom = el("input", { type: "time", value: c.active_from || "08:00", onchange: e => c.active_from = e.target.value });
+  const sUntil = el("input", { type: "time", value: c.active_until || "20:00", onchange: e => c.active_until = e.target.value });
+  if (!Array.isArray(c.active_days)) c.active_days = [0, 1, 2, 3, 4, 5];
+  const dayNames = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+  const dayChips = dayNames.map((nm, i) => {
+    const on = c.active_days.includes(i);
+    return el("button", { type: "button", class: "tf-day" + (on ? " on" : ""), onclick: () => {
+      if (c.active_days.includes(i)) c.active_days = c.active_days.filter(d => d !== i); else c.active_days = [...c.active_days, i].sort();
+      tfRenderCfg();
+    } }, nm);
+  });
+
   TF.cfgPanel.replaceChildren(
     el("h3", {}, "\u00dcberwachter Bereich (Geofence)"),
     el("label", { class: "chip" }, en, "Diebstahlschutz aktiv"),
@@ -209,6 +227,14 @@ function tfRenderCfg() {
     el("div", { class: "row", style: "gap:6px" }, lat, lon),
     el("label", {}, "Erlaubter Umkreis"), el("div", { class: "row" }, radius, el("span", {}, "Meter")),
     el("label", { class: "chip" }, autoLock, "Bei Diebstahl automatisch sperren"),
+    el("label", { style: "margin-top:10px" }, "Laden-WLAN (SSID) \u2013 verhindert Fehlalarme"),
+    wifi,
+    el("p", { class: "muted", style: "font-size:12px;margin:2px 0 0" }, "Solange ein Handy mit einem dieser WLANs verbunden ist, l\u00f6st es NIE Alarm \u2013 egal was GPS sagt. Alarm nur, wenn es AUSSERHALB ist UND nicht im Laden-WLAN. Mehrere mit Komma trennen."),
+    el("label", { class: "chip", style: "margin-top:10px" }, schedOn, "Nur zu bestimmten Zeiten scharf (nachts/sonntags aus)"),
+    c.schedule_enabled ? el("div", { class: "tf-sched" },
+      el("div", { class: "row", style: "gap:6px;align-items:center" }, el("span", { class: "muted" }, "von"), sFrom, el("span", { class: "muted" }, "bis"), sUntil),
+      el("div", { class: "tf-days" }, ...dayChips),
+      el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0" }, "Au\u00dferhalb dieser Zeiten ist der Schutz aus \u2013 praktisch, weil nachts oft das WLAN abgeschaltet wird.")) : null,
     el("details", { class: "tf-adv" }, el("summary", {}, "Fehlalarm-Schutz (erweitert)"),
       el("div", { class: "tf-adv-grid" },
         el("label", {}, "Nur GPS genauer als", minAcc, "m"),
@@ -217,7 +243,28 @@ function tfRenderCfg() {
         el("label", {}, "Standort melden alle", report, "Sek.")),
       el("p", { class: "muted", style: "font-size:12px;margin:8px 0 0" }, "Diese Werte verhindern Fehlalarme: ungenaue Messungen werden ignoriert, und das Ger\u00e4t muss den Bereich wirklich eine Weile verlassen haben.")),
     el("button", { class: "btn primary block", onclick: tfSaveCfg }, "Speichern"),
-    el("p", { class: "muted", style: "font-size:12px" }, "Die Handys brauchen die Demo-App ab Version 1.14 und die Standort-Berechtigung \u201eImmer zulassen\u201c."));
+    el("p", { class: "muted", style: "font-size:12px" }, "Die Handys brauchen die Demo-App ab Version 1.16 und die Standort-Berechtigung \u201eImmer zulassen\u201c."),
+    tfPwPanel());
+}
+
+// Admin-Passwort zum Entsperren direkt am Gerät
+function tfPwPanel() {
+  const isSet = !!(TF.data && TF.data.pw_set);
+  const inp = el("input", { type: "password", placeholder: isSet ? "Neues Passwort (leer lassen = unverändert)" : "Passwort festlegen", autocomplete: "new-password" });
+  return el("div", { class: "tf-pwbox" },
+    el("h3", {}, "Entsperren am Gerät"),
+    el("p", { class: "muted", style: "font-size:12px;margin:0 0 6px" },
+      "Mit diesem Passwort kann man den Alarm direkt am gesperrten Handy ausschalten (für Fehlalarme). " + (isSet ? "\u2705 Passwort ist gesetzt." : "Noch kein Passwort gesetzt.")),
+    inp,
+    el("div", { class: "row", style: "gap:6px;margin-top:6px" },
+      el("button", { class: "btn small primary", onclick: () => tfSavePw(inp.value) }, "Passwort speichern"),
+      isSet ? el("button", { class: "btn small danger", onclick: () => tfSavePw("") }, "Entfernen") : null));
+}
+
+async function tfSavePw(pw) {
+  try { const r = await api("/api/admin/theft/password", json("PUT", { password: pw }));
+    toast(r.set ? "Passwort gespeichert" : "Passwort entfernt"); tfLoad(); }
+  catch (e) { toast(e.message); }
 }
 
 function tfRenderList() {

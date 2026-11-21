@@ -15,7 +15,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,7 +28,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,7 +72,9 @@ class TheftLockActivity : ComponentActivity() {
             LaunchedEffect(locked) { if (!locked) { stopAlarm(); finish() } }
             LockScreen(store = store, isTest = demoApp.theft.isTest,
                 protectionId = java.util.UUID.nameUUIDFromBytes(demoApp.prefs.deviceId.toByteArray()).toString().take(8).uppercase(),
-                logo = logo?.let { runCatching { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }.getOrNull() })
+                logo = logo?.let { runCatching { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }.getOrNull() },
+                hasPassword = demoApp.prefs.unlockHash.isNotBlank(),
+                onUnlock = { pw -> demoApp.theft.tryUnlock(pw) })
         }
         startAlarm()
     }
@@ -176,7 +186,8 @@ class TheftLockActivity : ComponentActivity() {
 private val ORANGE = Color(0xFFEE7F00)
 
 @androidx.compose.runtime.Composable
-private fun LockScreen(store: String?, isTest: Boolean, protectionId: String, logo: android.graphics.Bitmap?) {
+private fun LockScreen(store: String?, isTest: Boolean, protectionId: String, logo: android.graphics.Bitmap?,
+                       hasPassword: Boolean, onUnlock: (String) -> Boolean) {
     val now = remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         while (true) {
@@ -236,6 +247,42 @@ private fun LockScreen(store: String?, isTest: Boolean, protectionId: String, lo
         }
         Text(now.value, color = Color(0xFF6B7280), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
         Text("Geräte-Schutz-ID: $protectionId", color = Color(0xFF4B5563), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+
+        if (hasPassword) {
+            Spacer(Modifier.height(20.dp))
+            var open by remember { mutableStateOf(false) }
+            var pw by remember { mutableStateOf("") }
+            var err by remember { mutableStateOf(false) }
+            if (!open) {
+                TextButton(onClick = { open = true }) {
+                    Text("Admin-Entsperrung", color = Color(0xFF9AA0AA), fontSize = 13.sp)
+                }
+            } else {
+                OutlinedTextField(
+                    value = pw, onValueChange = { pw = it; err = false },
+                    label = { Text("Admin-Passwort") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    isError = err,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF15171C), unfocusedContainerColor = Color(0xFF15171C),
+                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                        focusedLabelColor = ORANGE, unfocusedLabelColor = Color(0xFF9AA0AA),
+                        focusedIndicatorColor = ORANGE, unfocusedIndicatorColor = Color(0xFF3A3D44)),
+                    modifier = Modifier.fillMaxWidth())
+                if (err) Text("Falsches Passwort", color = Color(0xFFE5484D), fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp))
+                Spacer(Modifier.height(8.dp))
+                Row {
+                    Button(onClick = { if (!onUnlock(pw)) err = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = ORANGE)) { Text("Entsperren") }
+                    Spacer(Modifier.width(10.dp))
+                    TextButton(onClick = { open = false; pw = ""; err = false }) {
+                        Text("Abbrechen", color = Color(0xFF9AA0AA))
+                    }
+                }
+            }
+        }
     }
 }
 

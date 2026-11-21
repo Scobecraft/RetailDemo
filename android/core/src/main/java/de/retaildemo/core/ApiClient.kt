@@ -146,6 +146,11 @@ class ApiClient(baseUrl: String, private val token: String) {
     suspend fun postLocation(report: LocationReport): TheftInfo =
         JSON.decodeFromString(call("POST", "/api/device/location", jsonBody(report)))
 
+    /** Entsperren am Gerät mit dem Admin-Passwort (von der Webseite festgelegt). */
+    suspend fun deviceUnlock(deviceId: String, password: String): TheftInfo =
+        JSON.decodeFromString(call("POST", "/api/device/theft/unlock",
+            jsonBody(DeviceUnlock(deviceId, password))))
+
     suspend fun heartbeat(report: DeviceReport): HeartbeatResponse =
         JSON.decodeFromString(call("POST", "/api/device/heartbeat", jsonBody(report)))
 
