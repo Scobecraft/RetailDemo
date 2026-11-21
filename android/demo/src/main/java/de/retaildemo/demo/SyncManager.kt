@@ -128,6 +128,7 @@ class SyncManager(private val app: DemoApp) {
         updateReady = prefs.updateReadyCode.takeIf { it > BuildConfig.VERSION_CODE },
         imei = if (withSpecs) DeviceInfo.imei(app) else null,
         serial = if (withSpecs) DeviceInfo.serial(app) else null,
+        readiness = DeviceInfo.readiness(app),
     )
 
     /** Vollständiger Abgleich. Gibt null bei Erfolg zurück, sonst die Fehlermeldung. */

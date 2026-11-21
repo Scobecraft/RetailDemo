@@ -77,6 +77,16 @@ class TheftLockActivity : ComponentActivity() {
                 onUnlock = { pw -> demoApp.theft.tryUnlock(pw) })
         }
         startAlarm()
+        maybeCapturePhoto()
+    }
+
+    /** Einmal pro Sperrung ein Frontkamera-Foto machen und an den Server schicken. */
+    private fun maybeCapturePhoto() {
+        val seq = demoApp.prefs.theftLockSeq
+        if (demoApp.prefs.photoSeq == seq) return
+        if (!TheftPhoto.hasPermission(this)) return
+        demoApp.prefs.photoSeq = seq
+        TheftPhoto.capture(this) { jpeg -> if (jpeg != null) demoApp.theft.uploadPhoto(jpeg) }
     }
 
     override fun onResume() {

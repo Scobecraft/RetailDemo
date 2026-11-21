@@ -47,20 +47,20 @@ class UninstallPinActivity : ComponentActivity() {
                     Card {
                         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("Demo-App deinstallieren", style = MaterialTheme.typography.titleLarge)
-                            Text("Zum Deinstallieren bitte die Admin-PIN eingeben.")
+                            Text("Zum Deinstallieren bitte die Admin-PIN oder das Admin-Passwort eingeben.")
                             OutlinedTextField(
                                 value = pin,
-                                onValueChange = { pin = it.filter(Char::isDigit); wrong = false },
+                                onValueChange = { pin = it; wrong = false },
                                 singleLine = true,
                                 isError = wrong,
                                 label = { Text(if (wrong) "Falsche PIN" else "PIN") },
                                 visualTransformation = PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             )
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                 TextButton(onClick = { finish() }) { Text("Abbrechen") }
                                 TextButton(onClick = {
-                                    if (pin == app.prefs.pin) {
+                                    if (pin == app.prefs.pin || app.theft.verifyAdminPassword(pin)) {
                                         startUninstall(this@UninstallPinActivity)
                                         finish()
                                     } else wrong = true

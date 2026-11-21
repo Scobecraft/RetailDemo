@@ -208,6 +208,19 @@ data class DeviceReport(
     @SerialName("update_ready") val updateReady: Int? = null,
     val imei: String? = null,
     val serial: String? = null,
+    val readiness: Readiness? = null,
+)
+
+@Serializable
+data class Readiness(
+    @SerialName("loc_fine") val locFine: Boolean = false,
+    @SerialName("loc_background") val locBackground: Boolean = false,
+    @SerialName("loc_on") val locOn: Boolean = false,
+    val wifi: Boolean = false,
+    @SerialName("battery_unrestricted") val batteryUnrestricted: Boolean = false,
+    val accessibility: Boolean = false,
+    val notifications: Boolean = false,
+    val camera: Boolean = false,
 )
 
 @Serializable

@@ -7,6 +7,7 @@ Speichert Medien (Videos/Bilder), Playlists und registrierte Demo-Geräte.
 """
 import hashlib
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -248,6 +249,9 @@ def init_db():
         if "operating_s" not in cols:
             # Aufsummierte Betriebszeit in Sekunden (nur gezählt, solange das Gerät regelmäßig meldet)
             c.execute("ALTER TABLE devices ADD COLUMN operating_s REAL NOT NULL DEFAULT 0")
+        if "readiness" not in cols:
+            # Einrichtungs-Status (Berechtigungen etc.) als JSON – für die Bereitschafts-Ampel
+            c.execute("ALTER TABLE devices ADD COLUMN readiness TEXT")
         version = c.execute("SELECT value FROM settings WHERE key='schema_version'").fetchone()
         if version is None:
             # v2: Standard-Wartezeit bis zum Neustart der Demo von 60 auf 30 Sekunden
@@ -858,6 +862,7 @@ def device_dict(c, row, settings) -> dict:
         "last_sync": row["last_sync"],
         "created_at": row["created_at"],
         "operating_s": row["operating_s"],
+        "readiness": (json.loads(row["readiness"]) if row["readiness"] else None),
     }
 
 
@@ -1012,6 +1017,7 @@ class DeviceReport(BaseModel):
     update_ready: Optional[int] = None
     imei: Optional[str] = None
     serial: Optional[str] = None
+    readiness: Optional[dict] = None
 
 
 def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
@@ -1046,9 +1052,11 @@ def _upsert_device(c, r: DeviceReport, ip: Optional[str], full_sync: bool):
         "UPDATE devices SET last_seen=?, status=?, last_error=?, battery=?, ip=?,"
         " synced_hash=COALESCE(?, synced_hash), removed=0,"
         " app_version_code=COALESCE(?, app_version_code), update_ready=?,"
-        " imei=COALESCE(?, imei), serial=COALESCE(?, serial) WHERE id=?",
+        " imei=COALESCE(?, imei), serial=COALESCE(?, serial),"
+        " readiness=COALESCE(?, readiness) WHERE id=?",
         (now, r.status, r.error, r.battery, ip, r.synced_hash, r.app_version_code, r.update_ready,
-         (r.imei or None), (r.serial or None), r.device_id))
+         (r.imei or None), (r.serial or None),
+         (json.dumps(r.readiness) if r.readiness is not None else None), r.device_id))
     if full_sync:
         c.execute("UPDATE devices SET last_sync=?, sync_requested=0 WHERE id=?", (now, r.device_id))
     return c.execute("SELECT * FROM devices WHERE id=?", (r.device_id,)).fetchone()
@@ -1675,10 +1683,25 @@ def _device_name(device_id: str) -> str:
     return row["display_name"] or row["marketing_name"] or row["model"] or device_id[:8]
 
 
-theft_router, _theft_status_for, _theft_set_cfg_path = make_theft_router(
+theft_router, _theft_status_for, _theft_set_cfg_path, _theft_check_missing = make_theft_router(
     db, require_admin, require_device, alerts, _client_ip, _device_name)
 _theft_set_cfg_path(DATA_DIR)
 app.include_router(theft_router)
+
+
+@app.on_event("startup")
+async def _start_theft_watch():
+    import asyncio
+
+    async def _loop():
+        while True:
+            await asyncio.sleep(60)
+            try:
+                await asyncio.to_thread(_theft_check_missing)
+            except Exception:
+                logging.getLogger("theft").warning("Verschwunden-Prüfung fehlgeschlagen", exc_info=True)
+
+    asyncio.create_task(_loop())
 _druck_hooks["alerts"] = alerts
 converter_router, register_convert_upload = make_converter_router(DATA_DIR, require_admin, register_druck_job)
 app.include_router(converter_router)

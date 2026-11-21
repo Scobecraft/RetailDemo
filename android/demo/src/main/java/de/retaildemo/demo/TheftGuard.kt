@@ -196,16 +196,20 @@ class TheftGuard(private val app: DemoApp) {
         return if (start < end) cur in start until end else (cur >= start || cur < end)
     }
 
-    /** Entsperren am Gerät mit dem Admin-Passwort. Prüft offline gegen den gespeicherten Hash. */
-    fun tryUnlock(password: String): Boolean {
+    /** Prüft das Admin-Passwort (von der Webseite) offline gegen den gespeicherten Hash. */
+    fun verifyAdminPassword(password: String): Boolean {
         if (password.isBlank() || prefs.unlockHash.isBlank() || prefs.unlockSalt.isBlank()) return false
-        val ok = try {
+        return try {
             val salt = hexToBytes(prefs.unlockSalt)
             val spec = javax.crypto.spec.PBEKeySpec(password.toCharArray(), salt, prefs.unlockIter, 256)
             val f = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
             bytesToHex(f.generateSecret(spec).encoded) == prefs.unlockHash.lowercase()
-        } catch (e: Exception) { Log.w(TAG, "Unlock-Prüfung", e); false }
-        if (!ok) return false
+        } catch (e: Exception) { Log.w(TAG, "Passwort-Prüfung", e); false }
+    }
+
+    /** Entsperren am Gerät mit dem Admin-Passwort. Prüft offline gegen den gespeicherten Hash. */
+    fun tryUnlock(password: String): Boolean {
+        if (!verifyAdminPassword(password)) return false
         // Lokal sofort entsperren + kurzzeitig nicht wieder sperren, Zähler zurücksetzen
         prefs.noLockUntil = System.currentTimeMillis() + maxOf(prefs.fenceGraceS, 120) * 1000L
         prefs.outsideSince = 0L; prefs.outsideCount = 0
@@ -225,6 +229,11 @@ class TheftGuard(private val app: DemoApp) {
             prefs.theftLockSeq = status.lockSeq
             applyServerState(status)
         } catch (e: Exception) { Log.w(TAG, "Unlock an Server – später erneut", e) }
+    }
+
+    /** Diebstahl-Foto an den Server schicken (best effort). */
+    fun uploadPhoto(bytes: ByteArray) {
+        app.scope.launch { runCatching { api().uploadTheftPhoto(prefs.deviceId, bytes) } }
     }
 
     private fun hexToBytes(h: String): ByteArray =

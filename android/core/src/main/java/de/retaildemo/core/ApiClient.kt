@@ -146,6 +146,15 @@ class ApiClient(baseUrl: String, private val token: String) {
     suspend fun postLocation(report: LocationReport): TheftInfo =
         JSON.decodeFromString(call("POST", "/api/device/location", jsonBody(report)))
 
+    /** Diebstahl-Foto (Frontkamera) hochladen. */
+    suspend fun uploadTheftPhoto(deviceId: String, bytes: ByteArray) {
+        val multipart = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("device_id", deviceId)
+            .addFormDataPart("photo", "photo.jpg", bytes.toRequestBody("image/jpeg".toMediaType()))
+            .build()
+        call("POST", "/api/device/theft/photo", multipart)
+    }
+
     /** Entsperren am Gerät mit dem Admin-Passwort (von der Webseite festgelegt). */
     suspend fun deviceUnlock(deviceId: String, password: String): TheftInfo =
         JSON.decodeFromString(call("POST", "/api/device/theft/unlock",

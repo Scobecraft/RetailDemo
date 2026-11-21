@@ -69,8 +69,14 @@ async function tfLoad() {
   if (TF.visible) TF.timer = setTimeout(tfLoad, 8000);
 }
 
-const tfStatus = d => d.locked ? { t: "Gesperrt", c: "bad" } : d.inside === 0 ? { t: "Außerhalb", c: "warn" }
-  : d.inside === 1 ? { t: "Im Bereich", c: "ok" } : { t: d.lat ? "Standort unklar" : "Kein Standort", c: "idle" };
+const tfStatus = d => d.locked ? { t: "Gesperrt", c: "bad" } : d.missing ? { t: "Verschwunden", c: "bad" }
+  : d.inside === 0 ? { t: "Außerhalb", c: "warn" } : d.inside === 1 ? { t: "Im Bereich", c: "ok" }
+  : { t: d.lat ? "Standort unklar" : "Kein Standort", c: "idle" };
+const TF_RDY = { loc_fine: "Standort-Berechtigung", loc_background: "Standort \u201eimmer\u201c", loc_on: "Standort eingeschaltet",
+  wifi: "WLAN an", battery_unrestricted: "Akku-Optimierung aus", accessibility: "Bedienungshilfe",
+  notifications: "Benachrichtigungen", camera: "Kamera" };
+function tfReady(r) { if (!r) return null; const miss = Object.keys(TF_RDY).filter(k => r[k] === false); return { ok: miss.length === 0, miss }; }
+const tfPhotoUrl = id => `/api/admin/theft/${encodeURIComponent(id)}/photo`;
 const tfAgo = t => { if (!t) return "noch nie"; const s = Date.now() / 1000 - t; if (s < 90) return "gerade eben"; if (s < 3600) return Math.round(s / 60) + " Min."; if (s < 86400) return Math.round(s / 3600) + " Std."; return Math.round(s / 86400) + " Tg."; };
 
 function tfRenderMap() {
@@ -155,10 +161,12 @@ function tfPopup(d) {
   const row = (k, v) => el("div", { class: "tf-pop-row" }, el("span", { class: "tf-pop-k" }, k), el("span", { class: "tf-pop-v" }, v));
   const act = [];
   if (d.lat != null) act.push(el("button", { class: "btn small", onclick: () => tfShowTrack(d) }, "Spur"));
+  if (d.has_photo) act.push(el("button", { class: "btn small", onclick: () => tfShowPhoto(d) }, "\ud83d\udcf7 Foto"));
   if (!d.locked) act.push(el("button", { class: "btn small", onclick: () => tfTest(d) }, "\ud83d\udd14 Test"));
   act.push(d.locked
     ? el("button", { class: "btn small primary", onclick: () => tfLock(d, false) }, "\ud83d\udd13 Entsperren")
     : el("button", { class: "btn small danger", onclick: () => tfLock(d, true) }, "\ud83d\udd12 Sperren"));
+  const rdy = tfReady(d.readiness);
   return el("div", { class: "tf-pop" },
     el("b", { class: "tf-pop-name" }, d.name),
     el("div", { class: `tf-pop-st ${st.c}` }, st.t + (d.distance_m != null ? " \u00b7 " + Math.round(d.distance_m) + " m vom Laden" : "")),
@@ -170,7 +178,9 @@ function tfPopup(d) {
       row("Standort", tfAgo(d.last_at)),
       d.imei ? row("IMEI", d.imei) : null,
       d.serial ? row("Seriennr.", d.serial) : null),
+    d.missing ? el("div", { class: "tf-pop-reason" }, "Nicht mehr erreichbar \u2013 m\u00f6glicher Diebstahl") : null,
     d.locked && d.lock_reason ? el("div", { class: "tf-pop-reason" }, d.lock_reason) : null,
+    rdy && !rdy.ok ? el("div", { class: "tf-pop-reason", style: "color:#d97706" }, "\u26a0\ufe0f Einrichtung: " + rdy.miss.map(k => TF_RDY[k]).join(", ")) : null,
     el("div", { class: "tf-pop-act" }, ...act));
 }
 
@@ -248,7 +258,7 @@ function tfRenderCfg() {
         el("label", {}, "Standort melden alle", report, "Sek.")),
       el("p", { class: "muted", style: "font-size:12px;margin:8px 0 0" }, "Diese Werte verhindern Fehlalarme: ungenaue Messungen werden ignoriert, und das Ger\u00e4t muss den Bereich wirklich eine Weile verlassen haben.")),
     el("button", { class: "btn primary block", onclick: tfSaveCfg }, "Speichern"),
-    el("p", { class: "muted", style: "font-size:12px" }, "Die Handys brauchen die Demo-App ab Version 1.16 und die Standort-Berechtigung \u201eImmer zulassen\u201c."),
+    el("p", { class: "muted", style: "font-size:12px" }, "Die Handys brauchen die Demo-App ab Version 1.18 und die Standort-Berechtigung \u201eImmer zulassen\u201c."),
     tfPwPanel());
 }
 
@@ -273,44 +283,97 @@ async function tfSavePw(pw) {
   catch (e) { toast(e.message); }
 }
 
+function tfMatch(d) {
+  switch (TF.filter) {
+    case "inside": return d.inside === 1 && !d.locked;
+    case "outside": return d.inside === 0 && !d.locked;
+    case "locked": return !!d.locked;
+    case "missing": return !!d.missing;
+    case "noloc": return d.lat == null;
+    case "setup": { const r = tfReady(d.readiness); return r && !r.ok; }
+    default: return true;
+  }
+}
+
 function tfRenderList() {
   const d = TF.data;
   const online = d.devices.filter(x => x.online).length;
   const withLoc = d.devices.filter(x => x.lat != null).length;
   const noLoc = d.devices.length - withLoc;
   const locked = d.devices.filter(x => x.locked).length;
+  const missing = d.devices.filter(x => x.missing).length;
+  if (!TF.filter) TF.filter = "all";
+  const filter = el("select", { class: "tf-filter", onchange: e => { TF.filter = e.target.value; tfRenderList(); } },
+    ...[["all", "Alle"], ["inside", "Im Bereich"], ["outside", "Außerhalb"], ["locked", "Gesperrt"],
+        ["missing", "Verschwunden"], ["noloc", "Ohne Standort"], ["setup", "Einrichtung unvollständig"]]
+      .map(([v, t]) => el("option", { value: v, selected: TF.filter === v }, t)));
+  const bulk = el("div", { class: "tf-bulk" },
+    el("button", { class: "btn small danger", onclick: () => tfBulk("lock") }, "Alle sperren"),
+    el("button", { class: "btn small", onclick: () => tfBulk("unlock") }, "Alle entsperren"),
+    el("button", { class: "btn small", onclick: () => tfBulk("test") }, "Alle testen"),
+    el("span", { class: "spacer" }), filter);
+  const shown = d.devices.filter(tfMatch);
   tfKids(TF.listPanel,
-    el("div", { class: "tf-sum" }, `${d.devices.length} Handys \u00b7 ${online} online \u00b7 ${withLoc} mit Standort` + (noLoc ? ` \u00b7 ${noLoc} ohne Standort` : "") + (locked ? ` \u00b7 ${locked} gesperrt` : "")),
+    el("div", { class: "tf-sum" }, `${d.devices.length} Handys \u00b7 ${online} online \u00b7 ${withLoc} mit Standort`
+      + (noLoc ? ` \u00b7 ${noLoc} ohne Standort` : "") + (locked ? ` \u00b7 ${locked} gesperrt` : "")
+      + (missing ? ` \u00b7 \u26a0\ufe0f ${missing} verschwunden` : "")),
+    bulk,
     noLoc ? el("p", { class: "muted", style: "font-size:12px;margin:0" }, `${noLoc} Handys melden noch keinen Standort (Standort aus, drinnen ohne GPS, oder Berechtigung fehlt) \u2013 sie stehen in der Liste, aber noch nicht auf der Karte.`) : null,
-    ...(d.devices.length ? d.devices.map(tfDeviceRow) : [el("p", { class: "muted" }, "Noch keine Handys. Sie erscheinen, sobald die Demo-App l\u00e4uft und den Standort meldet.")]));
+    ...(shown.length ? shown.map(tfDeviceRow) : [el("p", { class: "muted" }, "Keine Handys in dieser Auswahl.")]));
 }
 
 function tfDeviceRow(d) {
   const st = tfStatus(d);
+  const rdy = tfReady(d.readiness);
   const act = [];
   if (d.lat != null) act.push(el("button", { class: "btn small", onclick: () => tfShowTrack(d) }, "Spur"));
-  if (!d.locked) act.push(el("button", { class: "btn small", title: "Testalarm (endet nach 2 Min. von selbst)", onclick: () => tfTest(d) }, "🔔 Test"));
+  if (d.has_photo) act.push(el("button", { class: "btn small", onclick: () => tfShowPhoto(d) }, "\ud83d\udcf7 Foto"));
+  if (!d.locked) act.push(el("button", { class: "btn small", title: "Testalarm (endet nach 2 Min. von selbst)", onclick: () => tfTest(d) }, "\ud83d\udd14 Test"));
   act.push(d.locked
-    ? el("button", { class: "btn small primary", onclick: () => tfLock(d, false) }, "🔓 Entsperren")
-    : el("button", { class: "btn small danger", onclick: () => tfLock(d, true) }, "🔒 Sperren"));
-  return el("div", { class: "tf-dev" + (d.locked ? " locked" : ""), onclick: e => { if (e.target.tagName !== "BUTTON" && d.lat != null) tfFocus(d); } },
+    ? el("button", { class: "btn small primary", onclick: () => tfLock(d, false) }, "\ud83d\udd13 Entsperren")
+    : el("button", { class: "btn small danger", onclick: () => tfLock(d, true) }, "\ud83d\udd12 Sperren"));
+  return el("div", { class: "tf-dev" + (d.locked || d.missing ? " locked" : ""), onclick: e => { if (e.target.tagName !== "BUTTON" && d.lat != null) tfFocus(d); } },
     el("div", { class: "tf-dev-top" },
       el("span", { class: `dk-state ${st.c}` }, el("i"), el("span", {}, st.t)),
       el("b", { class: "tf-dev-name" }, d.name),
       el("span", { class: "spacer" }),
-      el("small", { class: "muted" }, `${d.battery ?? "–"}%`)),
+      el("small", { class: "muted" }, `${d.battery ?? "\u2013"}%`)),
+    d.missing ? el("div", { class: "tf-reason" }, "Nicht mehr erreichbar \u2013 war im Laden und ist pl\u00f6tzlich weg (m\u00f6glicher Diebstahl)") : null,
     d.lock_reason && d.locked ? el("div", { class: "tf-reason" }, d.lock_reason) : null,
-    el("div", { class: "tf-dev-meta muted" }, (d.distance_m != null ? `${Math.round(d.distance_m)} m vom Laden · ` : "") + (d.online ? "online" : "offline") + ` · Standort ${tfAgo(d.last_at)}`),
+    rdy && !rdy.ok ? el("div", { class: "tf-rdy", title: "Diese Einstellungen fehlen \u2013 ohne sie funktioniert der Schutz evtl. nicht" },
+      "\u26a0\ufe0f Einrichtung: " + rdy.miss.map(k => TF_RDY[k]).join(", ") + " fehlt") : null,
+    el("div", { class: "tf-dev-meta muted" }, (d.distance_m != null ? `${Math.round(d.distance_m)} m vom Laden \u00b7 ` : "") + (d.online ? "online" : "offline") + ` \u00b7 Standort ${tfAgo(d.last_at)}`),
     el("div", { class: "tf-dev-act" }, ...act));
 }
 
-// Ger\u00e4t auf der Karte in den Blick holen: im Cluster ggf. aufklappen, dann Infofenster \u00f6ffnen.
-function tfFocus(d) {
-  const m = TF.markers.get(d.id);
-  if (!m) { if (d.lat != null) TF.map.setView([d.lat, d.lon], 17); return; }
-  if (TF.cluster && TF.cluster.zoomToShowLayer) TF.cluster.zoomToShowLayer(m, () => m.openPopup());
-  else { TF.map.setView([d.lat, d.lon], 17); m.openPopup(); }
+// Bulk-Aktionen auf alle aktuell gefilterten Handys
+async function tfBulk(kind) {
+  const list = TF.data.devices.filter(tfMatch);
+  const targets = kind === "lock" ? list.filter(d => !d.locked)
+    : kind === "unlock" ? list.filter(d => d.locked)
+    : list.filter(d => !d.locked);
+  if (!targets.length) { toast("Keine passenden Handys"); return; }
+  const verb = kind === "lock" ? "sperren" : kind === "unlock" ? "entsperren" : "testen";
+  if (!await confirmDlg(`${targets.length} Handys ${verb}?`, `Aktion wird auf ${targets.length} Handys ausgef\u00fchrt.`, verb.charAt(0).toUpperCase() + verb.slice(1))) return;
+  let ok = 0;
+  for (const d of targets) {
+    try {
+      if (kind === "lock") await api(`/api/admin/theft/${d.id}/lock`, json("POST", { locked: true }));
+      else if (kind === "unlock") await api(`/api/admin/theft/${d.id}/lock`, json("POST", { locked: false }));
+      else await api(`/api/admin/theft/${d.id}/test`, json("POST", {}));
+      ok++;
+    } catch (e) { /* weiter */ }
+  }
+  toast(`${ok} von ${targets.length} erledigt`); tfLoad();
 }
+
+// Diebstahl-Foto anzeigen
+function tfShowPhoto(d) {
+  const img = el("img", { src: tfPhotoUrl(d.id) + "?t=" + Date.now(), style: "max-width:100%;border-radius:10px;display:block" });
+  const when = d.photo_at ? el("p", { class: "muted", style: "font-size:12px;margin:6px 0 0" }, "Aufgenommen: " + new Date(d.photo_at * 1000).toLocaleString("de-DE")) : null;
+  dialog(`Diebstahl-Foto: ${d.name}`, [img, when].filter(Boolean), [["Schlie\u00dfen", ""]]);
+}
+
 
 function tfSetCenter(lat, lon) {
   TF.cfg.lat = lat; TF.cfg.lon = lon;

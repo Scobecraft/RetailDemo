@@ -207,6 +207,10 @@ class Prefs(context: Context) {
     var noLockUntil: Long
         get() = sp.getLong("no_lock_until", 0)
         set(v) = sp.edit().putLong("no_lock_until", v).apply()
+    /** Für welche Sperr-Nummer schon ein Diebstahl-Foto gemacht wurde (nur einmal pro Sperrung). */
+    var photoSeq: Long
+        get() = sp.getLong("photo_seq", -1)
+        set(v) = sp.edit().putLong("photo_seq", v).apply()
 
     /** Über *#06# ausgelesene IMEI/Seriennummer (falls Android sie der App direkt nicht gibt). */
     var capturedImei: String

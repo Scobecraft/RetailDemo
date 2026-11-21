@@ -21,7 +21,8 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 DEFAULTS = {
@@ -45,6 +46,8 @@ DEFAULTS = {
     "active_from": "08:00",   # Schutz nur in diesem Zeitfenster scharf
     "active_until": "20:00",
     "active_days": [0, 1, 2, 3, 4, 5],  # aktive Wochentage (0=Mo … 6=So), Standard Mo–Sa
+    "watch_missing": True,    # Server erkennt selbst, wenn ein anwesendes Gerät plötzlich verschwindet
+    "missing_after_s": 300,   # so lange offline (während andere online bleiben) -> möglicher Diebstahl
 }
 EARTH_R = 6371000.0
 
@@ -119,6 +122,8 @@ class GeofenceConfig(BaseModel):
     active_from: str = "08:00"
     active_until: str = "20:00"
     active_days: list[int] = [0, 1, 2, 3, 4, 5]
+    watch_missing: bool = True
+    missing_after_s: int = 300
 
 
 class Fix(BaseModel):
@@ -162,7 +167,10 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
                 inside INTEGER,                -- 1 drinnen, 0 draußen, NULL unbekannt
                 armed_at REAL,
                 outside_count INTEGER NOT NULL DEFAULT 0,  -- aufeinanderfolgende klare Draußen-Messungen
-                outside_lat REAL, outside_lon REAL         -- Position der ersten Draußen-Messung (Konsistenz)
+                outside_lat REAL, outside_lon REAL,        -- Position der ersten Draußen-Messung (Konsistenz)
+                last_photo TEXT, last_photo_at REAL,       -- Diebstahl-Foto (Frontkamera)
+                present_at REAL, missing_since REAL,       -- Anwesenheits-/Verschwunden-Erkennung
+                missing_alerted INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS locations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,12 +185,23 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
         # Nachträgliche Spalten (für bestehende Installationen)
         tcols = {r["name"] for r in c.execute("PRAGMA table_info(theft_devices)")}
         for col, ddl in (("outside_count", "outside_count INTEGER NOT NULL DEFAULT 0"),
-                         ("outside_lat", "outside_lat REAL"), ("outside_lon", "outside_lon REAL")):
+                         ("outside_lat", "outside_lat REAL"), ("outside_lon", "outside_lon REAL"),
+                         ("last_photo", "last_photo TEXT"), ("last_photo_at", "last_photo_at REAL"),
+                         ("present_at", "present_at REAL"), ("missing_since", "missing_since REAL"),
+                         ("missing_alerted", "missing_alerted INTEGER NOT NULL DEFAULT 0")):
             if col not in tcols:
                 c.execute(f"ALTER TABLE theft_devices ADD COLUMN {ddl}")
 
     def set_cfg_path(data_dir: Path):
         cfg_file_holder["path"] = data_dir / "theft.json"
+
+    def _photos_dir() -> Optional[Path]:
+        base = cfg_file_holder["path"]
+        if not base:
+            return None
+        d = base.parent / "theft_photos"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
 
     def config() -> dict:
         c = dict(DEFAULTS)
@@ -393,6 +412,7 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
     # ------------------------------------------------ Webseite
     @r.get("/api/admin/theft", dependencies=[Depends(require_admin)])
     def admin_theft():
+        check_missing()   # bei jedem Aufruf der Webseite selbst prüfen, ob ein Gerät verschwunden ist
         cfg = config()
         with db() as c:
             rows = c.execute("SELECT * FROM devices WHERE removed=0 AND (platform IS NULL OR platform='android')").fetchall()
@@ -423,6 +443,12 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
                     "last_at": st.get("last_at"), "distance_m": dist,
                     "inside": inside, "source": st.get("last_source"),
                     "imei": d["imei"], "serial": d["serial"],
+                    "has_photo": bool(st.get("last_photo")),
+                    "photo_at": st.get("last_photo_at"),
+                    "readiness": (json.loads(d["readiness"]) if d["readiness"] else None),
+                    "present_at": st.get("present_at"),
+                    "missing_since": st.get("missing_since"),
+                    "missing": bool(st.get("missing_alerted")),
                 })
         return {"config": cfg, "pw_set": get_password() is not None, "devices": out}
 
@@ -498,6 +524,33 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
                       (1 if body.armed else 0, time.time(), device_id))
             return device_theft_status(c, device_id)
 
+    @r.post("/api/device/theft/photo", dependencies=[Depends(require_device)])
+    async def upload_photo(device_id: str = Form(...), photo: UploadFile = File(...)):
+        """Frontkamera-Foto bei (vermutetem) Diebstahl – als Beweis/Abschreckung."""
+        d = _photos_dir()
+        if not d:
+            raise HTTPException(500, "Kein Speicherort")
+        data = await photo.read()
+        if len(data) > 8_000_000:
+            raise HTTPException(413, "Foto zu groß")
+        safe = "".join(ch for ch in device_id if ch.isalnum() or ch in "-_")[:64] or "dev"
+        fn = d / f"{safe}.jpg"
+        fn.write_bytes(data)
+        with db() as c:
+            tstate(c, device_id)
+            c.execute("UPDATE theft_devices SET last_photo=?, last_photo_at=? WHERE device_id=?",
+                      (str(fn.name), time.time(), device_id))
+        return {"ok": True}
+
+    @r.get("/api/admin/theft/{device_id}/photo", dependencies=[Depends(require_admin)])
+    def get_photo(device_id: str):
+        with db() as c:
+            row = c.execute("SELECT last_photo FROM theft_devices WHERE device_id=?", (device_id,)).fetchone()
+        d = _photos_dir()
+        if not row or not row["last_photo"] or not d or not (d / row["last_photo"]).exists():
+            raise HTTPException(404, "Kein Foto")
+        return FileResponse(d / row["last_photo"], media_type="image/jpeg")
+
     class PwBody(BaseModel):
         password: str = ""
 
@@ -529,4 +582,50 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
             alerts.resolve(f"theft:{body.device_id}")
         return status
 
-    return r, status_for_device, set_cfg_path
+    def check_missing():
+        """Vom Server regelmäßig aufgerufen: erkennt selbst, wenn ein anwesendes Gerät plötzlich
+        verschwindet (kein WLAN mehr → meldet sich nicht mehr), während die anderen online bleiben.
+        Ein WLAN-/Strom-Ausfall (viele gleichzeitig offline) löst bewusst KEINEN Alarm aus."""
+        cfg = config()
+        if not cfg["enabled"] or not cfg.get("watch_missing", True) or not schedule_active(cfg):
+            return
+        now = time.time()
+        win = max(120, int(cfg.get("missing_after_s", 300)))
+        new_missing, resolved = [], []
+        with db() as c:
+            rows = c.execute(
+                "SELECT d.id AS id, d.last_seen AS last_seen, t.armed AS armed, t.locked AS locked, "
+                "t.present_at AS present_at, t.missing_since AS missing_since, t.missing_alerted AS missing_alerted "
+                "FROM devices d LEFT JOIN theft_devices t ON t.device_id=d.id "
+                "WHERE d.removed=0 AND (d.platform IS NULL OR d.platform='android')").fetchall()
+            armed = [r for r in rows if (r["armed"] if r["armed"] is not None else 1)]
+            recent = [r for r in armed if r["present_at"] and now - r["present_at"] < 1800]
+            online_recent = [r for r in recent if r["last_seen"] and now - r["last_seen"] < win]
+            # Ausfall-Schutz: wenn von mehreren kürzlich anwesenden Geräten die meisten gleichzeitig weg sind
+            outage = len(recent) >= 3 and len(online_recent) < 0.4 * len(recent)
+            for r in armed:
+                dev = r["id"]
+                online = r["last_seen"] and now - r["last_seen"] < win
+                if online:
+                    c.execute("INSERT OR IGNORE INTO theft_devices (device_id, armed, armed_at) VALUES (?,1,?)", (dev, now))
+                    if r["missing_alerted"]:
+                        resolved.append(dev)
+                    c.execute("UPDATE theft_devices SET present_at=?, missing_since=NULL, missing_alerted=0 WHERE device_id=?", (now, dev))
+                elif r["present_at"] and now - r["present_at"] < 1800:
+                    ms = r["missing_since"] or r["last_seen"] or now
+                    if not r["missing_since"]:
+                        c.execute("UPDATE theft_devices SET missing_since=? WHERE device_id=?", (ms, dev))
+                    if (not outage) and (not r["locked"]) and (not r["missing_alerted"]) and now - ms >= win:
+                        c.execute("UPDATE theft_devices SET missing_alerted=1 WHERE device_id=?", (dev,))
+                        new_missing.append(dev)
+        if alerts:
+            for dev in new_missing:
+                name = device_name(dev)
+                alerts.raise_("theft", f"Möglicher Diebstahl: {name} ist verschwunden",
+                              "Das Gerät war im Laden erreichbar und meldet sich jetzt nicht mehr "
+                              "(kein WLAN mehr – es könnte den Laden verlassen haben).",
+                              level="error", key=f"theftmissing:{dev}", data={"device_id": dev, "action": "theft"})
+            for dev in resolved:
+                alerts.resolve(f"theftmissing:{dev}")
+
+    return r, status_for_device, set_cfg_path, check_missing

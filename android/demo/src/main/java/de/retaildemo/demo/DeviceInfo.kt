@@ -88,6 +88,37 @@ object DeviceInfo {
         add(Spec("Betriebssystem", androidVersion()))
     }
 
+    /** Einrichtungs-Status für die Bereitschafts-Ampel auf der Webseite. */
+    fun readiness(context: Context): de.retaildemo.core.Readiness {
+        fun granted(perm: String) =
+            androidx.core.content.ContextCompat.checkSelfPermission(context, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val locOn = try {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+            if (android.os.Build.VERSION.SDK_INT >= 28) lm.isLocationEnabled
+            else lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+                 lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+        } catch (e: Exception) { false }
+        val wifiOn = try {
+            (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager)?.isWifiEnabled == true
+        } catch (e: Exception) { false }
+        val battUnrestricted = try {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            pm.isIgnoringBatteryOptimizations(context.packageName)
+        } catch (e: Exception) { false }
+        val notif = if (android.os.Build.VERSION.SDK_INT >= 33) granted(android.Manifest.permission.POST_NOTIFICATIONS) else true
+        val bg = if (android.os.Build.VERSION.SDK_INT >= 29) granted(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) else granted(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        return de.retaildemo.core.Readiness(
+            locFine = granted(android.Manifest.permission.ACCESS_FINE_LOCATION),
+            locBackground = bg,
+            locOn = locOn,
+            wifi = wifiOn,
+            batteryUnrestricted = battUnrestricted,
+            accessibility = IdleWatcherService.instance != null,
+            notifications = notif,
+            camera = granted(android.Manifest.permission.CAMERA),
+        )
+    }
+
     fun batteryPercent(context: Context): Int? {
         val i = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return null
         val level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)

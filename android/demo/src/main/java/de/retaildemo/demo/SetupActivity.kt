@@ -138,6 +138,11 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> U
     val writeSettings = remember(refresh) { Brightness.canWrite(ctx) }
     val storage = remember(refresh) { app.cleanup.hasStorageAccess() }
     val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
+    val cameraOk = remember(refresh) {
+        androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
     val cleanupState by app.cleanup.state.collectAsState()
     val bloatState by app.bloatware.state.collectAsState()
     val bloatEnabled = app.sync.manifest.collectAsState().value?.removeBloatware == true
@@ -250,6 +255,12 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> U
                     else ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
+                PermissionRow(
+                    ok = cameraOk,
+                    title = "Foto bei Diebstahl",
+                    hint = "Kamera erlauben – macht bei Diebstahl heimlich ein Foto als Beweis.",
+                    button = "Erlauben",
+                ) { cameraPermission.launch(android.Manifest.permission.CAMERA) }
                 PermissionRow(
                     ok = storage,
                     title = "Kundenfotos löschen",

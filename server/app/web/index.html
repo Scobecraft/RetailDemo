@@ -276,6 +276,9 @@
   .tf-day { padding: 4px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 12px; cursor: pointer; }
   .tf-day.on { background: var(--accent); color: #fff; border-color: var(--accent); }
   .tf-sched { margin-top: 6px; }
+  .tf-bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 2px; }
+  .tf-filter { margin-left: auto; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
+  .tf-rdy { font-size: 12px; color: #d97706; }
   .tf-pwbox { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
   .tf-pwbox input, .tf-cfg input[type=time], .tf-cfg input[type=text] { }
   .leaflet-popup-content { font-size: 13px; margin: 12px 14px; }
@@ -1217,6 +1220,8 @@ function fmtDate(ts) {
   if (!ts) return "unbekannt";
   return new Date(ts * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
+const RDY_LABEL = { loc_fine: "Standort-Berechtigung", loc_background: "Standort \u201eimmer\u201c", loc_on: "Standort an", wifi: "WLAN an", battery_unrestricted: "Akku-Optimierung aus", accessibility: "Bedienungshilfe", notifications: "Benachrichtigungen", camera: "Kamera" };
+function readinessMissing(r) { return r ? Object.keys(RDY_LABEL).filter(k => r[k] === false) : []; }
 function fmtDur(sec) {
   if (!sec || sec < 60) return "< 1 Std.";
   const h = sec / 3600;
@@ -1744,6 +1749,7 @@ function deviceRow(d) {
       el("div", { class: "name" }, d.effective_name || d.model || d.id),
       el("div", { class: "meta" }, [d.manufacturer, d.model, d.android_version].filter(Boolean).join(" · ")),
       el("div", { class: "meta" }, `Installiert: ${fmtDate(d.created_at)} · Betriebsstunden: ${fmtDur(d.operating_s)}`),
+      (() => { const m = readinessMissing(d.readiness); return m.length ? el("div", { class: "meta", style: "color:#d97706" }, "⚠️ Einrichtung fehlt: " + m.map(k => RDY_LABEL[k]).join(", ")) : null; })(),
       el("div", { class: "meta" }, `Playlist: ${d.playlist_name} · ` + (d.online ? "Online" : "Offline, zuletzt " + ago(d.last_seen)) + (d.status ? ` · ${d.status}` : "") + (d.battery != null ? ` · 🔋 ${d.battery} %` : "")),
       el("div", { class: "meta", style: d.last_error ? "color:var(--danger)" : "" },
         d.last_error ? "⚠️ " + d.last_error : d.sync_requested ? "⏳ Aktualisierung angefordert" : d.up_to_date ? "✅ Inhalte aktuell" : "🔄 Änderungen beim nächsten Abgleich"),
