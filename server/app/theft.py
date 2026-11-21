@@ -246,6 +246,15 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
             for d in rows:
                 st = c.execute("SELECT * FROM theft_devices WHERE device_id=?", (d["id"],)).fetchone()
                 st = dict(st) if st else {}
+                # Entfernung und drinnen/draußen IMMER gegen den aktuell eingestellten Mittelpunkt
+                # berechnen – sonst passt die Anzeige nicht zum gezeichneten Kreis, wenn der
+                # Mittelpunkt/Radius geändert wurde, seit das Gerät zuletzt gemeldet hat.
+                lat, lon = st.get("last_lat"), st.get("last_lon")
+                dist = st.get("last_distance_m")
+                inside = st.get("inside")
+                if lat is not None and lon is not None and cfg["lat"] is not None and cfg["lon"] is not None:
+                    dist = haversine(cfg["lat"], cfg["lon"], lat, lon)
+                    inside = 1 if dist <= cfg["radius_m"] else 0
                 out.append({
                     "id": d["id"],
                     "name": d["display_name"] or d["marketing_name"] or d["model"] or d["id"][:8],
@@ -255,9 +264,9 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
                     "locked": bool(st.get("locked", 0)),
                     "lock_reason": st.get("lock_reason"),
                     "locked_at": st.get("locked_at"),
-                    "lat": st.get("last_lat"), "lon": st.get("last_lon"), "acc": st.get("last_acc"),
-                    "last_at": st.get("last_at"), "distance_m": st.get("last_distance_m"),
-                    "inside": st.get("inside"), "source": st.get("last_source"),
+                    "lat": lat, "lon": lon, "acc": st.get("last_acc"),
+                    "last_at": st.get("last_at"), "distance_m": dist,
+                    "inside": inside, "source": st.get("last_source"),
                     "imei": d["imei"], "serial": d["serial"],
                 })
         return {"config": cfg, "devices": out}
