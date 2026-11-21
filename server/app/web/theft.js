@@ -32,6 +32,20 @@ function tfInitMap() {
     maxZoom: 19, attribution: "© OpenStreetMap" });
   TF.tiles.on("tileerror", () => { if (TF.tileOk) { TF.tileOk = false; toast("Kartenkacheln nicht erreichbar – Standorte werden trotzdem angezeigt."); } });
   TF.tiles.addTo(TF.map);
+  // Handys am selben Ort zu einem Cluster zusammenfassen; Klick fächert sie auf (Spiderfy).
+  if (L.markerClusterGroup) {
+    TF.cluster = L.markerClusterGroup({
+      maxClusterRadius: 48, showCoverageOnHover: false, spiderfyOnMaxZoom: true,
+      spiderfyDistanceMultiplier: 1.8, zoomToBoundsOnClick: true, chunkedLoading: true,
+      iconCreateFunction: cl => {
+        const ms = cl.getAllChildMarkers();
+        const bad = ms.some(m => m.tfColor === "#e5484d"), warn = ms.some(m => m.tfColor === "#f5a524");
+        const col = bad ? "#e5484d" : warn ? "#f5a524" : "#22c55e";
+        return L.divIcon({ className: "tf-cluster", html: `<div style="background:${col}">${cl.getChildCount()}</div>`, iconSize: [38, 38] });
+      },
+    });
+    TF.map.addLayer(TF.cluster);
+  }
   TF.map.on("click", e => { if (TF.pickCenter) tfSetCenter(e.latlng.lat, e.latlng.lng); });
   if (TF.data) tfRenderMap();
 }
@@ -68,37 +82,50 @@ function tfRenderMap() {
   // Ger\u00e4te-Marker nicht neu aufbauen, solange ein Popup offen ist (sonst schlie\u00dft es beim 8s-Takt)
   if (TF.popupOpen) return;
 
-  // Handys, die am (fast) selben Punkt stehen, auff\u00e4chern, damit alle sichtbar und antippbar sind.
   const located = TF.data.devices.filter(d => d.lat != null && d.lon != null);
-  const groups = new Map();
-  for (const d of located) {
-    const k = d.lat.toFixed(4) + "," + d.lon.toFixed(4);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(d);
-  }
-  const placed = [];
-  for (const arr of groups.values()) {
-    if (arr.length === 1) { placed.push({ d: arr[0], lat: arr[0].lat, lon: arr[0].lon, fan: false }); continue; }
-    const clat = arr[0].lat, clon = arr[0].lon;
-    arr.forEach((d, i) => { const [la, lo] = tfSpread(clat, clon, i); placed.push({ d, lat: la, lon: lo, fan: true }); });
+  const mkIcon = (d, st) => {
+    const color = st.c === "bad" ? "#e5484d" : st.c === "warn" ? "#f5a524" : st.c === "ok" ? "#22c55e" : "#94a3b8";
+    return { color, icon: L.divIcon({ className: "tf-pinwrap", html: `<div class="tf-pin" style="background:${color}">${d.locked ? "🔒" : "📱"}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }) };
+  };
+  const pts = [];
+
+  if (TF.cluster) {
+    // Cluster-Modus: Marker an echter Position, das Plugin bündelt/auffächert sie (Klick = Spiderfy).
+    TF.cluster.clearLayers();
+    TF.markers.clear();
+    const batch = [];
+    for (const d of located) {
+      const info = mkIcon(d, tfStatus(d));
+      const m = L.marker([d.lat, d.lon], { icon: info.icon });
+      m.tfColor = info.color;
+      m.on("popupopen", () => { TF.popupOpen = true; }).on("popupclose", () => { TF.popupOpen = false; });
+      m.bindPopup(() => tfPopup(d), { minWidth: 240, maxWidth: 300 });
+      TF.markers.set(d.id, m); batch.push(m); pts.push([d.lat, d.lon]);
+    }
+    TF.cluster.addLayers(batch);
+  } else {
+    // Fallback ohne Plugin: Handys am selben Punkt ringförmig auffächern.
+    const groups = new Map();
+    for (const d of located) { const k = d.lat.toFixed(4) + "," + d.lon.toFixed(4); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
+    const placed = [];
+    for (const arr of groups.values()) {
+      if (arr.length === 1) { placed.push({ d: arr[0], lat: arr[0].lat, lon: arr[0].lon }); continue; }
+      const clat = arr[0].lat, clon = arr[0].lon;
+      arr.forEach((d, i) => { const [la, lo] = tfSpread(clat, clon, i); placed.push({ d, lat: la, lon: lo }); });
+    }
+    const seen = new Set();
+    for (const q of placed) {
+      const d = q.d; seen.add(d.id); pts.push([q.lat, q.lon]);
+      const info = mkIcon(d, tfStatus(d));
+      let m = TF.markers.get(d.id);
+      if (!m) { m = L.marker([q.lat, q.lon], { icon: info.icon }).addTo(TF.map); TF.markers.set(d.id, m);
+        m.on("popupopen", () => { TF.popupOpen = true; }).on("popupclose", () => { TF.popupOpen = false; }); }
+      else { m.setLatLng([q.lat, q.lon]); m.setIcon(info.icon); }
+      m.bindPopup(() => tfPopup(d), { minWidth: 240, maxWidth: 300 });
+    }
+    for (const [id, m] of TF.markers) if (!seen.has(id)) { m.remove(); TF.markers.delete(id); }
   }
 
-  const seen = new Set();
-  const pts = [];
-  for (const q of placed) {
-    const d = q.d;
-    seen.add(d.id); pts.push([q.lat, q.lon]);
-    const st = tfStatus(d);
-    const color = st.c === "bad" ? "#e5484d" : st.c === "warn" ? "#f5a524" : st.c === "ok" ? "#22c55e" : "#94a3b8";
-    const html = `<div class="tf-pin" style="background:${color}">${d.locked ? "\ud83d\udd12" : "\ud83d\udcf1"}</div>`;
-    const icon = L.divIcon({ className: "tf-pinwrap", html, iconSize: [30, 30], iconAnchor: [15, 15] });
-    let m = TF.markers.get(d.id);
-    if (!m) { m = L.marker([q.lat, q.lon], { icon }).addTo(TF.map); TF.markers.set(d.id, m);
-      m.on("popupopen", () => { TF.popupOpen = true; }); m.on("popupclose", () => { TF.popupOpen = false; }); }
-    else { m.setLatLng([q.lat, q.lon]); m.setIcon(icon); }
-    m.bindPopup(() => tfPopup(d), { minWidth: 240, maxWidth: 300 });
-  }
-  for (const [id, m] of TF.markers) if (!seen.has(id)) { m.remove(); TF.markers.delete(id); }
   if (!TF.fitted) {
     const all = [...pts]; if (c.lat != null) all.push([c.lat, c.lon]);
     if (all.length) { TF.map.fitBounds(all, { padding: [50, 50], maxZoom: 18 }); TF.fitted = true; }
@@ -213,7 +240,7 @@ function tfDeviceRow(d) {
   act.push(d.locked
     ? el("button", { class: "btn small primary", onclick: () => tfLock(d, false) }, "🔓 Entsperren")
     : el("button", { class: "btn small danger", onclick: () => tfLock(d, true) }, "🔒 Sperren"));
-  return el("div", { class: "tf-dev" + (d.locked ? " locked" : ""), onclick: e => { if (e.target.tagName !== "BUTTON" && d.lat != null) { TF.map.setView([d.lat, d.lon], 16); TF.markers.get(d.id)?.openPopup(); } } },
+  return el("div", { class: "tf-dev" + (d.locked ? " locked" : ""), onclick: e => { if (e.target.tagName !== "BUTTON" && d.lat != null) tfFocus(d); } },
     el("div", { class: "tf-dev-top" },
       el("span", { class: `dk-state ${st.c}` }, el("i"), el("span", {}, st.t)),
       el("b", { class: "tf-dev-name" }, d.name),
@@ -222,6 +249,14 @@ function tfDeviceRow(d) {
     d.lock_reason && d.locked ? el("div", { class: "tf-reason" }, d.lock_reason) : null,
     el("div", { class: "tf-dev-meta muted" }, (d.distance_m != null ? `${Math.round(d.distance_m)} m vom Laden · ` : "") + (d.online ? "online" : "offline") + ` · Standort ${tfAgo(d.last_at)}`),
     el("div", { class: "tf-dev-act" }, ...act));
+}
+
+// Ger\u00e4t auf der Karte in den Blick holen: im Cluster ggf. aufklappen, dann Infofenster \u00f6ffnen.
+function tfFocus(d) {
+  const m = TF.markers.get(d.id);
+  if (!m) { if (d.lat != null) TF.map.setView([d.lat, d.lon], 17); return; }
+  if (TF.cluster && TF.cluster.zoomToShowLayer) TF.cluster.zoomToShowLayer(m, () => m.openPopup());
+  else { TF.map.setView([d.lat, d.lon], 17); m.openPopup(); }
 }
 
 function tfSetCenter(lat, lon) {
