@@ -57,43 +57,89 @@ const tfAgo = t => { if (!t) return "noch nie"; const s = Date.now() / 1000 - t;
 function tfRenderMap() {
   if (!TF.map || !TF.data) return;
   const c = TF.cfg;
-  // Geofence-Kreis + Mittelpunkt
+  // Geofence-Kreis + Mittelpunkt (immer aktualisieren)
   if (TF.circle) { TF.circle.remove(); TF.circle = null; }
   if (TF.centerMarker) { TF.centerMarker.remove(); TF.centerMarker = null; }
   if (c.lat != null && c.lon != null) {
     TF.circle = L.circle([c.lat, c.lon], { radius: c.radius_m, color: "#ee7f00", weight: 2, fillColor: "#ee7f00", fillOpacity: 0.08 }).addTo(TF.map);
     TF.centerMarker = L.marker([c.lat, c.lon], { title: "Mittelpunkt (Laden)",
-      icon: L.divIcon({ className: "tf-center", html: "🏬", iconSize: [26, 26] }) }).addTo(TF.map);
+      icon: L.divIcon({ className: "tf-center", html: "\ud83c\udfec", iconSize: [26, 26] }) }).addTo(TF.map);
   }
-  // Geräte-Marker
+  // Ger\u00e4te-Marker nicht neu aufbauen, solange ein Popup offen ist (sonst schlie\u00dft es beim 8s-Takt)
+  if (TF.popupOpen) return;
+
+  // Handys, die am (fast) selben Punkt stehen, auff\u00e4chern, damit alle sichtbar und antippbar sind.
+  const located = TF.data.devices.filter(d => d.lat != null && d.lon != null);
+  const groups = new Map();
+  for (const d of located) {
+    const k = d.lat.toFixed(4) + "," + d.lon.toFixed(4);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(d);
+  }
+  const placed = [];
+  for (const arr of groups.values()) {
+    if (arr.length === 1) { placed.push({ d: arr[0], lat: arr[0].lat, lon: arr[0].lon, fan: false }); continue; }
+    const clat = arr[0].lat, clon = arr[0].lon;
+    arr.forEach((d, i) => { const [la, lo] = tfSpread(clat, clon, i); placed.push({ d, lat: la, lon: lo, fan: true }); });
+  }
+
   const seen = new Set();
   const pts = [];
-  for (const d of TF.data.devices) {
-    if (d.lat == null || d.lon == null) continue;
-    seen.add(d.id); pts.push([d.lat, d.lon]);
+  for (const q of placed) {
+    const d = q.d;
+    seen.add(d.id); pts.push([q.lat, q.lon]);
     const st = tfStatus(d);
     const color = st.c === "bad" ? "#e5484d" : st.c === "warn" ? "#f5a524" : st.c === "ok" ? "#22c55e" : "#94a3b8";
-    let m = TF.markers.get(d.id);
-    const html = `<div class="tf-pin" style="background:${color}">${d.locked ? "🔒" : "📱"}</div>`;
+    const html = `<div class="tf-pin" style="background:${color}">${d.locked ? "\ud83d\udd12" : "\ud83d\udcf1"}</div>`;
     const icon = L.divIcon({ className: "tf-pinwrap", html, iconSize: [30, 30], iconAnchor: [15, 15] });
-    if (!m) { m = L.marker([d.lat, d.lon], { icon }).addTo(TF.map); TF.markers.set(d.id, m); }
-    else { m.setLatLng([d.lat, d.lon]); m.setIcon(icon); }
-    m.bindPopup(tfPopup(d));
-    m.off("click").on("click", () => { TF.selected = d.id; });
+    let m = TF.markers.get(d.id);
+    if (!m) { m = L.marker([q.lat, q.lon], { icon }).addTo(TF.map); TF.markers.set(d.id, m);
+      m.on("popupopen", () => { TF.popupOpen = true; }); m.on("popupclose", () => { TF.popupOpen = false; }); }
+    else { m.setLatLng([q.lat, q.lon]); m.setIcon(icon); }
+    m.bindPopup(() => tfPopup(d), { minWidth: 240, maxWidth: 300 });
   }
   for (const [id, m] of TF.markers) if (!seen.has(id)) { m.remove(); TF.markers.delete(id); }
-  // Beim ersten Mal passend zoomen
   if (!TF.fitted) {
     const all = [...pts]; if (c.lat != null) all.push([c.lat, c.lon]);
-    if (all.length) { TF.map.fitBounds(all, { padding: [50, 50], maxZoom: 16 }); TF.fitted = true; }
+    if (all.length) { TF.map.fitBounds(all, { padding: [50, 50], maxZoom: 18 }); TF.fitted = true; }
   }
 }
 
+// Auff\u00e4cherung: i=0 bleibt im Zentrum, weitere Punkte in Ringen (8 m, 16 m, \u2026) herum.
+function tfSpread(lat, lon, i) {
+  if (i === 0) return [lat, lon];
+  let idx = i - 1, ring = 1;
+  while (idx >= 6 * ring) { idx -= 6 * ring; ring++; }
+  const cap = 6 * ring, ang = (idx / cap) * 2 * Math.PI, rad = ring * 8;
+  const dLat = (rad * Math.cos(ang)) / 111320;
+  const dLon = (rad * Math.sin(ang)) / (111320 * Math.cos(lat * Math.PI / 180));
+  return [lat + dLat, lon + dLon];
+}
+
+const tfSrc = s => s === "network" ? "Mobilfunk/WLAN" : s === "fused" ? "kombiniert" : s === "gps" ? "GPS" : (s || "\u2013");
+
 function tfPopup(d) {
   const st = tfStatus(d);
-  return `<b>${d.name}</b><br><span style="color:#888">${st.t}${d.distance_m != null ? " · " + Math.round(d.distance_m) + " m vom Laden" : ""}</span><br>`
-    + `Akku ${d.battery ?? "–"}%${d.acc ? " · ±" + Math.round(d.acc) + " m" : ""} · zuletzt ${tfAgo(d.last_at)}`
-    + ((d.imei || d.serial) ? `<br><span style="font-family:monospace;font-size:11px;color:#888">${[d.imei ? "IMEI " + d.imei : "", d.serial ? "SN " + d.serial : ""].filter(Boolean).join(" · ")}</span>` : "");
+  const row = (k, v) => el("div", { class: "tf-pop-row" }, el("span", { class: "tf-pop-k" }, k), el("span", { class: "tf-pop-v" }, v));
+  const act = [];
+  if (d.lat != null) act.push(el("button", { class: "btn small", onclick: () => tfShowTrack(d) }, "Spur"));
+  if (!d.locked) act.push(el("button", { class: "btn small", onclick: () => tfTest(d) }, "\ud83d\udd14 Test"));
+  act.push(d.locked
+    ? el("button", { class: "btn small primary", onclick: () => tfLock(d, false) }, "\ud83d\udd13 Entsperren")
+    : el("button", { class: "btn small danger", onclick: () => tfLock(d, true) }, "\ud83d\udd12 Sperren"));
+  return el("div", { class: "tf-pop" },
+    el("b", { class: "tf-pop-name" }, d.name),
+    el("div", { class: `tf-pop-st ${st.c}` }, st.t + (d.distance_m != null ? " \u00b7 " + Math.round(d.distance_m) + " m vom Laden" : "")),
+    el("div", { class: "tf-pop-grid" },
+      row("Verbindung", d.online ? "online" : "offline"),
+      row("Akku", d.battery != null ? d.battery + " %" : "\u2013"),
+      row("Genauigkeit", d.acc ? "\u00b1" + Math.round(d.acc) + " m" : "\u2013"),
+      row("Ortung", tfSrc(d.source)),
+      row("Standort", tfAgo(d.last_at)),
+      d.imei ? row("IMEI", d.imei) : null,
+      d.serial ? row("Seriennr.", d.serial) : null),
+    d.locked && d.lock_reason ? el("div", { class: "tf-pop-reason" }, d.lock_reason) : null,
+    el("div", { class: "tf-pop-act" }, ...act));
 }
 
 function tfBuildSidebar() {
@@ -151,9 +197,11 @@ function tfRenderList() {
   const d = TF.data;
   const online = d.devices.filter(x => x.online).length;
   const withLoc = d.devices.filter(x => x.lat != null).length;
+  const noLoc = d.devices.length - withLoc;
   const locked = d.devices.filter(x => x.locked).length;
   TF.listPanel.replaceChildren(
-    el("div", { class: "tf-sum" }, `${d.devices.length} Handys \u00b7 ${online} online \u00b7 ${withLoc} mit Standort` + (locked ? ` \u00b7 ${locked} gesperrt` : "")),
+    el("div", { class: "tf-sum" }, `${d.devices.length} Handys \u00b7 ${online} online \u00b7 ${withLoc} mit Standort` + (noLoc ? ` \u00b7 ${noLoc} ohne Standort` : "") + (locked ? ` \u00b7 ${locked} gesperrt` : "")),
+    noLoc ? el("p", { class: "muted", style: "font-size:12px;margin:0" }, `${noLoc} Handys melden noch keinen Standort (Standort aus, drinnen ohne GPS, oder Berechtigung fehlt) \u2013 sie stehen in der Liste, aber noch nicht auf der Karte.`) : null,
     ...(d.devices.length ? d.devices.map(tfDeviceRow) : [el("p", { class: "muted" }, "Noch keine Handys. Sie erscheinen, sobald die Demo-App l\u00e4uft und den Standort meldet.")]));
 }
 

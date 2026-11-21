@@ -269,7 +269,15 @@
   .tf-pin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.4); border: 2px solid #fff; }
   .tf-pin > * { transform: rotate(45deg); }
   .tf-center { font-size: 22px; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
-  .leaflet-popup-content { font-size: 13px; }
+  .leaflet-popup-content { font-size: 13px; margin: 12px 14px; }
+  .tf-pop-name { font-size: 15px; }
+  .tf-pop-st { margin: 2px 0 8px; font-weight: 600; }
+  .tf-pop-st.ok { color: #16a34a; } .tf-pop-st.warn { color: #d97706; } .tf-pop-st.bad { color: var(--danger); } .tf-pop-st.idle { color: var(--muted); }
+  .tf-pop-grid { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin-bottom: 8px; }
+  .tf-pop-k { color: var(--muted); }
+  .tf-pop-v { text-align: right; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .tf-pop-reason { color: var(--danger); font-size: 12px; margin-bottom: 8px; }
+  .tf-pop-act { display: flex; flex-wrap: wrap; gap: 6px; }
   @media (max-width: 900px) { .tf-layout { grid-template-columns: 1fr; } .tf-mapwrap { height: 420px; } .tf-list { max-height: none; } }
   /* ---------- 3D-Konverter ---------- */
   .cv-drop { padding: 34px 16px; }
