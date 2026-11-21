@@ -5,6 +5,9 @@
 const TF = { built: false, visible: false, timer: null, map: null, markers: new Map(), circle: null, centerMarker: null,
   track: null, data: null, cfg: null, pickCenter: false, selected: null, tileOk: true };
 
+// replaceChildren wandelt null/false in einen Text "null"/"false" um – deshalb vorher filtern.
+function tfKids(node, ...kids) { node.replaceChildren(...kids.flat().filter(x => x != null && x !== false)); }
+
 function showTheft(on) {
   TF.visible = on;
   clearTimeout(TF.timer);
@@ -57,7 +60,9 @@ async function tfLoad() {
   // laufende, noch nicht gespeicherte Eingaben (Mittelpunkt, Radius \u2026) \u00fcberschreiben.
   if (!TF.cfg) TF.cfg = { ...TF.data.config };
   tfBuildSidebar();
-  tfRenderCfg();
+  // Konfigurations-Panel nur EINMAL aufbauen – sonst würde das 8-Sekunden-Polling
+  // aufgeklappte Bereiche (erweitert), den Fokus und Eingaben ständig zurücksetzen.
+  if (!TF.cfgRendered) { tfRenderCfg(); TF.cfgRendered = true; }
   tfRenderList();
   tfRenderMap();
   clearTimeout(TF.timer);
@@ -217,7 +222,7 @@ function tfRenderCfg() {
     } }, nm);
   });
 
-  TF.cfgPanel.replaceChildren(
+  tfKids(TF.cfgPanel,
     el("h3", {}, "\u00dcberwachter Bereich (Geofence)"),
     el("label", { class: "chip" }, en, "Diebstahlschutz aktiv"),
     el("div", { class: "tf-center-row" }, pickBtn,
@@ -263,7 +268,8 @@ function tfPwPanel() {
 
 async function tfSavePw(pw) {
   try { const r = await api("/api/admin/theft/password", json("PUT", { password: pw }));
-    toast(r.set ? "Passwort gespeichert" : "Passwort entfernt"); tfLoad(); }
+    if (TF.data) TF.data.pw_set = r.set;
+    toast(r.set ? "Passwort gespeichert" : "Passwort entfernt"); tfRenderCfg(); }
   catch (e) { toast(e.message); }
 }
 
@@ -273,7 +279,7 @@ function tfRenderList() {
   const withLoc = d.devices.filter(x => x.lat != null).length;
   const noLoc = d.devices.length - withLoc;
   const locked = d.devices.filter(x => x.locked).length;
-  TF.listPanel.replaceChildren(
+  tfKids(TF.listPanel,
     el("div", { class: "tf-sum" }, `${d.devices.length} Handys \u00b7 ${online} online \u00b7 ${withLoc} mit Standort` + (noLoc ? ` \u00b7 ${noLoc} ohne Standort` : "") + (locked ? ` \u00b7 ${locked} gesperrt` : "")),
     noLoc ? el("p", { class: "muted", style: "font-size:12px;margin:0" }, `${noLoc} Handys melden noch keinen Standort (Standort aus, drinnen ohne GPS, oder Berechtigung fehlt) \u2013 sie stehen in der Liste, aber noch nicht auf der Karte.`) : null,
     ...(d.devices.length ? d.devices.map(tfDeviceRow) : [el("p", { class: "muted" }, "Noch keine Handys. Sie erscheinen, sobald die Demo-App l\u00e4uft und den Standort meldet.")]));
