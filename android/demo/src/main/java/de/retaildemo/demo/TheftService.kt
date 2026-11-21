@@ -15,6 +15,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.os.CancellationSignal
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -61,27 +62,64 @@ class TheftService : Service() {
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
+    private val providers = listOf(
+        LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+
     private fun requestLocationUpdates() {
         if (!hasLocationPermission()) { Log.w(TAG, "Keine Standort-Berechtigung"); return }
-        val interval = (demoApp.prefs.fenceReportS.coerceIn(30, 900)).toLong() * 1000
+        // Alle 30 s ein Update anfordern, minDistance 0 -> auch stillstehende Geräte (im Laden!) melden.
+        val interval = 30_000L
         try {
-            for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+            for (p in providers) {
                 if (lm.allProviders.contains(p)) {
                     @Suppress("MissingPermission")
-                    lm.requestLocationUpdates(p, interval, 15f, listener, Looper.getMainLooper())
+                    lm.requestLocationUpdates(p, interval, 0f, listener, Looper.getMainLooper())
                 }
             }
-            // letzten bekannten Standort sofort nutzen (schneller Start)
+        } catch (e: Exception) { Log.w(TAG, "Standortabfrage", e) }
+        pushLastKnown()
+        requestFreshFix()
+    }
+
+    /** Letzten bekannten Standort an den Guard geben (auch wenn er älter ist – besser als gar keiner). */
+    private fun pushLastKnown() {
+        if (!hasLocationPermission()) return
+        try {
             @Suppress("MissingPermission")
-            val last = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            val last = providers
                 .mapNotNull { if (lm.allProviders.contains(it)) lm.getLastKnownLocation(it) else null }
                 .maxByOrNull { it.time }
-            if (last != null && System.currentTimeMillis() - last.time < 10 * 60_000) guard.onLocation(last)
-        } catch (e: Exception) { Log.w(TAG, "Standortabfrage", e) }
+            if (last != null) guard.onLocation(last)
+        } catch (e: Exception) { Log.w(TAG, "LastKnown", e) }
+    }
+
+    /** Aktiv einen frischen Fix anstoßen (weckt GPS/Funknetz), damit nicht nur auf Bewegung gewartet wird. */
+    private fun requestFreshFix() {
+        if (!hasLocationPermission()) return
+        try {
+            for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+                if (!lm.allProviders.contains(p)) continue
+                if (Build.VERSION.SDK_INT >= 30) {
+                    @Suppress("MissingPermission")
+                    lm.getCurrentLocation(p, CancellationSignal(), mainExecutor) { loc -> if (loc != null) guard.onLocation(loc) }
+                } else {
+                    @Suppress("MissingPermission", "DEPRECATION")
+                    lm.requestSingleUpdate(p, object : LocationListener {
+                        override fun onLocationChanged(location: Location) { guard.onLocation(location) }
+                        @Deprecated("Deprecated in Java")
+                        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+                        override fun onProviderEnabled(provider: String) {}
+                        override fun onProviderDisabled(provider: String) {}
+                    }, Looper.getMainLooper())
+                }
+            }
+        } catch (e: Exception) { Log.w(TAG, "FreshFix", e) }
     }
 
     private suspend fun loop() {
         while (scope.isActive) {
+            runCatching { pushLastKnown() }
+            runCatching { requestFreshFix() }
             runCatching { guard.flush() }
             delay(60_000)
         }

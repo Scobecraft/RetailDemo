@@ -102,6 +102,8 @@ class TheftGuard(private val app: DemoApp) {
     val isTest get() = prefs.theftLockReason.startsWith("Test")
 
     // ---------------------------------------------------------- neuer Standort
+    private var lastFixKey: String? = null
+
     fun onLocation(loc: Location) {
         val fix = LocFix(
             t = loc.time / 1000.0,
@@ -111,7 +113,10 @@ class TheftGuard(private val app: DemoApp) {
             speed = if (loc.hasSpeed()) loc.speed.toDouble() else null,
             source = loc.provider ?: "gps",
         )
-        enqueue(fix)
+        // Denselben Standort (z. B. wiederholt gelesener "letzter bekannter") nicht doppelt ans Netz senden,
+        // die Geofence-Prüfung läuft aber trotzdem weiter (Verweildauer).
+        val key = "${loc.time}:${loc.latitude}:${loc.longitude}"
+        if (key != lastFixKey) { lastFixKey = key; enqueue(fix) }
         checkGeofenceLocally(fix)
     }
 
