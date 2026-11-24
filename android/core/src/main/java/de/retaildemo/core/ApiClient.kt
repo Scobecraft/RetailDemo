@@ -111,11 +111,11 @@ class ApiClient(baseUrl: String, private val token: String) {
 
     // --- Diebstahlschutz (Admin) ---
     suspend fun theftLock(id: String, locked: Boolean) {
-        call("POST", "/api/admin/theft/$id/lock", jsonBody(mapOf("locked" to locked)))
+        call("POST", "/api/admin/theft/$id/lock", jsonBody(LockReq(locked)))
     }
     suspend fun theftTest(id: String) { call("POST", "/api/admin/theft/$id/test", EMPTY) }
     suspend fun theftArm(id: String, armed: Boolean) {
-        call("POST", "/api/admin/theft/$id/arm", jsonBody(mapOf("armed" to armed)))
+        call("POST", "/api/admin/theft/$id/arm", jsonBody(ArmReq(armed)))
     }
 
     // ---------------------------------------------------------- Alarme (Push)

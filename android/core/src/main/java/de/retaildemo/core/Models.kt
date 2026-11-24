@@ -308,6 +308,12 @@ data class DeviceUnlock(
 )
 
 @Serializable
+data class LockReq(val locked: Boolean)
+
+@Serializable
+data class ArmReq(val armed: Boolean)
+
+@Serializable
 data class LocationReport(
     @SerialName("device_id") val deviceId: String,
     val fixes: List<LocFix> = emptyList(),
