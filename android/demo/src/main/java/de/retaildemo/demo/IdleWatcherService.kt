@@ -58,6 +58,17 @@ class IdleWatcherService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) foregroundPkg = pkg
         if (ImeiCapture.capturing) ImeiCapture.scan(rootInActiveWindow)
+
+        // Diebstahl-Sperre: Sobald irgendeine fremde App / der Startbildschirm erscheint (z. B. weil der
+        // Dieb die App beendet hat), sofort den Sperrbildschirm wieder nach vorne holen. Die Bedienungshilfe
+        // läuft unabhängig von der App weiter und wird vom System neu gestartet – deshalb wirkt das auch,
+        // wenn die App „beendet" wurde.
+        if (demoApp.theft.locked.value && pkg != packageName &&
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            relaunchTheftLock()
+            return
+        }
+
         if (pkg == packageName) return
 
         // Deinstallieren-Dialog so früh wie möglich erkennen – auch schon beim Aufbau des Inhalts
@@ -251,6 +262,20 @@ class IdleWatcherService : AccessibilityService() {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             )
         }, 700)
+    }
+
+    private var lastTheftRelaunch = 0L
+    /** Sperrbildschirm wieder in den Vordergrund holen (gedrosselt gegen Dauerfeuer). */
+    private fun relaunchTheftLock() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastTheftRelaunch < 400) return
+        lastTheftRelaunch = now
+        runCatching {
+            startActivity(Intent(this, TheftLockActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        }
+        // zusätzlich das Gerät auf OS-Ebene sperren (falls Geräteverwaltung aktiv / Passwort gesetzt)
+        runCatching { DeviceLock.lockNow(this) }
     }
 
     private fun checkIdle() {

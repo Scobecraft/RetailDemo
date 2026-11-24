@@ -81,6 +81,7 @@ class TheftGuard(private val app: DemoApp) {
         prefs.schedUntil = t.schedule.until
         prefs.schedDays = t.schedule.days.joinToString(",")
         t.unlock?.let { prefs.unlockSalt = it.salt; prefs.unlockHash = it.hash; prefs.unlockIter = it.iter }
+        prefs.deviceThePin = t.devicePin
         if (t.armed && !wasArmed) { prefs.armedAt = System.currentTimeMillis(); prefs.outsideSince = 0; prefs.outsideCount = 0 }
 
         // Server-Sperrbefehl: nur bei NEUERER Nummer übernehmen (so entsperrt die Webseite zuverlässig)
@@ -105,8 +106,14 @@ class TheftGuard(private val app: DemoApp) {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
             } catch (e: Exception) { Log.w(TAG, "Sperrbildschirm", e) }
             TheftService.ensureRunning(app)
+            // OS-Sperre: Bildschirm sperren und (nur als Geräteeigentümer) das auf der Webseite
+            // festgelegte Entsperrpasswort setzen
+            runCatching { DeviceLock.enforce(app, prefs.deviceThePin) }
+        } else {
+            // Entsperrt: das bei Diebstahl gesetzte Passwort wieder entfernen (nur Geräteeigentümer)
+            runCatching { DeviceLock.clear(app) }
         }
-        // Alarm/Entsperren erledigt TheftLockActivity selbst über den locked-Flow.
+        // Entsperren/Schließen erledigt TheftLockActivity selbst über den locked-Flow.
     }
 
     /** true = testweise ausgelöst (Sperrbildschirm zeigt dann einen TEST-Hinweis). */

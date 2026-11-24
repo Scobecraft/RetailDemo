@@ -244,6 +244,7 @@ data class TheftInfo(
     @SerialName("wifi_ssids") val wifiSsids: List<String> = emptyList(),
     val schedule: TheftSchedule = TheftSchedule(),
     val unlock: UnlockPw? = null,
+    @SerialName("device_pin") val devicePin: String = "",
 )
 
 @Serializable

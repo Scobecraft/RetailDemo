@@ -213,6 +213,9 @@ function tfRenderCfg() {
   const dwell = el("input", { type: "number", min: 15, max: 3600, value: c.dwell_s, style: "width:70px", onchange: e => c.dwell_s = +e.target.value });
   const grace = el("input", { type: "number", min: 0, max: 3600, value: c.arm_grace_s, style: "width:70px", onchange: e => c.arm_grace_s = +e.target.value });
   const report = el("input", { type: "number", min: 30, max: 3600, value: c.report_interval_s, style: "width:70px", onchange: e => c.report_interval_s = +e.target.value });
+  // OS-Entsperrpasswort, das bei Diebstahl gesetzt wird (nur Geräteeigentümer-Handys)
+  const devicePin = el("input", { type: "text", inputmode: "numeric", placeholder: "4-16 Ziffern, leer = aus",
+    value: c.device_pin || "", onchange: e => c.device_pin = e.target.value.replace(/\\D/g, "").slice(0, 16) });
 
   // Laden-WLAN (SSID): solange ein Gerät damit verbunden ist, gibt es NIE Alarm
   if (!Array.isArray(c.wifi_ssids)) c.wifi_ssids = [];
@@ -257,6 +260,9 @@ function tfRenderCfg() {
         el("label", {}, "Schonzeit nach Start", grace, "Sek."),
         el("label", {}, "Standort melden alle", report, "Sek.")),
       el("p", { class: "muted", style: "font-size:12px;margin:8px 0 0" }, "Diese Werte verhindern Fehlalarme: ungenaue Messungen werden ignoriert, und das Ger\u00e4t muss den Bereich wirklich eine Weile verlassen haben.")),
+    el("label", { style: "margin-top:10px" }, "Diebstahl-PIN (Android-Entsperrpasswort)"),
+    devicePin,
+    el("p", { class: "muted", style: "font-size:12px;margin:2px 0 0" }, "Wird bei Diebstahl automatisch als Geräte-Entsperrpasswort gesetzt und beim Entsperren wieder entfernt. Funktioniert nur auf Handys, die als „Geräteeigentümer\u201c eingerichtet sind (einmalig per ADB). Sonst wird das Gerät über den App-Sperrbildschirm unbrauchbar gemacht."),
     el("button", { class: "btn primary block", onclick: tfSaveCfg }, "Speichern"),
     el("p", { class: "muted", style: "font-size:12px" }, "Die Handys brauchen die Demo-App ab Version 1.18 und die Standort-Berechtigung \u201eImmer zulassen\u201c."),
     tfPwPanel());
