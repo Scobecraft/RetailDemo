@@ -250,16 +250,16 @@ Tonspur.
 Menü → Demo-Geräte → **Diebstahlschutz**: Karte (OpenStreetMap) mit den Standorten aller Handys. Auf der Karte
 den Mittelpunkt (den Laden) setzen – per Klick oder Adresssuche – und einen erlaubten Umkreis in Metern eintragen.
 
-- **Geofence:** Verlässt ein Handy den Umkreis **dauerhaft**, gibt es einen nicht abstellbaren Alarmton und sperrt
-  sich mit einem seriösen, zweisprachigen Warnbildschirm (Deutsch/Englisch). Du bekommst eine Push-Benachrichtigung
+- **Geofence:** Verlässt ein Handy den Umkreis **dauerhaft**, wird es gesperrt und unbrauchbar gemacht (ohne Ton)
+  mit einem seriösen, zweisprachigen Warnbildschirm (Deutsch/Englisch). Du bekommst eine Push-Benachrichtigung
   in der Admin-App (auch nachts) und kannst das Gerät nur hier wieder **entsperren**.
 - **Funktioniert offline und nach Neustart:** Die App prüft den Umkreis selbst (ohne Internet) und bleibt nach dem
   Aus- und Einschalten gesperrt. Sobald das Gerät wieder Internet hat, meldet es seinen Standort – auch verspätet.
 - **Fehlalarm-Schutz:** ungenaue GPS-Messungen werden ignoriert, es gibt einen Puffer um den Umkreis, eine
   Mindest-Verweildauer außerhalb und eine Schonzeit nach dem Scharfschalten. Alles einstellbar unter „Fehlalarm-Schutz".
 - **Spur:** Pro Gerät lässt sich die Route der letzten 24 Stunden auf der Karte anzeigen.
-- **Test:** Pro Gerät „🔔 Test" löst den Sperrbildschirm und den Alarm aus (Hinweis „TEST"), endet nach 2 Minuten von
-  selbst und schickt keinen echten Alarm – zum Vorführen/Prüfen.
+- **Test:** Pro Gerät „🔒 Test" löst den Sperrbildschirm aus (Hinweis „TEST"), endet nach 2 Minuten von
+  selbst und schickt keine echte Diebstahl-Meldung – zum Vorführen/Prüfen.
 - **Von Hand sperren/entsperren:** jederzeit pro Gerät möglich.
 
 Voraussetzung: Demo-App **ab 1.14** und die Standort-Berechtigung **„Immer zulassen"** (bei der Einrichtung).

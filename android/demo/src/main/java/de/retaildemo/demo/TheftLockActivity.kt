@@ -1,11 +1,7 @@
 package de.retaildemo.demo
 
-import android.media.AudioAttributes
-import android.media.AudioManager
-import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
-import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -35,18 +31,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /**
- * Sperrbildschirm bei (vermutetem) Diebstahl: nicht wegklickbar, mit nicht abschaltbarem Alarmton und
- * einem seriösen zweisprachigen Warnhinweis (Deutsch/Englisch). Entsperrt wird nur über den Server –
- * der [TheftGuard] setzt dann den `locked`-Flow auf false und dieser Bildschirm schließt sich.
+ * Sperrbildschirm bei (vermutetem) Diebstahl: nicht wegklickbar, macht das Gerät unbrauchbar
+ * (OHNE Alarmton) und zeigt einen seriösen zweisprachigen Warnhinweis (Deutsch/Englisch).
+ * Entsperrt wird nur über den Server oder mit dem Admin-Passwort – der [TheftGuard] setzt dann
+ * den `locked`-Flow auf false und dieser Bildschirm schließt sich.
  */
 class TheftLockActivity : ComponentActivity() {
-    private var player: MediaPlayer? = null
-    private var audio: AudioManager? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,14 +62,13 @@ class TheftLockActivity : ComponentActivity() {
         val logo = demoApp.druck.logo
         setContent {
             val locked by demoApp.theft.locked.collectAsState()
-            LaunchedEffect(locked) { if (!locked) { stopAlarm(); finish() } }
+            LaunchedEffect(locked) { if (!locked) finish() }
             LockScreen(store = store, isTest = demoApp.theft.isTest,
                 protectionId = java.util.UUID.nameUUIDFromBytes(demoApp.prefs.deviceId.toByteArray()).toString().take(8).uppercase(),
                 logo = logo?.let { runCatching { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }.getOrNull() },
                 hasPassword = demoApp.prefs.unlockHash.isNotBlank(),
                 onUnlock = { pw -> demoApp.theft.tryUnlock(pw) })
         }
-        startAlarm()
         maybeCapturePhoto()
     }
 
@@ -91,7 +83,7 @@ class TheftLockActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!demoApp.theft.locked.value) finish() else startAlarm()
+        if (!demoApp.theft.locked.value) finish()
     }
 
     // Verlässt der Dieb den Bildschirm (Home-Taste), sofort wieder nach vorne holen.
@@ -106,91 +98,6 @@ class TheftLockActivity : ComponentActivity() {
         super.onPause()
         if (demoApp.theft.locked.value) TheftService.ensureRunning(this)
     }
-
-    // Lautstärke-Tasten dürfen den Alarm nicht leiser/aus machen – Down wie Up abfangen,
-    // damit weder Lautstärke sinkt noch der System-Lautstärkeregler erscheint.
-    private fun isVolKey(keyCode: Int) =
-        keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
-        keyCode == KeyEvent.KEYCODE_VOLUME_MUTE
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (isVolKey(keyCode)) { maxVolume(); return true }
-        return super.onKeyDown(keyCode, event)
-    }
-    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        if (isVolKey(keyCode)) { maxVolume(); return true }
-        return super.onKeyUp(keyCode, event)
-    }
-    override fun onKeyLongPress(keyCode: Int, event: KeyEvent?): Boolean {
-        if (isVolKey(keyCode)) { maxVolume(); return true }
-        return super.onKeyLongPress(keyCode, event)
-    }
-
-    // Erkennt jede Lautstärke-Änderung sofort (z. B. über Schnelleinstellungen/Bluetooth) und dreht wieder auf.
-    private var volObserver: android.database.ContentObserver? = null
-
-    private fun maxVolume() {
-        val am = audio ?: return
-        try {
-            // Nicht-Stören / Stumm umgehen, Alarm ist von DND ausgenommen
-            if (am.ringerMode != AudioManager.RINGER_MODE_NORMAL) {
-                runCatching { am.ringerMode = AudioManager.RINGER_MODE_NORMAL }
-            }
-            val max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-            if (am.getStreamVolume(AudioManager.STREAM_ALARM) != max) {
-                am.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
-            }
-        } catch (_: Exception) {}
-    }
-
-    private fun startAlarm() {
-        if (player?.isPlaying == true) return
-        audio = getSystemService(AUDIO_SERVICE) as AudioManager
-        maxVolume()
-        registerVolumeGuard()
-        try {
-            player = MediaPlayer().apply {
-                setAudioAttributes(AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
-                val afd = resources.openRawResourceFd(R.raw.theft_alarm)
-                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length); afd.close()
-                isLooping = true
-                setVolume(1f, 1f)
-                prepare(); start()
-            }
-        } catch (e: Exception) { android.util.Log.w("TheftLock", "Alarm", e) }
-        // Zusätzliche Absicherung: Lautstärke engmaschig oben halten, Wiedergabe neu starten falls gestoppt
-        lifecycleScope.launch {
-            while (demoApp.theft.locked.value) {
-                maxVolume()
-                player?.setVolume(1f, 1f)
-                if (player?.isPlaying == false) runCatching { player?.start() }
-                delay(300)
-            }
-        }
-    }
-
-    private fun registerVolumeGuard() {
-        if (volObserver != null) return
-        val obs = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean) { maxVolume() }
-        }
-        runCatching {
-            contentResolver.registerContentObserver(
-                android.provider.Settings.System.CONTENT_URI, true, obs)
-        }
-        volObserver = obs
-    }
-
-    private fun stopAlarm() {
-        volObserver?.let { runCatching { contentResolver.unregisterContentObserver(it) } }
-        volObserver = null
-        runCatching { player?.stop(); player?.release() }
-        player = null
-    }
-
-    override fun onDestroy() { stopAlarm(); super.onDestroy() }
 }
 
 private val ORANGE = Color(0xFFEE7F00)

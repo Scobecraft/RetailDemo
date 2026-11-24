@@ -22,7 +22,7 @@ function tfBuild() {
   TF.sidebar = el("div", { class: "tf-side" });
   page.replaceChildren(
     el("div", { class: "row" }, el("div", {}, el("h2", {}, "Diebstahlschutz"),
-      el("p", { class: "sub" }, "Standorte der Handys auf der Karte. Verlässt ein Gerät den eingestellten Bereich dauerhaft, löst es Alarm aus und sperrt sich – du wirst benachrichtigt und kannst es hier wieder entsperren."))),
+      el("p", { class: "sub" }, "Standorte der Handys auf der Karte. Verlässt ein Gerät den eingestellten Bereich dauerhaft, wird es gesperrt und unbrauchbar gemacht (ohne Ton) – du wirst benachrichtigt und kannst es hier wieder entsperren."))),
     el("div", { class: "tf-layout" }, el("div", { class: "tf-mapwrap panel" }, TF.mapEl), TF.sidebar));
   TF.built = true;
   setTimeout(tfInitMap, 50);
@@ -162,7 +162,7 @@ function tfPopup(d) {
   const act = [];
   if (d.lat != null) act.push(el("button", { class: "btn small", onclick: () => tfShowTrack(d) }, "Spur"));
   if (d.has_photo) act.push(el("button", { class: "btn small", onclick: () => tfShowPhoto(d) }, "\ud83d\udcf7 Foto"));
-  if (!d.locked) act.push(el("button", { class: "btn small", onclick: () => tfTest(d) }, "\ud83d\udd14 Test"));
+  if (!d.locked) act.push(el("button", { class: "btn small", onclick: () => tfTest(d) }, "\ud83d\udd12 Test"));
   act.push(d.locked
     ? el("button", { class: "btn small primary", onclick: () => tfLock(d, false) }, "\ud83d\udd13 Entsperren")
     : el("button", { class: "btn small danger", onclick: () => tfLock(d, true) }, "\ud83d\udd12 Sperren"));
@@ -269,7 +269,7 @@ function tfPwPanel() {
   return el("div", { class: "tf-pwbox" },
     el("h3", {}, "Entsperren am Gerät"),
     el("p", { class: "muted", style: "font-size:12px;margin:0 0 6px" },
-      "Mit diesem Passwort kann man den Alarm direkt am gesperrten Handy ausschalten (für Fehlalarme). " + (isSet ? "\u2705 Passwort ist gesetzt." : "Noch kein Passwort gesetzt.")),
+      "Mit diesem Passwort kann man die Sperre direkt am gesperrten Handy aufheben (für Fehlalarme). " + (isSet ? "\u2705 Passwort ist gesetzt." : "Noch kein Passwort gesetzt.")),
     inp,
     el("div", { class: "row", style: "gap:6px;margin-top:6px" },
       el("button", { class: "btn small primary", onclick: () => tfSavePw(inp.value) }, "Passwort speichern"),
@@ -328,7 +328,7 @@ function tfDeviceRow(d) {
   const act = [];
   if (d.lat != null) act.push(el("button", { class: "btn small", onclick: () => tfShowTrack(d) }, "Spur"));
   if (d.has_photo) act.push(el("button", { class: "btn small", onclick: () => tfShowPhoto(d) }, "\ud83d\udcf7 Foto"));
-  if (!d.locked) act.push(el("button", { class: "btn small", title: "Testalarm (endet nach 2 Min. von selbst)", onclick: () => tfTest(d) }, "\ud83d\udd14 Test"));
+  if (!d.locked) act.push(el("button", { class: "btn small", title: "Test (endet nach 2 Min. von selbst)", onclick: () => tfTest(d) }, "\ud83d\udd12 Test"));
   act.push(d.locked
     ? el("button", { class: "btn small primary", onclick: () => tfLock(d, false) }, "\ud83d\udd13 Entsperren")
     : el("button", { class: "btn small danger", onclick: () => tfLock(d, true) }, "\ud83d\udd12 Sperren"));
@@ -421,15 +421,15 @@ async function tfSaveCfg() {
 }
 
 async function tfLock(d, locked) {
-  if (locked && !await confirmDlg("Gerät sperren?", `„${d.name}" wird sofort gesperrt und gibt einen Alarmton von sich. Entsperren geht nur hier.`, "Sperren")) return;
-  if (!locked && !await confirmDlg("Entsperren?", `Sperre und Alarm von „${d.name}" aufheben? (Bei einem echten Diebstahl überlegen, ob das gewollt ist.)`, "Entsperren")) return;
+  if (locked && !await confirmDlg("Gerät sperren?", `„${d.name}" wird sofort gesperrt und unbrauchbar gemacht. Entsperren geht nur hier.`, "Sperren")) return;
+  if (!locked && !await confirmDlg("Entsperren?", `Sperre von „${d.name}" aufheben? (Bei einem echten Diebstahl überlegen, ob das gewollt ist.)`, "Entsperren")) return;
   try { await api(`/api/admin/theft/${d.id}/lock`, json("POST", { locked })); toast(locked ? "Wird gesperrt …" : "Wird entsperrt …"); tfLoad(); }
   catch (e) { toast(e.message); }
 }
 
 async function tfTest(d) {
-  if (!await confirmDlg("Testalarm auslösen?", `„${d.name}" zeigt den Sperrbildschirm und gibt den Alarmton. Der Test endet nach 2 Minuten von selbst – oder sofort per „Entsperren". Es wird KEIN echter Alarm an die Admin-App geschickt.`, "Test starten")) return;
-  try { await api(`/api/admin/theft/${d.id}/test`, json("POST", {})); toast("Testalarm ausgelöst – das Gerät sperrt sich beim nächsten Abgleich (wenige Sekunden)."); tfLoad(); }
+  if (!await confirmDlg("Testalarm auslösen?", `„${d.name}" zeigt den Sperrbildschirm und wird kurz unbrauchbar gemacht. Der Test endet nach 2 Minuten von selbst – oder sofort per „Entsperren". Es wird KEINE echte Diebstahl-Meldung an die Admin-App geschickt.`, "Test starten")) return;
+  try { await api(`/api/admin/theft/${d.id}/test`, json("POST", {})); toast("Test ausgelöst – das Gerät sperrt sich beim nächsten Abgleich (wenige Sekunden)."); tfLoad(); }
   catch (e) { toast(e.message); }
 }
 
