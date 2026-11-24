@@ -258,13 +258,6 @@ den Mittelpunkt (den Laden) setzen – per Klick oder Adresssuche – und einen 
 - **Lässt sich nicht einfach wegklicken:** Wird die App im gesperrten Zustand beendet oder in den Hintergrund
   geschoben, holt die Bedienungshilfe den Sperrbildschirm sofort wieder nach vorne. Die Bedienungshilfe läuft
   unabhängig von der App und wird vom System neu gestartet.
-- **OS-Sperre (optional, am stärksten):** Ist das Gerät als **Geräteeigentümer** eingerichtet, setzt die App bei
-  Diebstahl automatisch das auf der Webseite festgelegte **Entsperrpasswort** (Feld „Diebstahl-PIN") und entfernt
-  es beim Entsperren wieder. Einrichtung
-  einmalig per ADB auf einem frisch zurückgesetzten Gerät:
-  `adb shell dpm set-device-owner de.retaildemo.demo/.TheftAdminReceiver`
-  Ohne Geräteeigentümer darf **keine** App unter Android das System-Passwort setzen – dann greift der
-  App-Sperrbildschirm (siehe oben) und, bei aktiver Geräteverwaltung, das Sperren des Bildschirms.
 - **Fehlalarm-Schutz:** ungenaue GPS-Messungen werden ignoriert, es gibt einen Puffer um den Umkreis, eine
   Mindest-Verweildauer außerhalb und eine Schonzeit nach dem Scharfschalten. Alles einstellbar unter „Fehlalarm-Schutz".
 - **Spur:** Pro Gerät lässt sich die Route der letzten 24 Stunden auf der Karte anzeigen.

@@ -143,7 +143,6 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> U
             android.content.pm.PackageManager.PERMISSION_GRANTED
     }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
-    val deviceAdmin = remember(refresh) { DeviceLock.isAdminActive(ctx) || DeviceLock.isDeviceOwner(ctx) }
     val cleanupState by app.cleanup.state.collectAsState()
     val bloatState by app.bloatware.state.collectAsState()
     val bloatEnabled = app.sync.manifest.collectAsState().value?.removeBloatware == true
@@ -262,13 +261,6 @@ private fun SetupScreen(app: DemoApp, onStartDemo: () -> Unit, onPaused: () -> U
                     hint = "Kamera erlauben – macht bei Diebstahl heimlich ein Foto als Beweis.",
                     button = "Erlauben",
                 ) { cameraPermission.launch(android.Manifest.permission.CAMERA) }
-                PermissionRow(
-                    ok = deviceAdmin,
-                    title = "OS-Sperre bei Diebstahl",
-                    hint = if (DeviceLock.isDeviceOwner(ctx)) "Geräteeigentümer aktiv – bei Diebstahl wird auch das Entsperrpasswort gesetzt."
-                        else "Geräteverwaltung aktivieren (sperrt bei Diebstahl den Bildschirm). Für automatisches Entsperrpasswort muss das Gerät als Geräteeigentümer eingerichtet sein.",
-                    button = "Aktivieren",
-                ) { DeviceLock.requestAdmin(ctx as android.app.Activity) }
                 PermissionRow(
                     ok = storage,
                     title = "Kundenfotos löschen",

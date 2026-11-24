@@ -274,8 +274,6 @@ class IdleWatcherService : AccessibilityService() {
             startActivity(Intent(this, TheftLockActivity::class.java).addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
         }
-        // zusätzlich das Gerät auf OS-Ebene sperren (falls Geräteverwaltung aktiv / Passwort gesetzt)
-        runCatching { DeviceLock.lockNow(this) }
     }
 
     private fun checkIdle() {

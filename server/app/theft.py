@@ -48,7 +48,6 @@ DEFAULTS = {
     "active_days": [0, 1, 2, 3, 4, 5],  # aktive Wochentage (0=Mo … 6=So), Standard Mo–Sa
     "watch_missing": True,    # Server erkennt selbst, wenn ein anwesendes Gerät plötzlich verschwindet
     "missing_after_s": 300,   # so lange offline (während andere online bleiben) -> möglicher Diebstahl
-    "device_pin": "",         # OS-Entsperrpasswort, das bei Diebstahl gesetzt wird (nur Geräteeigentümer)
 }
 EARTH_R = 6371000.0
 
@@ -125,7 +124,6 @@ class GeofenceConfig(BaseModel):
     active_days: list[int] = [0, 1, 2, 3, 4, 5]
     watch_missing: bool = True
     missing_after_s: int = 300
-    device_pin: str = ""
 
 
 class Fix(BaseModel):
@@ -386,7 +384,6 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
             "schedule": {"enabled": bool(cfg.get("schedule_enabled")), "from": cfg.get("active_from", "08:00"),
                          "until": cfg.get("active_until", "20:00"), "days": cfg.get("active_days") or [0, 1, 2, 3, 4, 5]},
             "unlock": ({"salt": pw["salt"], "hash": pw["hash"], "iter": pw["iter"]} if pw else None),
-            "device_pin": cfg.get("device_pin", ""),
         }
 
     # ---- von Heartbeat/Sync aufgerufen (damit das Handy Geofence + Sperrstand oft erfährt) ----
@@ -471,8 +468,6 @@ def make_theft_router(db: Callable, require_admin: Callable, require_device: Cal
         cfg["max_scatter_m"] = max(30, min(5000, cfg.get("max_scatter_m", 200)))
         cfg["wifi_ssids"] = [str(x).strip() for x in (cfg.get("wifi_ssids") or []) if str(x).strip()][:10]
         cfg["active_days"] = sorted({int(d) for d in (cfg.get("active_days") or []) if 0 <= int(d) <= 6})
-        dp = "".join(ch for ch in str(cfg.get("device_pin") or "") if ch.isdigit())[:16]
-        cfg["device_pin"] = dp if len(dp) >= 4 else ""
         prev = config()
         save_config(cfg)
         # beim (neu) Scharfschalten: Schonzeit für alle neu starten und „außerhalb"-Zähler löschen

@@ -203,10 +203,6 @@ class Prefs(context: Context) {
     var pendingUnlock: Boolean
         get() = sp.getBoolean("pending_unlock", false)
         set(v) = sp.edit().putBoolean("pending_unlock", v).apply()
-    /** Bei Diebstahl zu setzendes OS-Entsperrpasswort (auf der Webseite festgelegt; leer = aus). */
-    var deviceThePin: String
-        get() = sp.getString("device_pin", "") ?: ""
-        set(v) = sp.edit().putString("device_pin", v).apply()
     /** bis zu diesem Zeitpunkt lokal NICHT erneut sperren (nach Entsperren am Gerät). */
     var noLockUntil: Long
         get() = sp.getLong("no_lock_until", 0)
