@@ -863,6 +863,23 @@ def device_dict(c, row, settings) -> dict:
         "created_at": row["created_at"],
         "operating_s": row["operating_s"],
         "readiness": (json.loads(row["readiness"]) if row["readiness"] else None),
+        **_theft_fields(c, row["id"]),
+    }
+
+
+def _theft_fields(c, device_id) -> dict:
+    """Diebstahl-Status eines Geräts für die Geräteübersicht (Admin-App/Webseite)."""
+    try:
+        tr = c.execute("SELECT locked, armed, missing_alerted, lock_reason FROM theft_devices WHERE device_id=?",
+                       (device_id,)).fetchone()
+    except Exception:
+        tr = None
+    reason = tr["lock_reason"] if tr else None
+    return {
+        "theft_locked": bool(tr["locked"]) if tr else False,
+        "theft_armed": bool(tr["armed"]) if tr else True,
+        "theft_missing": bool(tr["missing_alerted"]) if tr else False,
+        "theft_test": bool(reason and str(reason).startswith("Test")),
     }
 
 

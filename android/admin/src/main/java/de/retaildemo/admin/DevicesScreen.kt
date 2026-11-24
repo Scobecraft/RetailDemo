@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -176,6 +177,12 @@ private fun DeviceCard(d: Device, release: de.retaildemo.core.AppRelease?, rolle
                         fontWeight = if (highlight) FontWeight.SemiBold else null,
                     )
                 }
+                theftLine(d)?.let { (text, col) ->
+                    Text(text, style = MaterialTheme.typography.bodySmall, color = col, fontWeight = FontWeight.SemiBold)
+                }
+                readinessLine(d)?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFD97706))
+                }
             }
         }
     }
@@ -267,6 +274,20 @@ private fun DeviceDialog(vm: AdminViewModel, d: Device, playlists: List<Playlist
                         Text("Entfernen", color = MaterialTheme.colorScheme.error)
                     }
                 }
+                HorizontalInfo(d)
+                if (!d.isLaptop) {
+                    Text("Diebstahlschutz", style = MaterialTheme.typography.labelLarge)
+                    Text(theftStatusText(d), style = MaterialTheme.typography.bodySmall,
+                        color = if (d.theftLocked || d.theftMissing) MaterialTheme.colorScheme.error else Color.Gray)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (d.theftLocked) {
+                            Button(onClick = { vm.theftLock(d.id, false); onDismiss() }) { Text("Entsperren") }
+                        } else {
+                            Button(onClick = { vm.theftLock(d.id, true); onDismiss() }) { Text("Sperren") }
+                            OutlinedButton(onClick = { vm.theftTest(d.id); onDismiss() }) { Text("Test") }
+                        }
+                    }
+                }
                 Text(
                     (if (d.isLaptop) "Laptop · " else "") +
                         "ID ${d.id.take(8)} · App ${d.appVersion ?: "?"}" + (d.ip?.let { " · IP $it" } ?: ""),
@@ -291,6 +312,65 @@ private fun DeviceDialog(vm: AdminViewModel, d: Device, playlists: List<Playlist
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
     )
+}
+
+@Composable
+private fun HorizontalInfo(d: Device) {
+    if (!d.isLaptop) {
+        Text("IMEI: ${d.imei ?: "—"}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+        Text("Seriennummer: ${d.serial ?: "—"}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+    }
+    Text("Installiert: ${fmtDate(d.createdAt)} · Betriebsstunden: ${fmtDur(d.operatingS)}",
+        style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+    readinessLine(d)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFD97706)) }
+}
+
+private val RDY_LABEL = linkedMapOf(
+    "loc_fine" to "Standort-Berechtigung", "loc_background" to "Standort „immer\u201c", "loc_on" to "Standort an",
+    "wifi" to "WLAN an", "battery_unrestricted" to "Akku-Optimierung aus", "accessibility" to "Bedienungshilfe",
+    "notifications" to "Benachrichtigungen", "camera" to "Kamera")
+
+private fun readinessLine(d: Device): String? {
+    val r = d.readiness ?: return null
+    val miss = mutableListOf<String>()
+    if (!r.locFine) miss += RDY_LABEL["loc_fine"]!!
+    if (!r.locBackground) miss += RDY_LABEL["loc_background"]!!
+    if (!r.locOn) miss += RDY_LABEL["loc_on"]!!
+    if (!r.wifi) miss += RDY_LABEL["wifi"]!!
+    if (!r.batteryUnrestricted) miss += RDY_LABEL["battery_unrestricted"]!!
+    if (!r.accessibility) miss += RDY_LABEL["accessibility"]!!
+    if (!r.notifications) miss += RDY_LABEL["notifications"]!!
+    if (!r.camera) miss += RDY_LABEL["camera"]!!
+    return if (miss.isEmpty()) null else "⚠️ Einrichtung fehlt: " + miss.joinToString(", ")
+}
+
+private fun theftLine(d: Device): Pair<String, Color>? = when {
+    d.theftTest -> "🔒 Testsperre aktiv" to Color(0xFFEE7F00)
+    d.theftLocked -> "🔒 Gesperrt" to Color(0xFFE5484D)
+    d.theftMissing -> "⚠️ Verschwunden (möglicher Diebstahl)" to Color(0xFFE5484D)
+    else -> null
+}
+
+private fun theftStatusText(d: Device): String = when {
+    d.theftTest -> "Testsperre aktiv (endet von selbst)"
+    d.theftLocked -> "Gesperrt – Gerät ist unbrauchbar gemacht"
+    d.theftMissing -> "Verschwunden – meldet sich nicht mehr"
+    else -> "Nicht gesperrt"
+}
+
+private fun fmtDate(epochS: Double?): String {
+    if (epochS == null || epochS <= 0) return "unbekannt"
+    return java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMANY).format(java.util.Date((epochS * 1000).toLong()))
+}
+
+private fun fmtDur(sec: Double): String {
+    if (sec < 60) return "< 1 Std."
+    val h = sec / 3600.0
+    return when {
+        h < 1 -> "${(sec / 60).toInt()} Min."
+        h < 100 -> String.format(java.util.Locale.GERMANY, "%.1f Std.", h)
+        else -> "${h.toInt()} Std."
+    }
 }
 
 private fun ago(epochS: Double?): String {

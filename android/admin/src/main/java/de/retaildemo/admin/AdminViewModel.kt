@@ -166,6 +166,24 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
         refreshDevices()
     }
 
+    fun theftLock(id: String, locked: Boolean) = launchSafe {
+        api.theftLock(id, locked)
+        messages.value = if (locked) "Gerät wird gesperrt …" else "Gerät wird entsperrt …"
+        refreshDevices()
+    }
+
+    fun theftTest(id: String) = launchSafe {
+        api.theftTest(id)
+        messages.value = "Testsperre ausgelöst – endet nach 2 Minuten von selbst"
+        refreshDevices()
+    }
+
+    fun theftArm(id: String, armed: Boolean) = launchSafe {
+        api.theftArm(id, armed)
+        messages.value = if (armed) "Diebstahlschutz scharf" else "Diebstahlschutz unscharf"
+        refreshDevices()
+    }
+
     fun deleteDevice(id: String) = launchSafe {
         api.deleteDevice(id)
         devices.update { list -> list.filterNot { it.id == id } }

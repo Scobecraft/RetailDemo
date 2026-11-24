@@ -109,6 +109,15 @@ class ApiClient(baseUrl: String, private val token: String) {
     suspend fun syncNow(id: String) { call("POST", "/api/admin/devices/$id/sync-now", EMPTY) }
     suspend fun syncAll() { call("POST", "/api/admin/devices/sync-all", EMPTY) }
 
+    // --- Diebstahlschutz (Admin) ---
+    suspend fun theftLock(id: String, locked: Boolean) {
+        call("POST", "/api/admin/theft/$id/lock", jsonBody(mapOf("locked" to locked)))
+    }
+    suspend fun theftTest(id: String) { call("POST", "/api/admin/theft/$id/test", EMPTY) }
+    suspend fun theftArm(id: String, armed: Boolean) {
+        call("POST", "/api/admin/theft/$id/arm", jsonBody(mapOf("armed" to armed)))
+    }
+
     // ---------------------------------------------------------- Alarme (Push)
     /** Neueste Alarme (after=0) bzw. alle nach der ID. */
     suspend fun alerts(after: Long = 0, limit: Int = 30): AlertList =

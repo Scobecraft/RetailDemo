@@ -65,6 +65,15 @@ data class Device(
     @SerialName("sync_requested") val syncRequested: Boolean = false,
     @SerialName("last_seen") val lastSeen: Double? = null,
     @SerialName("last_sync") val lastSync: Double? = null,
+    val imei: String? = null,
+    val serial: String? = null,
+    @SerialName("created_at") val createdAt: Double? = null,
+    @SerialName("operating_s") val operatingS: Double = 0.0,
+    val readiness: Readiness? = null,
+    @SerialName("theft_locked") val theftLocked: Boolean = false,
+    @SerialName("theft_armed") val theftArmed: Boolean = true,
+    @SerialName("theft_missing") val theftMissing: Boolean = false,
+    @SerialName("theft_test") val theftTest: Boolean = false,
 ) {
     val isLaptop get() = platform != "android"
 }
