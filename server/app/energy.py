@@ -37,7 +37,7 @@ def trusted_links(q: str) -> list[dict]:
     if not qe:
         return []
     return [
-        {"name": "EPREL (EU-Datenbank)", "url": f"{EPREL}/search?text={qe}"},
+        {"name": "EPREL (EU-Datenbank)", "url": f"{EPREL}/screen/home"},
         {"name": "Expert", "url": f"https://www.expert.de/shop/search?q={qe}"},
         {"name": "MediaMarkt", "url": f"https://www.mediamarkt.de/de/search.html?query={qe}"},
         {"name": "Saturn", "url": f"https://www.saturn.de/de/search.html?query={qe}"},
