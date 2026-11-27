@@ -15,8 +15,8 @@ function showLabel(on) {
 
 function lbBuild() {
   const page = $("[data-page=label]");
-  LB.input = el("input", { type: "text", placeholder: "z. B. Samsung GQ65S90C oder EAN-Nummer",
-    onkeydown: e => { if (e.key === "Enter") lbLookup({ q: LB.input.value }); } });
+  LB.input = el("input", { type: "text", placeholder: "EPREL-Registriernummer (vom Label) oder Modell/EAN",
+    onkeydown: e => { if (e.key === "Enter") lbManualSearch(LB.input.value); } });
   LB.result = el("div", { class: "lb-out" }, el("p", { class: "muted" }, "Noch nichts gescannt."));
   page.replaceChildren(
     el("div", { class: "row" }, el("div", {}, el("h2", {}, "Energielabel"),
@@ -31,7 +31,7 @@ function lbBuild() {
         el("div", { class: "lb-manual" },
           el("label", {}, "oder Modell / EAN eingeben"),
           LB.input,
-          el("button", { class: "btn", onclick: () => lbLookup({ q: LB.input.value }) }, "Suchen")),
+          el("button", { class: "btn", onclick: () => lbManualSearch(LB.input.value) }, "Suchen")),
         el("div", { class: "lb-upload" },
           el("label", {}, "Label-Bild \u2192 druckfertiges PDF (7 \u00d7 14 cm)"),
           el("input", { type: "file", accept: "image/*", onchange: e => { const f = e.target.files && e.target.files[0]; if (f) lbPdfFromFile(f); e.target.value = ""; } }),
@@ -72,6 +72,13 @@ function lbOnScan(text) {
   const m = String(text).match(/eprel\.ec\.europa\.eu\/(?:qr\/|screen\/product\/([^/]+)\/)?([0-9]{4,})/i);
   if (m) lbLookup({ reg: m[2], group: m[1] || "", scannedUrl: text });
   else lbLookup({ q: text });
+}
+
+// Eingabe deuten: reine Ziffern = EPREL-Registriernummer (öffentlich, automatisch), sonst Modell/EAN-Text.
+function lbManualSearch(value) {
+  const v = String(value || "").trim();
+  if (/^\d{4,}$/.test(v)) lbLookup({ reg: v });
+  else lbLookup({ q: v });
 }
 
 // ----------------------------------------------------------- Nachschlagen
