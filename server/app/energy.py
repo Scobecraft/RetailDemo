@@ -72,17 +72,24 @@ def make_energy_router(db: Callable, require_admin: Callable):
                 if p.get(k):
                     return p[k]
             return None
-        reg = pick("registrationNumber", "registration_number", "eprelRegistrationNumber")
+        reg = pick("eprelRegistrationNumber", "registrationNumber", "registration_number")
         grp = pick("productGroup", "product_group", "productGroupUrlCode")
+        q = urllib.parse.quote(str(reg)) if reg else ""
         return {
             "registrationNumber": reg,
             "energyClass": pick("energyClass", "energyEfficiencyClass", "energyClassVariant"),
+            "energyClassRange": pick("energyClassRange"),
             "model": pick("modelIdentifier", "model", "supplierModelIdentifier"),
-            "brand": pick("supplierOrTrademark", "trademark", "supplier", "brand"),
+            "brand": pick("supplierOrTrademark", "trademarkOwner", "trademark", "supplier", "brand"),
             "group": grp,
             "page": f"{EPREL}/screen/product/{grp}/{reg}" if grp and reg else (f"{EPREL}/qr/{reg}" if reg else None),
-            "labelProxy": f"/api/admin/eprel/label?group={urllib.parse.quote(str(grp))}&reg={urllib.parse.quote(str(reg))}" if grp and reg else None,
+            "labelProxy": f"/api/admin/eprel/label?reg={q}" + (f"&group={urllib.parse.quote(str(grp))}" if grp else "") if reg else None,
+            "fichePdf": f"{EPREL}/fiches/{urllib.parse.quote(str(grp))}/Fiche_{q}.pdf" if grp and reg else None,
         }
+
+    def _fetch_product(reg: str) -> dict:
+        """Öffentliche Einzelabfrage per Registriernummer – KEIN Schlüssel nötig."""
+        return _get_json(f"{EPREL}/api/product/{urllib.parse.quote(reg)}", {"Accept": "application/json"})
 
     # -------------------------------------------------- Schlüssel verwalten
     class KeyBody(BaseModel):
@@ -113,60 +120,53 @@ def make_energy_router(db: Callable, require_admin: Callable):
     def lookup(q: str = "", reg: str = "", group: str = ""):
         term = (q or reg).strip()
         out: dict = {"query": term, "links": trusted_links(term), "results": [], "has_key": bool(get_key())}
-        if not get_key():
+        # Registriernummer (vom QR-Code auf dem Label): öffentlich, OHNE Schlüssel – holt Klasse + Label.
+        if reg:
+            try:
+                p = _fetch_product(reg)
+                if isinstance(p, dict) and p.get("eprelRegistrationNumber"):
+                    out["results"] = [_simplify(p)]
+                else:
+                    out["error"] = "Kein Produkt zu dieser Registriernummer gefunden."
+            except urllib.error.HTTPError as e:
+                out["error"] = f"EPREL {e.code}: {e.reason}"
+            except Exception as e:
+                out["error"] = str(e)[:200]
             return out
-        try:
-            headers = _api_headers()
-            if reg and group:
-                p = _get_json(f"{EPREL}/api/products/{urllib.parse.quote(group)}/{urllib.parse.quote(reg)}", headers)
-                out["results"] = [_simplify(p if isinstance(p, dict) else {})]
-            elif reg:
-                p = _get_json(f"{EPREL}/api/products/{urllib.parse.quote(reg)}", headers)
-                out["results"] = [_simplify(p if isinstance(p, dict) else {})]
-            elif q and group:
-                url = f"{EPREL}/api/products/{urllib.parse.quote(group)}?_page=1&_limit=10&text={urllib.parse.quote(q)}"
+        # Freitextsuche (Modell/EAN): EPREL-Suche ist gesperrt -> nur mit Schlüssel möglich.
+        if q and get_key():
+            try:
+                headers = _api_headers()
+                url = f"{EPREL}/api/products?page=1&size=10&text={urllib.parse.quote(q)}"
                 data = _get_json(url, headers)
-                items = data.get("hits") or data.get("products") or data if isinstance(data, (list, dict)) else []
-                if isinstance(items, dict):
-                    items = items.get("hits") or items.get("products") or []
+                items = data if isinstance(data, list) else (data.get("hits") or data.get("products") or [])
                 out["results"] = [_simplify(x) for x in (items or [])[:10] if isinstance(x, dict)]
-        except urllib.error.HTTPError as e:
-            out["error"] = f"EPREL {e.code}: {e.reason}"
-        except Exception as e:
-            out["error"] = str(e)[:200]
+            except urllib.error.HTTPError as e:
+                out["error"] = f"EPREL {e.code}: {e.reason}"
+            except Exception as e:
+                out["error"] = str(e)[:200]
         return out
 
-    # -------------------------------------------------- Label-Bild (über den Server, mit Schlüssel)
+    # -------------------------------------------------- Label-Bild (öffentlich, über den Server geladen)
     @r.get("/api/admin/eprel/label", dependencies=[Depends(require_admin)])
-    def label(group: str, reg: str):
-        headers = _api_headers()
-        # EPREL liefert das Label je nach Produktgruppe unter verschiedenen Pfaden – mehrere versuchen.
-        candidates = [
-            f"{EPREL}/api/products/{urllib.parse.quote(group)}/{urllib.parse.quote(reg)}/labels",
-            f"{EPREL}/api/products/{urllib.parse.quote(reg)}/labels",
-            f"{EPREL}/label/Label_{urllib.parse.quote(reg)}.png",
-        ]
-        for url in candidates:
+    def label(reg: str, group: str = ""):
+        # Produktgruppe ggf. öffentlich nachschlagen (für den Label-Pfad nötig)
+        if not group:
             try:
-                raw = _get(url, headers, timeout=25)
-                if raw[:4] == b"\x89PNG":
-                    return Response(content=raw, media_type="image/png")
-                if raw[:4] == b"%PDF":
-                    return Response(content=raw, media_type="application/pdf")
-                # JSON mit Label-URLs?
-                try:
-                    j = json.loads(raw.decode("utf-8", "replace"))
-                    link = None
-                    if isinstance(j, list) and j:
-                        link = j[0].get("url") or j[0].get("labelUrl") or j[0].get("link")
-                    elif isinstance(j, dict):
-                        link = j.get("url") or j.get("labelUrl") or (j.get("labels") or [{}])[0].get("url")
-                    if link:
-                        img = _get(link if link.startswith("http") else EPREL + link, headers, timeout=25)
-                        mt = "application/pdf" if img[:4] == b"%PDF" else "image/png"
-                        return Response(content=img, media_type=mt)
-                except Exception:
-                    pass
+                group = str(_fetch_product(reg).get("productGroup") or "")
+            except Exception:
+                group = ""
+        if not group:
+            raise HTTPException(404, "Produkt/Gruppe nicht gefunden")
+        q = urllib.parse.quote(reg)
+        g = urllib.parse.quote(group)
+        # Direktes, öffentliches Label-Bild – kein Schlüssel nötig.
+        for url, mt in ((f"{EPREL}/labels/{g}/Label_{q}.png", "image/png"),
+                        (f"{EPREL}/labels/{g}/Label_{q}.pdf", "application/pdf")):
+            try:
+                raw = _get(url, {"Accept": "*/*"}, timeout=25)
+                if raw[:4] in (b"\x89PNG", b"%PDF"):
+                    return Response(content=raw, media_type=mt)
             except Exception:
                 continue
         raise HTTPException(404, "Kein Label gefunden")

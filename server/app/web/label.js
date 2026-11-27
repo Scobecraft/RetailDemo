@@ -117,7 +117,7 @@ function lbRender(data, ctx) {
     kids.push(el("div", { class: "lb-official" },
       el("b", {}, "Bei EPREL suchen (offizielle EU-Datenbank)"),
       el("a", { class: "btn primary small", href: eprelLink.url, target: "_blank", rel: "noopener" }, "EPREL öffnen"),
-      !data.has_key ? el("div", { class: "muted", style: "font-size:12px" }, "Tipp: Mit kostenlosem EPREL-Schlüssel (unten) erscheint Klasse + Label hier automatisch.") : null));
+      el("div", { class: "muted", style: "font-size:12px" }, "Am einfachsten: den QR-Code auf dem Energielabel scannen – dann erscheinen Klasse und Original-Label automatisch, ohne Schlüssel.")));
   }
 
   // Nur wenn EPREL nichts hat: zuerst Expert, dann die anderen vertrauenswürdigen Quellen.
@@ -153,7 +153,7 @@ function lbKeyPanel() {
   return el("div", { class: "panel lb-key", id: "lbKeyPanel" },
     el("h3", {}, "EPREL-API-Schlüssel (optional)"),
     el("p", { class: "muted", style: "font-size:12px;margin:0 0 6px" },
-      "Mit einem kostenlosen Schlüssel der EU-Datenbank EPREL holt der Server automatisch Energieklasse + Label. "
+      "Der QR-Code auf dem Energielabel funktioniert ohne Schlüssel – Klasse + Original-Label erscheinen automatisch. Ein kostenloser EPREL-Schlüssel ist nur nötig, um per Modellname/EAN zu suchen. "
       + (LB.hasKey ? "✅ Schlüssel ist hinterlegt." : "Noch kein Schlüssel.")),
     el("a", { href: "https://eprel.ec.europa.eu/screen/api-registration", target: "_blank", rel: "noopener", style: "font-size:12px" }, "Schlüssel kostenlos registrieren ↗"),
     el("div", { class: "row", style: "gap:6px;margin-top:6px" }, inp,
