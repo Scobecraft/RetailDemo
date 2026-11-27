@@ -280,6 +280,20 @@
   .tf-filter { margin-left: auto; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
   .tf-rdy { font-size: 12px; color: #d97706; }
   .tf-pwbox { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .lb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; margin-top: 8px; }
+  .lb-reader { width: 100%; min-height: 240px; background: #0b0f14; border-radius: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .lb-reader video { width: 100% !important; height: auto !important; border-radius: 10px; }
+  .lb-manual { margin-top: 14px; display: grid; gap: 6px; }
+  .lb-manual input { width: 100%; }
+  .lb-out { display: grid; gap: 10px; }
+  .lb-official { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 5px; justify-items: start; }
+  .lb-links { display: flex; flex-wrap: wrap; gap: 6px; }
+  .lb-card { display: flex; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .lb-badge { width: 46px; height: 46px; border-radius: 8px; color: #fff; font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .lb-cardlinks { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .lb-labelimg { max-width: 240px; margin-top: 8px; border-radius: 8px; border: 1px solid var(--line); display: block; }
+  .lb-key { margin-top: 16px; }
+  @media (max-width: 900px) { .lb-grid { grid-template-columns: 1fr; } }
   .tf-pwbox input, .tf-cfg input[type=time], .tf-cfg input[type=text] { }
   .leaflet-popup-content { font-size: 13px; margin: 12px 14px; }
   .tf-pop-name { font-size: 15px; }
@@ -1026,6 +1040,7 @@
               <div class="menu-group">Werkzeuge</div>
               <button data-tab="editor"><span class="mi"></span><b>Video-Schnitt</b><small>Werbung schneiden, Text, Musik</small></button>
               <button data-tab="youtube"><span class="mi"></span><b>YouTube-Import</b><small>Werbung laden und einplanen</small></button>
+              <button data-tab="label"><span class="mi"></span><b>Energielabel</b><small>Produkt scannen, EU-Label finden</small></button>
             </div>
             <div class="menu-col" data-group="druck">
               <div class="menu-group">3D-Druck</div>
@@ -1073,6 +1088,7 @@
     <!-- 3D-Konverter (Inhalt baut converter.js) -->
     <div data-page="converter" hidden></div>
     <div data-page="theft" hidden></div>
+    <div data-page="label" hidden></div>
     <!-- YouTube-Import über ScobeTube (Inhalt baut youtube.js) -->
     <div data-page="youtube" hidden></div>
 
@@ -1416,6 +1432,7 @@ document.querySelectorAll("nav [data-tab]").forEach(b => b.addEventListener("cli
   showYoutube(b.dataset.tab === "youtube");
   showConverter(b.dataset.tab === "converter");
   showTheft(b.dataset.tab === "theft");
+  showLabel(b.dataset.tab === "label");
   showOps(b.dataset.tab);
 }));
 
@@ -2388,7 +2405,9 @@ api("/api/web/me").then(me => { managedByEnv = !!me.managed_by_env; showApp(); }
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" integrity="sha512-6ZCLMiYwTeli2rVh3XAPxy3YoR5fVxGdH/pz+KMCzRY2M65Emgkw00Yqmhh8qLGeYQ3LbVZGdmOX9KUjSKr0TA==" crossorigin="anonymous" referrerpolicy="no-referrer">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js" integrity="sha512-OFs3W4DIZ5ZkrDhBFtsCP6JXtMEDGmhl0QPlmWYBJay40TT1n3gt2Xuw8Pf/iezgW9CdabjkNChRqozl/YADmg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="/converter.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js" integrity="sha512-r6rDA7W6ZeQhvl8S7yRVQUKVHdexq+GAlNkNNqVC7YyIV+NwqCTJe2hDWCiffTyRNOeGEzRRJ9ifvRm/HCzGYg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="/theft.js"></script>
+<script src="/label.js"></script>
 <script src="/eggs.js"></script>
 </body>
 </html>

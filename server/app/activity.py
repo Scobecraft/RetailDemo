@@ -70,6 +70,7 @@ ACTIONS = [
     ("POST", r"^/api/admin/theft/[^/]+/arm$", "Diebstahlschutz für Gerät scharf/unscharf"),
     ("POST", r"^/api/admin/theft/[^/]+/test$", "Diebstahl-Testalarm ausgelöst"),
     ("PUT", r"^/api/admin/theft/password$", "Entsperr-Passwort (Diebstahlschutz) geändert"),
+    ("PUT", r"^/api/admin/eprel/key$", "EPREL-API-Schlüssel (Energielabel) geändert"),
     ("PUT", r"^/api/admin/druck/shutdown$", "Zeitplan „PC herunterfahren“ geändert"),
     ("POST", r"^/api/admin/druck/shutdown/skip$", "Herunterfahren heute ausgelassen/wieder aktiviert"),
 ]

@@ -38,6 +38,7 @@ from .activity import Activity, install as install_activity, make_activity_route
 from .backup import make_backup_router
 from .stats import make_stats_router
 from .theft import make_theft_router
+from .energy import make_energy_router
 from .shutdown import make_shutdown_router
 from .converter import make_converter_router
 
@@ -1271,7 +1272,7 @@ def web_me(request: Request):
     return {"user": user, "managed_by_env": from_env}
 
 
-WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube", "ops", "eggs", "converter", "theft")
+WEB_SCRIPTS = ("druck-dashboard", "slicer", "gcode-preview", "editor", "youtube", "ops", "eggs", "converter", "theft", "label")
 
 
 @app.get("/", include_in_schema=False)
@@ -1704,6 +1705,7 @@ theft_router, _theft_status_for, _theft_set_cfg_path, _theft_check_missing = mak
     db, require_admin, require_device, alerts, _client_ip, _device_name)
 _theft_set_cfg_path(DATA_DIR)
 app.include_router(theft_router)
+app.include_router(make_energy_router(db, require_admin))
 
 
 @app.on_event("startup")
