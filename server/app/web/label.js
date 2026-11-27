@@ -182,33 +182,33 @@ function lbLoadImg(src) {
     i.onload = () => res(i); i.onerror = () => rej(new Error("Bild konnte nicht geladen werden")); i.src = src; });
 }
 
-async function lbToPng(src) {
-  const img = await lbLoadImg(src);
-  const c = document.createElement("canvas");
-  c.width = img.naturalWidth || 700; c.height = img.naturalHeight || 1400;
-  c.getContext("2d").drawImage(img, 0, 0);
-  return c.toDataURL("image/png");
-}
-
 async function lbMakePdf(src, name) {
   const J = window.jspdf && window.jspdf.jsPDF;
   if (!J) { toast("PDF-Bibliothek nicht geladen (keine Internetverbindung?)"); return; }
-  let png;
-  try { png = await lbToPng(src); }
+  let img;
+  try { img = await lbLoadImg(src); }
   catch (e) { toast("Label-Bild nicht verfügbar (bei EPREL evtl. nur als PDF) – dort direkt herunterladen."); return; }
+  // Originallabel 1:1 (nur skaliert, NICHT verzerrt): seitenverhältnistreu in die 7×14-cm-Fläche einpassen.
+  const iw = img.naturalWidth || 700, ih = img.naturalHeight || 1400;
+  const scale = Math.min(LB_W / iw, LB_H / ih);
+  const w = iw * scale, h = ih * scale;
+  const c = document.createElement("canvas");
+  c.width = iw; c.height = ih; c.getContext("2d").drawImage(img, 0, 0);
+  const png = c.toDataURL("image/png");
+
   const doc = new J({ unit: "mm", format: "a4", orientation: "portrait" });
-  const pw = 210, ph = 297, x = (pw - LB_W) / 2, y = (ph - LB_H) / 2;
-  doc.addImage(png, "PNG", x, y, LB_W, LB_H, undefined, "SLOW");
-  // Schnittrand (genau 7 × 14 cm)
-  doc.setDrawColor(0); doc.setLineWidth(0.3); doc.rect(x, y, LB_W, LB_H);
+  const pw = 210, ph = 297, x = (pw - w) / 2, y = (ph - h) / 2;
+  doc.addImage(png, "PNG", x, y, w, h, undefined, "SLOW");
+  // Schnittrand genau um das Originallabel
+  doc.setDrawColor(0); doc.setLineWidth(0.3); doc.rect(x, y, w, h);
   // Schnittmarken an den Ecken (nach außen)
   doc.setLineWidth(0.2); const m = 4;
-  const corners = [[x, y, -1, -1], [x + LB_W, y, 1, -1], [x, y + LB_H, -1, 1], [x + LB_W, y + LB_H, 1, 1]];
+  const corners = [[x, y, -1, -1], [x + w, y, 1, -1], [x, y + h, -1, 1], [x + w, y + h, 1, 1]];
   for (const [cx, cy, hx, vy] of corners) { doc.line(cx, cy, cx + hx * m, cy); doc.line(cx, cy, cx, cy + vy * m); }
   doc.setFontSize(7); doc.setTextColor(130);
-  doc.text("7 × 14 cm · an der Umrandung gerade schneiden", pw / 2, y + LB_H + 7, { align: "center" });
-  doc.save((String(name || "energielabel").replace(/[^\w.-]+/g, "_")) + "_7x14cm.pdf");
-  toast("PDF erstellt (7 × 14 cm)");
+  doc.text(`Originallabel · ${Math.round(w * 10) / 10} × ${Math.round(h * 10) / 10} mm · an der Umrandung gerade schneiden`, pw / 2, y + h + 7, { align: "center" });
+  doc.save((String(name || "energielabel").replace(/[^\w.-]+/g, "_")) + "_label.pdf");
+  toast("PDF erstellt");
 }
 
 function lbPdfFromFile(file) {
