@@ -31,7 +31,11 @@ function lbBuild() {
         el("div", { class: "lb-manual" },
           el("label", {}, "oder Modell / EAN eingeben"),
           LB.input,
-          el("button", { class: "btn", onclick: () => lbLookup({ q: LB.input.value }) }, "Suchen"))),
+          el("button", { class: "btn", onclick: () => lbLookup({ q: LB.input.value }) }, "Suchen")),
+        el("div", { class: "lb-upload" },
+          el("label", {}, "Label-Bild \u2192 druckfertiges PDF (7 \u00d7 14 cm)"),
+          el("input", { type: "file", accept: "image/*", onchange: e => { const f = e.target.files && e.target.files[0]; if (f) lbPdfFromFile(f); e.target.value = ""; } }),
+          el("p", { class: "muted", style: "font-size:12px;margin:4px 0 0" }, "Ein vorhandenes Label-Bild hochladen \u2013 es wird auf exakt 7 \u00d7 14 cm mit Schnittrand als druckfertiges PDF gespeichert."))),
       el("div", { class: "panel" }, LB.result)),
     lbKeyPanel());
   LB.built = true;
@@ -86,6 +90,9 @@ async function lbLookup({ q = "", reg = "", group = "", scannedUrl = "" }) {
 
 function lbRender(data, ctx) {
   const kids = [el("h3", {}, "Ergebnis für „" + (data.query || "") + "“")];
+  const eprelLink = (data.links || []).find(l => /EPREL/i.test(l.name));
+  const storeLinks = (data.links || []).filter(l => !/EPREL/i.test(l.name));
+  const hasEprel = (data.results && data.results.length) || ctx.scannedUrl || ctx.reg;
 
   // Direkt gescanntes offizielles EU-Label (QR) – immer anbieten, auch ohne EPREL-Schlüssel
   if (ctx.scannedUrl || ctx.reg) {
@@ -98,21 +105,26 @@ function lbRender(data, ctx) {
       el("a", { class: "btn primary small", href: page, target: "_blank", rel: "noopener" }, "Offizielles Label öffnen")));
   }
 
-  // EPREL-Treffer (nur mit Schlüssel)
+  // EPREL-Treffer (mit Schlüssel) – die bevorzugte Quelle
   if (data.results && data.results.length) {
     for (const p of data.results) kids.push(lbCard(p));
   } else if (data.error) {
     kids.push(el("p", { class: "muted" }, "EPREL: " + data.error));
-  } else if (!data.has_key && !(ctx.scannedUrl || ctx.reg)) {
-    kids.push(el("p", { class: "muted", style: "font-size:13px" },
-      "Für die automatische Anzeige von Energieklasse + Label aus EPREL einen kostenlosen EPREL-API-Schlüssel unten eintragen. Ohne Schlüssel die vertrauenswürdigen Links nutzen:"));
   }
 
-  // Vertrauenswürdige Schnell-Links
-  if (data.links && data.links.length) {
+  // EPREL ist immer die erste Wahl: offizielle EPREL-Suche zuerst anbieten.
+  if (!hasEprel && eprelLink) {
+    kids.push(el("div", { class: "lb-official" },
+      el("b", {}, "Bei EPREL suchen (offizielle EU-Datenbank)"),
+      el("a", { class: "btn primary small", href: eprelLink.url, target: "_blank", rel: "noopener" }, "EPREL öffnen"),
+      !data.has_key ? el("div", { class: "muted", style: "font-size:12px" }, "Tipp: Mit kostenlosem EPREL-Schlüssel (unten) erscheint Klasse + Label hier automatisch.") : null));
+  }
+
+  // Nur wenn EPREL nichts hat: zuerst Expert, dann die anderen vertrauenswürdigen Quellen.
+  if (!hasEprel && storeLinks.length) {
     kids.push(el("div", { class: "lb-links" },
-      el("div", { class: "muted", style: "font-size:12px;margin-bottom:4px" }, "Bei vertrauenswürdigen Quellen nachsehen:"),
-      ...data.links.map(l => el("a", { class: "btn small", href: l.url, target: "_blank", rel: "noopener" }, l.name))));
+      el("div", { class: "muted", style: "font-size:12px;margin-bottom:4px" }, "Falls bei EPREL nicht vorhanden – zuerst bei Expert, sonst:"),
+      ...storeLinks.map((l, idx) => el("a", { class: "btn small" + (idx === 0 ? " primary" : ""), href: l.url, target: "_blank", rel: "noopener" }, l.name))));
   }
   LB.result.replaceChildren(...kids);
 }
@@ -124,7 +136,8 @@ function lbCard(p) {
     el("div", { class: "muted", style: "font-size:12px" }, "EPREL " + (p.registrationNumber || "")),
     el("div", { class: "lb-cardlinks" },
       p.page ? el("a", { class: "btn small", href: p.page, target: "_blank", rel: "noopener" }, "EPREL-Seite") : null,
-      p.labelProxy ? el("a", { class: "btn small primary", href: p.labelProxy, target: "_blank", rel: "noopener" }, "Label öffnen") : null));
+      p.labelProxy ? el("a", { class: "btn small", href: p.labelProxy, target: "_blank", rel: "noopener" }, "Label öffnen") : null,
+      p.labelProxy ? el("button", { class: "btn small primary", onclick: () => lbMakePdf(p.labelProxy, [p.brand, p.model].filter(Boolean).join("_") || p.registrationNumber) }, "📄 PDF 7×14 cm") : null));
   const card = el("div", { class: "lb-card" }, badge, info);
   if (p.labelProxy) {
     const img = el("img", { class: "lb-labelimg", src: p.labelProxy, alt: "Energielabel",
@@ -159,4 +172,48 @@ async function lbSaveKey(key) {
     LB.hasKey = !!r.has_key; toast(r.has_key ? "Schlüssel gespeichert" : "Schlüssel entfernt");
     const panel = $("#lbKeyPanel"); if (panel) panel.replaceWith(lbKeyPanel()); }
   catch (e) { toast(e.message); }
+}
+
+// ----------------------------------------------------------- PDF (7 × 14 cm, mit Schnittrand)
+const LB_W = 70, LB_H = 140; // mm
+
+function lbLoadImg(src) {
+  return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous";
+    i.onload = () => res(i); i.onerror = () => rej(new Error("Bild konnte nicht geladen werden")); i.src = src; });
+}
+
+async function lbToPng(src) {
+  const img = await lbLoadImg(src);
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth || 700; c.height = img.naturalHeight || 1400;
+  c.getContext("2d").drawImage(img, 0, 0);
+  return c.toDataURL("image/png");
+}
+
+async function lbMakePdf(src, name) {
+  const J = window.jspdf && window.jspdf.jsPDF;
+  if (!J) { toast("PDF-Bibliothek nicht geladen (keine Internetverbindung?)"); return; }
+  let png;
+  try { png = await lbToPng(src); }
+  catch (e) { toast("Label-Bild nicht verfügbar (bei EPREL evtl. nur als PDF) – dort direkt herunterladen."); return; }
+  const doc = new J({ unit: "mm", format: "a4", orientation: "portrait" });
+  const pw = 210, ph = 297, x = (pw - LB_W) / 2, y = (ph - LB_H) / 2;
+  doc.addImage(png, "PNG", x, y, LB_W, LB_H, undefined, "SLOW");
+  // Schnittrand (genau 7 × 14 cm)
+  doc.setDrawColor(0); doc.setLineWidth(0.3); doc.rect(x, y, LB_W, LB_H);
+  // Schnittmarken an den Ecken (nach außen)
+  doc.setLineWidth(0.2); const m = 4;
+  const corners = [[x, y, -1, -1], [x + LB_W, y, 1, -1], [x, y + LB_H, -1, 1], [x + LB_W, y + LB_H, 1, 1]];
+  for (const [cx, cy, hx, vy] of corners) { doc.line(cx, cy, cx + hx * m, cy); doc.line(cx, cy, cx, cy + vy * m); }
+  doc.setFontSize(7); doc.setTextColor(130);
+  doc.text("7 × 14 cm · an der Umrandung gerade schneiden", pw / 2, y + LB_H + 7, { align: "center" });
+  doc.save((String(name || "energielabel").replace(/[^\w.-]+/g, "_")) + "_7x14cm.pdf");
+  toast("PDF erstellt (7 × 14 cm)");
+}
+
+function lbPdfFromFile(file) {
+  const r = new FileReader();
+  r.onload = () => lbMakePdf(r.result, (file.name || "label").replace(/\.[^.]+$/, ""));
+  r.onerror = () => toast("Datei konnte nicht gelesen werden");
+  r.readAsDataURL(file);
 }

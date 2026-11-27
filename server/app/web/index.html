@@ -292,6 +292,7 @@
   .lb-badge { width: 46px; height: 46px; border-radius: 8px; color: #fff; font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
   .lb-cardlinks { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
   .lb-labelimg { max-width: 240px; margin-top: 8px; border-radius: 8px; border: 1px solid var(--line); display: block; }
+  .lb-upload { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); display: grid; gap: 6px; }
   .lb-key { margin-top: 16px; }
   @media (max-width: 900px) { .lb-grid { grid-template-columns: 1fr; } }
   .tf-pwbox input, .tf-cfg input[type=time], .tf-cfg input[type=text] { }
@@ -2406,6 +2407,7 @@ api("/api/web/me").then(me => { managedByEnv = !!me.managed_by_env; showApp(); }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js" integrity="sha512-OFs3W4DIZ5ZkrDhBFtsCP6JXtMEDGmhl0QPlmWYBJay40TT1n3gt2Xuw8Pf/iezgW9CdabjkNChRqozl/YADmg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="/converter.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js" integrity="sha512-r6rDA7W6ZeQhvl8S7yRVQUKVHdexq+GAlNkNNqVC7YyIV+NwqCTJe2hDWCiffTyRNOeGEzRRJ9ifvRm/HCzGYg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="/theft.js"></script>
 <script src="/label.js"></script>
 <script src="/eggs.js"></script>
